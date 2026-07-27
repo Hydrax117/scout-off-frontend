@@ -15,6 +15,10 @@ const meta: Meta<typeof ConfirmDialog> = {
 export default meta;
 type Story = StoryObj<typeof ConfirmDialog>;
 
+/**
+ * Default confirmation dialog — non-destructive, used for neutral confirmations
+ * such as pausing a contract or confirming a settings change.
+ */
 export const Default: Story = {
   args: {
     isOpen: true,
@@ -24,17 +28,27 @@ export const Default: Story = {
   },
 };
 
-export const WithCustomLabels: Story = {
+/**
+ * Destructive action dialog — confirm button signals danger.
+ * The component always renders its confirm button with `variant="danger"`,
+ * so this story documents that the default appearance is already destructive.
+ * Pass a `confirmLabel` that reinforces the irreversible nature of the action.
+ */
+export const Destructive: Story = {
   args: {
     isOpen: true,
-    title: 'Pause Contract',
+    title: 'Archive Player Profile',
     message:
-      'Pausing the contract will disable all write operations for all users. Continue?',
-    confirmLabel: 'Yes, Pause',
-    cancelLabel: 'Keep Active',
+      'Archiving this profile will hide it from scouts and remove it from search results. This cannot be reversed without contacting support.',
+    confirmLabel: 'Archive Profile',
+    cancelLabel: 'Keep Profile',
   },
 };
 
+/**
+ * Loading / pending state — the confirm button shows a spinner and is disabled
+ * while an async operation (e.g. an on-chain transaction) is in progress.
+ */
 export const Loading: Story = {
   args: {
     isOpen: true,
@@ -44,6 +58,29 @@ export const Loading: Story = {
   },
 };
 
+/**
+ * Long description — verifies that the dialog handles overflow gracefully
+ * when the message prop contains a long paragraph of text.
+ */
+export const LongDescription: Story = {
+  args: {
+    isOpen: true,
+    title: 'Revoke Milestone',
+    message:
+      'You are about to revoke the milestone "Scored 5 goals in the Regional Cup Qualifier" that was approved by validator GVALIDAT…WXYZ on 2024-03-14. ' +
+      'Revoking this milestone will recalculate the player's progress level, which may drop them from Level 2 (Performance) back to Level 1 (Verified Identity). ' +
+      'Any scouts who have already contacted this player based on their Level 2 status will not be notified automatically. ' +
+      'If you believe this milestone was approved in error, please also file a report with the platform administrator so the validator's record can be reviewed. ' +
+      'This action is recorded on-chain and cannot be reversed once confirmed.',
+    confirmLabel: 'Revoke Milestone',
+    cancelLabel: 'Keep Milestone',
+  },
+};
+
+/**
+ * Interactive story — demonstrates the open/close lifecycle and the loading
+ * state that appears while an async confirmation handler is running.
+ */
 export const Interactive: Story = {
   name: 'Interactive (open/close)',
   render: () => {
