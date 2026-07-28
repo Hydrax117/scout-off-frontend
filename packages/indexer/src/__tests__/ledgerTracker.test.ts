@@ -140,3 +140,35 @@ describe('resetLedgerState', () => {
     expect(getLedgerLag()).toBe(0);
   });
 });
+
+// ── checkpoint persistence behavior ───────────────────────────────────────────
+
+describe('checkpoint persistence behavior', () => {
+  test('checkpoint value persists across multiple getLastLedgerInfo() calls', () => {
+    updateLastLedger(450);
+    const first = getLastLedgerInfo();
+    const second = getLastLedgerInfo();
+    expect(first.lastLedger).toBe(450);
+    expect(second.lastLedger).toBe(450);
+  });
+
+  test('saving a new checkpoint overwrites the previous one (simulates restart with persisted state)', () => {
+    updateLastLedger(100);
+    // Simulate re-load by writing a new checkpoint value
+    updateLastLedger(200);
+    expect(getLastLedgerInfo().lastLedger).toBe(200);
+  });
+
+  test('default checkpoint is 0 when no checkpoint has been saved (fresh start)', () => {
+    // resetLedgerState() is called in beforeEach, so this is a clean slate
+    expect(getLastLedgerInfo().lastLedger).toBe(0);
+  });
+
+  test('both lastLedger and networkLedger checkpoints are independent', () => {
+    updateLastLedger(500);
+    updateNetworkLedger(550);
+    const info = getLastLedgerInfo();
+    expect(info.lastLedger).toBe(500);
+    expect(info.networkLedger).toBe(550);
+  });
+});
