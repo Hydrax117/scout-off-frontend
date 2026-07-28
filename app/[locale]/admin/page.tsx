@@ -1,17 +1,33 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { useWallet } from '@/hooks/useWallet';
 import { useToast } from '@/components/ui/Toast';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import EmptyState from '@/components/ui/EmptyState';
 import TransactionStatus from '@/components/ui/TransactionStatus';
-import AdminDashboardSkeleton from '@/components/admin/AdminDashboardSkeleton';
-import FraudFlagsPanel from '@/components/admin/FraudFlagsPanel';
-import AcademyManager from '@/components/admin/AcademyManager';
-import AdminAuditLog from '@/components/admin/AdminAuditLog';
 import { recordAuditEntry } from '@/lib/adminAuditClient';
+
+// Admin-only components lazy-loaded to avoid bundling into shared chunks
+// for the much larger player/scout user base (issue #967).
+const AdminDashboardSkeleton = dynamic(
+  () => import('@/components/admin/AdminDashboardSkeleton'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 h-64 motion-safe:animate-pulse" /> },
+);
+const FraudFlagsPanel = dynamic(
+  () => import('@/components/admin/FraudFlagsPanel'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 motion-safe:animate-pulse h-20" /> },
+);
+const AcademyManager = dynamic(
+  () => import('@/components/admin/AcademyManager'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 animate-pulse h-32" /> },
+);
+const AdminAuditLog = dynamic(
+  () => import('@/components/admin/AdminAuditLog'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 animate-pulse h-48" /> },
+);
 import type { TxStatus } from '@/components/ui/TransactionStatus';
 import {
   getValidators,
