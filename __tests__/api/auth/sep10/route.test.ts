@@ -102,7 +102,7 @@ describe('POST /api/auth/sep10 — successful authentication', () => {
     );
 
     const body = await res.json();
-    expect(body).toEqual({ success: true });
+    expect(body).toEqual({ success: true, maxAge: 86400 });
 
     const cookie = res.cookies.get('session');
     expect(cookie).toBeDefined();
