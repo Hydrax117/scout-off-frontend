@@ -2,7 +2,8 @@
 import { useState } from 'react';
 import Modal, { useModal } from '@/components/ui/Modal';
 import TransactionStatus from '@/components/ui/TransactionStatus';
-import { useTrialOffer, type TrialOfferDetails } from '@/hooks/useTrialOffer';
+import { useTrialOffer } from '@/hooks/useTrialOffer';
+import type { TrialOfferDetails } from '@/types';
 import type { TxStatus } from '@/components/ui/TransactionStatus';
 
 export interface TrialOfferModalProps {
@@ -15,7 +16,7 @@ export default function TrialOfferModal({
   onSuccess,
 }: TrialOfferModalProps) {
   const { isOpen, open, close } = useModal();
-  const { submit, loading, error } = useTrialOffer();
+  const { logTrialOffer: submit, loading, error } = useTrialOffer();
 
   const [description, setDescription] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -38,7 +39,7 @@ export default function TrialOfferModal({
         description: description.trim(),
         startDate,
         location: location.trim(),
-      };
+      } as unknown as TrialOfferDetails;
 
       await submit(playerId, details);
       setTxStatus('success');

@@ -9,6 +9,24 @@ const customJestConfig = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },
+  // e2e/ holds Playwright specs (its own runner, see playwright.config.ts) —
+  // Jest's default testMatch would otherwise pick up *.spec.ts under it too.
+  // server/ is a separate Node.js service with its own package.json and its
+  // own test runner (`node --test`, see server/package.json) — it isn't
+  // part of the Next.js app and shouldn't be swept up by this config.
+  testPathIgnorePatterns: [
+    '<rootDir>/node_modules/',
+    '<rootDir>/e2e/',
+    '<rootDir>/server/',
+    // setup-providers.tsx is a shared render helper, not a test file.
+    // Without this pattern, jest's default testMatch would treat it as a
+    // test suite with zero tests and emit a "your test suite must contain
+    // at least one test" warning, breaking `npx jest --ci`.
+    // Matches __tests__/setup-providers.tsx and any future non-test
+    // helpers in the same dir (e.g. setup-providers-helpers.tsx).
+    // Update this regex if you add another non-test helper at __tests__/.
+    '<rootDir>/__tests__/setup-providers[^/]*\\.tsx',
+  ],
   // Issue #108: enforce minimum coverage thresholds
   coverageThreshold: {
     global: {
@@ -26,7 +44,6 @@ const customJestConfig = {
     'hooks/**/*.{ts,tsx}',
     'lib/**/*.{ts,tsx}',
     'context/**/*.{ts,tsx}',
-    'packages/**/*.{ts,tsx}',
     '!**/*.d.ts',
     '!**/*.stories.{ts,tsx}',
     '!**/node_modules/**',

@@ -1,0 +1,86 @@
+const express = require('express');
+const academyService = require('../academyService');
+
+const router = express.Router();
+
+function isNonEmptyString(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+// POST /academies
+// Body: { name: string, ownerWallet: string, createdBy: string }
+// Admin-gated by the caller (see app/api/admin/academies/route.ts) —
+// this service has no auth of its own, matching the referrals router.
+router.post('/', (req, res) => {
+  const { name, ownerWallet, createdBy } = req.body ?? {};
+  if (
+    !isNonEmptyString(name) ||
+    !isNonEmptyString(ownerWallet) ||
+    !isNonEmptyString(createdBy)
+  ) {
+    return res
+      .status(400)
+      .json({ error: 'name, ownerWallet, and createdBy are required' });
+  }
+
+  try {
+    const academy = academyService.createAcademy(name, ownerWallet, createdBy);
+    return res.status(201).json(academy);
+  } catch (err) {
+    if (err instanceof academyService.WalletAlreadyAssignedError) {
+      return res.status(409).json({ error: err.message });
+    }
+    throw err;
+  }
+});
+
+// GET /academies
+router.get('/', (req, res) => {
+  return res.json(academyService.listAcademies());
+});
+
+// GET /academies/wallet/:wallet
+// Public lookup — unauthenticated, used by milestone-attribution UI
+// (ValidatorChip) to show "Academy X" instead of a bare wallet address.
+router.get('/wallet/:wallet', (req, res) => {
+  const academy = academyService.getAcademyForWallet(req.params.wallet);
+  if (!academy) {
+    return res
+      .status(404)
+      .json({ error: 'Wallet is not a registered signer for any academy' });
+  }
+  return res.json(academy);
+});
+
+// POST /academies/:id/members
+// Body: { wallet: string, addedBy: string }
+router.post('/:id/members', (req, res) => {
+  const { wallet, addedBy } = req.body ?? {};
+  if (!isNonEmptyString(wallet) || !isNonEmptyString(addedBy)) {
+    return res.status(400).json({ error: 'wallet and addedBy are required' });
+  }
+
+  try {
+    const academy = academyService.addMember(req.params.id, wallet, addedBy);
+    return res.status(201).json(academy);
+  } catch (err) {
+    if (err instanceof academyService.AcademyNotFoundError) {
+      return res.status(404).json({ error: err.message });
+    }
+    if (err instanceof academyService.WalletAlreadyAssignedError) {
+      return res.status(409).json({ error: err.message });
+    }
+    throw err;
+  }
+});
+
+// DELETE /academies/:id/members/:wallet
+router.delete('/:id/members/:wallet', (req, res) => {
+  const removed = academyService.removeMember(req.params.id, req.params.wallet);
+  if (!removed) {
+    return res.status(404).json({ error: 'Membership not found' });
+  }
+  return res.json({ success: true });
+});
+
+module.exports = router;

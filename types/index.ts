@@ -42,6 +42,9 @@ export interface Player {
   progressLevel: ProgressLevel;
   milestones: Milestone[];
   createdAt: number;
+  archived?: boolean; // Off-chain archive flag; defaults to false
+  backupWallet?: string; // Optional recovery/backup wallet address
+  backupWalletVerifiedAt?: number; // Timestamp when backup was verified with primary wallet signature
 }
 
 // ── Validator ────────────────────────────────────────────────────────────────────
@@ -64,6 +67,32 @@ export interface ValidatorInfo {
    * Stellar public key of the admin wallet that authorized this validator.
    * Recorded on-chain at the time of the `add_validator` call.
    */
+  addedBy: string;
+}
+
+// ── Academy ──────────────────────────────────────────────────────────────────
+/**
+ * An off-chain grouping of validator wallets under one institutional
+ * identity (e.g. a football academy with several coaching staff). This is
+ * purely an off-chain overlay — each member wallet must still be
+ * individually authorized on-chain via `add_validator` for its milestone
+ * approvals to be valid. See docs/academy-validator-model.md.
+ */
+export interface Academy {
+  id: string;
+  name: string;
+  /** Stellar public key of the wallet that owns/manages this academy record. */
+  ownerWallet: string;
+  createdAt: number;
+  members: AcademyMember[];
+}
+
+/** One wallet registered as a signer under an {@link Academy}. */
+export interface AcademyMember {
+  wallet: string;
+  academyId: string;
+  addedAt: number;
+  /** Stellar public key of the admin who registered this wallet under the academy. */
   addedBy: string;
 }
 
@@ -132,9 +161,57 @@ export interface ReferralStats {
   successfulReferrals: number;
 }
 
+export interface TopReferrer {
+  scoutWallet: string;
+  totalCodes: number;
+  successfulReferrals: number;
+}
+
+export interface ReferralOverview {
+  totalCodes: number;
+  totalSuccessfulReferrals: number;
+  topReferrers: TopReferrer[];
+}
+
+// ── Fraud / abuse detection ────────────────────────────────────────────────────
+export type FraudFlagCategory = 'referral' | 'pay_to_contact';
+
+export type FraudFlagSeverity = 'low' | 'medium' | 'high';
+
+export interface FraudFlag {
+  /** Stable id derived from category + heuristic + subject, so re-runs dedupe. */
+  id: string;
+  category: FraudFlagCategory;
+  /** Which heuristic in lib/fraudDetection.ts produced this flag. */
+  heuristic: string;
+  severity: FraudFlagSeverity;
+  /** Wallet(s) the flag is about, in the order most relevant to the heuristic. */
+  wallets: string[];
+  /** One-line, human-readable explanation for the admin panel. */
+  reason: string;
+  /** Structured numbers backing `reason`, shown expanded for investigation. */
+  evidence: Record<string, number | string | string[]>;
+}
+
 // ── Contract call helpers ─────────────────────────────────────────────────────
 export interface ContractCallResult<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+// ── Watchlist / Saved Search ────────────────────────────────────────────────
+export interface WatchlistEntry {
+  id: number;
+  scoutWallet: string;
+  playerId: string;
+  createdAt: number; // Unix ms
+}
+
+export interface SavedSearch {
+  id: number;
+  scoutWallet: string;
+  name: string;
+  filter: PlayerFilter;
+  createdAt: number; // Unix ms
 }

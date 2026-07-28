@@ -50,9 +50,15 @@ import {
   fetchChatHistory,
   postChatMessage,
   searchPlayersByName,
+  SearchRateLimitedError,
   fetchScoutStats,
   fetchActivityEvents,
   fetchValidatorMilestoneCount,
+  fetchAcademies,
+  createAcademy,
+  addAcademyMember,
+  removeAcademyMember,
+  fetchAcademyForWallet,
 } from '@/lib/api';
 
 // Grab the mock functions from the instance that axios.create returned
@@ -176,18 +182,59 @@ describe('fetchChatHistory (getMessages)', () => {
 // ── searchPlayersByName ───────────────────────────────────────────────────────
 
 describe('searchPlayersByName', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    global.fetch = jest.fn();
+  });
 
-  it('calls GET /players/search with the name param and returns data', async () => {
+  it('calls GET /api/players/search with the name param and returns data', async () => {
     const mockData = [{ id: 'player-1', name: 'Alice' }];
-    mockGet.mockResolvedValueOnce({ data: mockData });
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => mockData,
+      headers: new Headers(),
+    });
 
     const result = await searchPlayersByName('Alice');
 
-    expect(mockGet).toHaveBeenCalledWith('/players/search', {
-      params: { name: 'Alice' },
-    });
+    expect(global.fetch).toHaveBeenCalledWith('/api/players/search?name=Alice');
     expect(result).toEqual(mockData);
+  });
+
+  it('throws SearchRateLimitedError with retryAfterSec when rate-limited', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      headers: new Headers({ 'Retry-After': '7' }),
+      json: async () => ({ error: 'Too many search requests. Please slow down.' }),
+    });
+
+    await expect(searchPlayersByName('Alice')).rejects.toThrow(
+      SearchRateLimitedError,
+    );
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      headers: new Headers({ 'Retry-After': '7' }),
+      json: async () => ({ error: 'Too many search requests. Please slow down.' }),
+    });
+    const err = await searchPlayersByName('Alice').catch((e) => e);
+    expect(err).toBeInstanceOf(SearchRateLimitedError);
+    expect(err.retryAfterSec).toBe(7);
+  });
+
+  it('throws a generic error for other failed responses', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      headers: new Headers(),
+      json: async () => ({}),
+    });
+
+    await expect(searchPlayersByName('Alice')).rejects.toThrow(
+      'Failed to search players',
+    );
   });
 });
 
@@ -331,5 +378,164 @@ describe('postChatMessage (sendMessage)', () => {
     ).rejects.toMatchObject({
       response: { status: 401 },
     });
+  });
+});
+
+// ── Academies (issue #663) ──────────────────────────────────────────────────
+
+const ACADEMY = {
+  id: 'academy-1',
+  name: 'FC Sahel',
+  ownerWallet: 'GOWNER',
+  createdAt: 1_700_000_000,
+  members: [{ wallet: 'GOWNER', academyId: 'academy-1', addedAt: 1_700_000_000, addedBy: 'GADMIN' }],
+};
+
+describe('fetchAcademies', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    global.fetch = jest.fn();
+  });
+
+  it('GETs the admin proxy and returns the academy list', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => [ACADEMY],
+    });
+
+    const result = await fetchAcademies();
+
+    expect(global.fetch).toHaveBeenCalledWith('/api/admin/academies');
+    expect(result).toEqual([ACADEMY]);
+  });
+
+  it('throws with the server-provided error message on failure', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ error: 'Unauthorized' }),
+    });
+
+    await expect(fetchAcademies()).rejects.toThrow('Unauthorized');
+  });
+});
+
+describe('createAcademy', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    global.fetch = jest.fn();
+  });
+
+  it('POSTs name and ownerWallet to the admin proxy', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ACADEMY,
+    });
+
+    const result = await createAcademy('FC Sahel', 'GOWNER');
+
+    expect(global.fetch).toHaveBeenCalledWith('/api/admin/academies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'FC Sahel', ownerWallet: 'GOWNER' }),
+    });
+    expect(result).toEqual(ACADEMY);
+  });
+
+  it('throws with a fallback message when the response has no error field', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      json: async () => {
+        throw new Error('not json');
+      },
+    });
+
+    await expect(createAcademy('FC Sahel', 'GOWNER')).rejects.toThrow(
+      'Failed to create academy',
+    );
+  });
+});
+
+describe('addAcademyMember', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    global.fetch = jest.fn();
+  });
+
+  it('POSTs the wallet to the academy members admin proxy', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ACADEMY,
+    });
+
+    await addAcademyMember('academy-1', 'GCOACH');
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/admin/academies/academy-1/members',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: 'GCOACH' }),
+      },
+    );
+  });
+});
+
+describe('removeAcademyMember', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    global.fetch = jest.fn();
+  });
+
+  it('DELETEs the member from the admin proxy, URL-encoding both segments', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+
+    await removeAcademyMember('academy 1', 'GCOACH/WITH SLASH');
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/admin/academies/academy%201/members/GCOACH%2FWITH%20SLASH',
+      { method: 'DELETE' },
+    );
+  });
+
+  it('throws when the response is not ok', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ error: 'Membership not found' }),
+    });
+
+    await expect(removeAcademyMember('academy-1', 'GCOACH')).rejects.toThrow(
+      'Membership not found',
+    );
+  });
+});
+
+describe('fetchAcademyForWallet', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('GETs the public academy lookup and returns the academy', async () => {
+    mockGet.mockResolvedValueOnce({ data: ACADEMY });
+
+    const result = await fetchAcademyForWallet('GOWNER');
+
+    expect(mockGet).toHaveBeenCalledWith('/academies/wallet/GOWNER');
+    expect(result).toEqual(ACADEMY);
+  });
+
+  it('returns null when the request fails (e.g. wallet in no academy)', async () => {
+    mockGet.mockRejectedValueOnce(new Error('Not Found'));
+
+    const result = await fetchAcademyForWallet('GNOBODY');
+
+    expect(result).toBeNull();
+  });
+
+  it('URL-encodes the wallet address', async () => {
+    mockGet.mockResolvedValueOnce({ data: ACADEMY });
+
+    await fetchAcademyForWallet('G WALLET/WITH SPACE');
+
+    expect(mockGet).toHaveBeenCalledWith(
+      '/academies/wallet/G%20WALLET%2FWITH%20SPACE',
+    );
   });
 });

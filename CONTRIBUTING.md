@@ -11,9 +11,13 @@ The typical contribution workflow is:
 3. Make changes and run local validation.
 4. Open a pull request against `main`.
 
+> This repository includes GitHub issue templates at `.github/ISSUE_TEMPLATE/` (for bug reports and feature requests) and a pull request template at `.github/PULL_REQUEST_TEMPLATE.md`, plus a PR process guide at `.github/PR_DOCUMENTATION.md` to help you provide the right details.
+
 ## Local Development Setup
 
 > For a complete end-to-end guide covering contracts, backend, and wallet setup, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
+> **Optional:** This repository includes a [devcontainer configuration](.devcontainer/devcontainer.json) for VS Code and GitHub Codespaces. When opened in a devcontainer, the correct Node.js version and all dependencies are set up automatically. See [Developing inside a Container](https://code.visualstudio.com/docs/devcontainers/containers) to learn more.
 
 ### Prerequisites
 
@@ -119,6 +123,31 @@ Use clear, descriptive branch names based on the type of work.
 - `work`
 - `temp`
 
+## Commit Message Convention
+
+This project enforces the [Conventional Commits](https://www.conventionalcommits.org/) format via commitlint. Every commit message must follow the pattern:
+
+```
+<type>(<scope>): <description>
+```
+
+Allowed types: `feat`, `fix`, `build`, `chore`, `ci`, `docs`, `perf`, `refactor`, `revert`, `style`, `test`.
+
+### Good examples
+
+- `feat: add player profile IPFS upload`
+- `fix(scout-dashboard): correct pagination offset`
+- `chore(deps): bump axios to 1.7.2`
+- `test(hooks): add useSearchPlayers test`
+- `docs: update CONTRIBUTING.md with commit format`
+
+### Bad examples
+
+- `fixed bug`
+- `WIP`
+- `Update file`
+- `asdf`
+
 ## Development Workflow
 
 1. Create a branch from `main`:
@@ -140,9 +169,23 @@ The repository exposes the following test-related commands:
 - `npm run dev` — start the local Next.js development server
 - `npm run lint` — run ESLint
 - `npm run test` — run Jest tests
+- `npm run test:watch` — run Jest tests in watch mode
+- `npm run test:coverage` — run Jest tests with coverage collection enabled
+- `npm run typecheck` — run the TypeScript compiler in `--noEmit` mode to check for type errors (full repo, including tests)
+- `npm run type-check` — same as above but excludes test and story files; runs as a standalone job in CI
 - `npm run format` — format files with Prettier
 - `npm run format:check` — check formatting with Prettier
 - `npm run prepare` — install Husky hooks
+
+### Indexer Package Tests
+
+To run only the off-chain event indexer tests, use:
+
+```bash
+npx jest packages/indexer --no-coverage
+```
+
+For full indexer setup, environment variables, and schema details, see [packages/indexer/README.md](packages/indexer/README.md).
 
 ### Smart Contract Tests
 
@@ -154,16 +197,26 @@ cd ../scout-off-contracts && cargo test
 
 Run smart contract tests when your frontend changes depend on on-chain contract behavior, contract IDs, or Soroban interaction logic.
 
-## Husky Pre-Commit Hooks
+## Husky Hooks
 
-This project uses Husky to run checks before each commit. The repository has a pre-commit hook at `.husky/pre-commit` that executes `npx --no-install lint-staged`.
+This project uses Husky to run checks before each commit and push.
+
+### Pre-commit hook
+
+The pre-commit hook at `.husky/pre-commit` executes `npx --no-install lint-staged`.
 
 `lint-staged` runs:
 
 - `eslint --fix` on staged `.js`, `.jsx`, `.ts`, and `.tsx` files
 - `prettier --write` on staged `.json`, `.css`, `.md`, and `.mdx` files
 
-These hooks help keep commits clean and consistent.
+### Pre-push hook
+
+The pre-push hook at `.husky/pre-push` runs the full test suite via `npm test`. This ensures that no branch is pushed with broken tests.
+
+### Commit-msg hook
+
+The commit-msg hook at `.husky/commit-msg` runs `@commitlint/cli` with `@commitlint/config-conventional` to enforce the [Conventional Commits](https://www.conventionalcommits.org/) format.
 
 ### Bypassing hooks
 
@@ -171,6 +224,7 @@ Only bypass hooks in an emergency:
 
 ```bash
 git commit --no-verify
+git push --no-verify
 ```
 
 Do not use `--no-verify` for PRs targeting `main`.
@@ -179,10 +233,19 @@ Do not use `--no-verify` for PRs targeting `main`.
 
 - [ ] Tests pass locally
 - [ ] Environment validation passes (`node scripts/validate-env.js`)
+- [ ] Lighthouse CI passes (performance ≥ 80)
 - [ ] No secrets or credentials committed
 - [ ] New features include tests where applicable
 - [ ] Documentation updated where necessary
 - [ ] Code follows project conventions and formatting
+
+### Code review assignment
+
+This repository uses a [CODEOWNERS](.github/CODEOWNERS) file to automatically request
+reviews from the appropriate maintainers when a PR touches specific directories.
+For example, changes to `app/api/auth/`, `lib/contract.ts`, or `packages/indexer/`
+will automatically request a review from the relevant team. No manual reviewer
+assignment is needed — GitHub applies CODEOWNERS rules on PR creation.
 
 ## Security Guidelines
 
@@ -195,6 +258,8 @@ Do not use `--no-verify` for PRs targeting `main`.
 
 - The frontend repository is configured for GitHub Actions in `.github/workflows/ci.yml`.
 - `npm run lint`, `npm run test`, and `node scripts/validate-env.js` are all part of the CI validation path.
+- Lighthouse CI runs on every PR as a `lighthouse` job — reports are uploaded as build artifacts.
 - If Husky hooks are not active after cloning, run `npm run prepare`.
+- For offline PR-body drafts used when opening cross-fork PRs against `scout-off/scout-off-frontend:main`, see [docs/pr-bodies/](docs/pr-bodies/) — each file matches a branch in the bulk-deploy stack and is passed to `gh pr create --body-file`.
 
 Thank you for helping improve ScoutOff.

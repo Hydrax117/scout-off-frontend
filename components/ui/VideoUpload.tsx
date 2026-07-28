@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, ChangeEvent } from 'react';
-import { uploadToIPFS } from '@/lib/ipfs';
+import { useChunkedUpload } from '@/hooks/useChunkedUpload';
+import Spinner from '@/components/ui/Spinner';
 
 /** Accepted MIME types for client-side validation */
 export const ACCEPTED_MIME_TYPES = [
@@ -46,12 +47,32 @@ export default function VideoUpload({
   error,
   onValidationError,
 }: VideoUploadProps) {
-  const [isUploading, setIsUploading] = useState(false);
   const [fileName, setFileName] = useState<string>('');
   const [localError, setLocalError] = useState<string | null>(null);
+  const {
+    progress,
+    phase,
+    uploading: isUploading,
+    canResume,
+    upload,
+    resume,
+  } = useChunkedUpload();
+  const isProcessing = isUploading && phase === 'processing';
 
   const displayError = error ?? localError;
   const errorId = displayError ? 'video-upload-error' : undefined;
+
+  const handleUploadResult = (cid: string | null, uploadError: string | null) => {
+    if (cid) {
+      setLocalError(null);
+      onValidationError?.(null);
+      onUpload(cid);
+      return;
+    }
+    const message = uploadError ?? 'Upload failed. Please try again.';
+    setLocalError(message);
+    onValidationError?.(message);
+  };
 
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -70,21 +91,15 @@ export default function VideoUpload({
     // Clear any previous error
     setLocalError(null);
     onValidationError?.(null);
-
-    setIsUploading(true);
     setFileName(file.name);
 
-    try {
-      const cid = await uploadToIPFS(file);
-      onUpload(cid);
-    } catch (err) {
-      console.error('Upload failed:', err);
-      const uploadErr = 'Upload failed. Please try again.';
-      setLocalError(uploadErr);
-      onValidationError?.(uploadErr);
-    } finally {
-      setIsUploading(false);
-    }
+    const outcome = await upload(file);
+    handleUploadResult(outcome.cid, outcome.error);
+  };
+
+  const handleResume = async () => {
+    const outcome = await resume();
+    handleUploadResult(outcome.cid, outcome.error);
   };
 
   return (
@@ -117,35 +132,46 @@ export default function VideoUpload({
         {isUploading && (
           <div className="absolute inset-0 bg-gray-900/80 flex items-center justify-center rounded-lg">
             <div className="flex items-center gap-2 text-brand-green">
-              <svg
-                className="animate-spin h-5 w-5"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              <span className="text-sm">Uploading...</span>
+              <Spinner size="sm" />
+              <span className="text-sm">
+                {isProcessing ? 'Processing…' : `Uploading... ${progress}%`}
+              </span>
             </div>
           </div>
         )}
       </div>
+      {isUploading && (
+        <div
+          role="progressbar"
+          aria-valuenow={isProcessing ? undefined : progress}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={
+            isProcessing ? 'Processing upload' : 'Upload progress'
+          }
+          className="h-1.5 w-full rounded-full bg-gray-800 overflow-hidden"
+        >
+          <div
+            className={`h-full bg-brand-green transition-[width] duration-200 ${
+              isProcessing ? 'animate-pulse w-full' : ''
+            }`}
+            style={isProcessing ? undefined : { width: `${progress}%` }}
+          />
+        </div>
+      )}
       {displayError && (
         <p id={errorId} role="alert" className="text-sm text-red-500">
           {displayError}
         </p>
+      )}
+      {displayError && canResume && !isUploading && (
+        <button
+          type="button"
+          onClick={handleResume}
+          className="text-sm text-brand-green hover:opacity-80 transition underline"
+        >
+          Resume upload
+        </button>
       )}
       {fileName && !isUploading && !displayError && (
         <p className="text-sm text-gray-400">Uploaded: {fileName}</p>

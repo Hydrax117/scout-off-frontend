@@ -63,7 +63,12 @@ export default function ValidatorPlayerSearch({
   const lastMilestoneDate = player?.milestones.length
     ? new Date(
         Math.max(...player.milestones.map((m) => m.timestamp)) * 1000,
-      ).toLocaleDateString()
+      ).toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      })
     : null;
 
   return (

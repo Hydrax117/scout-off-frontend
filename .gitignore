@@ -1,15 +1,68 @@
+node_modules
+.next/
+.vercel
+out
+dist
+build
+coverage
+public/build
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.husky/_
+/.git
+.vscode
+public/sw.js
+public/workbox-*.js
+# next-pwa regenerates sourcemaps adjacent to workbox output on local builds
+public/sw.js.map
+public/workbox-*.js.map
+
 .env.local
 .env*.local
-.next/
-node_modules/
-out/
 *.tsbuildinfo
 # Jest coverage output (issue #108)
 coverage/
 storybook-static/
+
+# Jest / Vitest snapshot files
+__snapshots__/
+**/__snapshots__/
+*.snap
+
+# Playwright E2E output (issue #673)
+/test-results/
+/playwright-report/
+/blob-report/
 
 # Kiro IDE directory
 .kiro/
 
 # Pull request description files
 pr-*.md
+
+# Local referral-store data (lib/referralStore.ts writes here in dev)
+/data/
+
+# Local indexer SQLite event store (packages/indexer/src/db/eventStore.ts writes here in dev)
+packages/indexer/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE swap and temp files
+*.swp
+*.swo
+*~
+.idea/
+
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

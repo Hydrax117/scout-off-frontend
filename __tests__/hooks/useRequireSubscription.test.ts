@@ -74,7 +74,9 @@ describe('useRequireSubscription', () => {
       message: 'Your subscription has expired — please renew to continue.',
       variant: 'warning',
     });
-    expect(mockReplace).toHaveBeenCalledWith('/en/scout/subscribe');
+    expect(mockReplace).toHaveBeenCalledWith(
+      '/en/scout/subscribe?reason=subscription-expired',
+    );
   });
 
   it('redirects when the subscription exists but is expired', () => {
@@ -87,7 +89,9 @@ describe('useRequireSubscription', () => {
 
     renderHook(() => useRequireSubscription());
 
-    expect(mockReplace).toHaveBeenCalledWith('/en/scout/subscribe');
+    expect(mockReplace).toHaveBeenCalledWith(
+      '/en/scout/subscribe?reason=subscription-expired',
+    );
   });
 
   it('does not redirect when a valid, non-expired subscription exists', () => {

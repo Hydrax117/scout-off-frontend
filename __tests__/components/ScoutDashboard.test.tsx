@@ -29,6 +29,15 @@ jest.mock('@/hooks/useRequireWallet', () => ({
   }),
 }));
 
+// ReferralPanel (rendered inside ScoutDashboardContent) reads the connected
+// wallet directly via useWallet(), which needs a WalletProvider ancestor —
+// mock it the same way useRequireWallet is mocked above.
+jest.mock('@/hooks/useWallet', () => ({
+  useWallet: () => ({
+    publicKey: 'GABC1234567890ABCDE1234567890ABCDE1234567890ABCDE123456',
+  }),
+}));
+
 jest.mock('@/hooks/useRequireSubscription', () => ({
   useRequireSubscription: jest
     .fn()

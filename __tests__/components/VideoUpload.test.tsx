@@ -8,10 +8,24 @@ import VideoUpload, {
   ACCEPTED_TYPES_LABEL,
 } from '@/components/ui/VideoUpload';
 
-// ── uploadToIPFS mock ─────────────────────────────────────────────────────────
+// ── useChunkedUpload mock ─────────────────────────────────────────────────────
 
-jest.mock('@/lib/ipfs', () => ({
-  uploadToIPFS: jest.fn().mockResolvedValue('QmMockCID123'),
+const mockUpload = jest.fn();
+const mockResume = jest.fn();
+let mockHookState = {
+  progress: 0,
+  phase: 'uploading' as 'uploading' | 'processing',
+  uploading: false,
+  error: null as string | null,
+  canResume: false,
+};
+
+jest.mock('@/hooks/useChunkedUpload', () => ({
+  useChunkedUpload: () => ({
+    ...mockHookState,
+    upload: mockUpload,
+    resume: mockResume,
+  }),
 }));
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -119,6 +133,15 @@ describe('VideoUpload component', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockHookState = {
+      progress: 0,
+      phase: 'uploading',
+      uploading: false,
+      error: null,
+      canResume: false,
+    };
+    mockUpload.mockResolvedValue({ cid: 'QmMockCID123', error: null });
+    mockResume.mockResolvedValue({ cid: null, error: null });
   });
 
   function renderUpload() {
@@ -213,8 +236,7 @@ describe('VideoUpload component', () => {
   });
 
   it('calls onValidationError(null) and then onUpload for a valid file', async () => {
-    const { uploadToIPFS } = await import('@/lib/ipfs');
-    (uploadToIPFS as jest.Mock).mockResolvedValue('QmValidCID');
+    mockUpload.mockResolvedValue({ cid: 'QmValidCID', error: null });
 
     renderUpload();
     const input = screen.getByLabelText(/highlight reel/i);
@@ -224,5 +246,78 @@ describe('VideoUpload component', () => {
 
     await waitFor(() => expect(onUpload).toHaveBeenCalledWith('QmValidCID'));
     expect(onValidationError).toHaveBeenCalledWith(null);
+  });
+
+  it('shows a progress bar with the current percentage while uploading', () => {
+    mockHookState = { progress: 42, phase: 'uploading', uploading: true, error: null, canResume: false };
+
+    renderUpload();
+
+    const bar = screen.getByRole('progressbar', { name: /upload progress/i });
+    expect(bar).toHaveAttribute('aria-valuenow', '42');
+    expect(screen.getByText(/42%/)).toBeInTheDocument();
+  });
+
+  it('disables the file input while uploading', () => {
+    mockHookState = { progress: 10, phase: 'uploading', uploading: true, error: null, canResume: false };
+
+    renderUpload();
+
+    expect(screen.getByLabelText(/highlight reel/i)).toBeDisabled();
+  });
+
+  it('shows a distinct "Processing" state once chunk upload completes and pinning begins', () => {
+    mockHookState = { progress: 100, phase: 'processing', uploading: true, error: null, canResume: false };
+
+    renderUpload();
+
+    expect(screen.getByText(/processing/i)).toBeInTheDocument();
+    expect(screen.queryByText(/uploading\.\.\./i)).not.toBeInTheDocument();
+    const bar = screen.getByRole('progressbar', { name: /processing upload/i });
+    expect(bar).not.toHaveAttribute('aria-valuenow');
+  });
+
+  it('surfaces the chunked-upload hook error and calls onValidationError with it', async () => {
+    mockUpload.mockResolvedValue({ cid: null, error: 'Upload interrupted. You can resume from where it left off.' });
+
+    renderUpload();
+    const input = screen.getByLabelText(/highlight reel/i);
+    const goodFile = makeFile('clip.mp4', 'video/mp4', 1024);
+
+    fireEvent.change(input, { target: { files: [goodFile] } });
+
+    await waitFor(() =>
+      expect(onValidationError).toHaveBeenCalledWith(
+        'Upload interrupted. You can resume from where it left off.',
+      ),
+    );
+    expect(onUpload).not.toHaveBeenCalled();
+  });
+
+  it('shows a Resume upload button when the hook reports a resumable failure, and calls resume() on click', async () => {
+    mockUpload.mockResolvedValue({ cid: null, error: 'Upload interrupted.' });
+    mockHookState = { progress: 0, phase: 'uploading', uploading: false, error: null, canResume: true };
+    mockResume.mockResolvedValue({ cid: 'QmResumedCID', error: null });
+
+    renderUpload();
+    const input = screen.getByLabelText(/highlight reel/i);
+    fireEvent.change(input, { target: { files: [makeFile('clip.mp4', 'video/mp4', 1024)] } });
+
+    const resumeButton = await screen.findByRole('button', { name: /resume upload/i });
+    fireEvent.click(resumeButton);
+
+    await waitFor(() => expect(mockResume).toHaveBeenCalled());
+    await waitFor(() => expect(onUpload).toHaveBeenCalledWith('QmResumedCID'));
+  });
+
+  it('does not show a Resume upload button when there is nothing to resume', async () => {
+    mockUpload.mockResolvedValue({ cid: null, error: 'Upload failed. Please try again.' });
+
+    renderUpload();
+    const input = screen.getByLabelText(/highlight reel/i);
+    fireEvent.change(input, { target: { files: [makeFile('clip.mp4', 'video/mp4', 1024)] } });
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /resume upload/i })).not.toBeInTheDocument();
   });
 });

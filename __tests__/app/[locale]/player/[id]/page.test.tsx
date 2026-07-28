@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 // ── Hook mocks ────────────────────────────────────────────────────────────────
@@ -17,7 +17,7 @@ jest.mock('@/hooks/usePlayer', () => ({
 }));
 
 jest.mock('@/hooks/usePayToContact', () => ({
-  usePayToContact: jest.fn(() => ({ unlock: jest.fn(), loading: false })),
+  usePayToContact: jest.fn(() => ({ unlock: jest.fn(), loading: false, contactDetails: undefined, error: null, clear: jest.fn() })),
 }));
 
 jest.mock('@/hooks/useSubscription', () => ({
@@ -68,7 +68,35 @@ jest.mock('@/components/ui/Button', () => ({
 
 jest.mock('@/components/ui/ConfirmDialog', () => ({
   __esModule: true,
-  default: () => <div data-testid="confirm-dialog" />,
+  default: ({
+    isOpen,
+    title,
+    message,
+    onConfirm,
+    onCancel,
+    confirmLabel,
+    loading,
+  }: {
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    onCancel: () => void;
+    confirmLabel?: string;
+    loading?: boolean;
+  }) =>
+    isOpen ? (
+      <div data-testid="confirm-dialog">
+        <p>{title}</p>
+        <p>{message}</p>
+        <button onClick={onConfirm} disabled={loading}>
+          {confirmLabel ?? 'Confirm'}
+        </button>
+        <button onClick={onCancel} disabled={loading}>
+          Cancel
+        </button>
+      </div>
+    ) : null,
 }));
 
 jest.mock('@/components/ui/QRModal', () => ({
@@ -76,16 +104,22 @@ jest.mock('@/components/ui/QRModal', () => ({
   default: () => <div data-testid="qr-modal" />,
 }));
 
+const mockGetContactFee = jest.fn();
 jest.mock('@/lib/contract', () => ({
   PLATFORM_CONTACT_FEE_XLM: 1,
+  getContactFee: (...args: unknown[]) => mockGetContactFee(...args),
 }));
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
 import PlayerProfile from '@/app/[locale]/player/[id]/page';
 import { usePlayer } from '@/hooks/usePlayer';
+import { useWallet } from '@/hooks/useWallet';
+import { usePayToContact } from '@/hooks/usePayToContact';
 
 const mockUsePlayer = usePlayer as jest.Mock;
+const mockUseWallet = useWallet as jest.Mock;
+const mockUsePayToContact = usePayToContact as jest.Mock;
 
 const basePlayer = {
   id: 'player-1',
@@ -106,6 +140,9 @@ const basePlayer = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockUseWallet.mockReturnValue({ publicKey: null });
+  mockUsePayToContact.mockReturnValue({ unlock: jest.fn(), loading: false, contactDetails: undefined, error: null, clear: jest.fn() });
+  mockGetContactFee.mockResolvedValue(1);
 });
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -216,6 +253,92 @@ describe('PlayerProfile page', () => {
     });
     render(<PlayerProfile />);
     expect(screen.queryByText(/Pay to Contact/)).not.toBeInTheDocument();
+  });
+});
+
+// ── Live contact-fee staleness check ────────────────────────────────────────
+
+describe('PlayerProfile pay-to-contact fee staleness check', () => {
+  beforeEach(() => {
+    mockUseWallet.mockReturnValue({ publicKey: 'GSCOUTWALLET' });
+    mockUsePlayer.mockReturnValue({
+      player: basePlayer,
+      loading: false,
+      refetch: jest.fn(),
+    });
+  });
+
+  it('labels the pre-confirmation button fee as an estimate', () => {
+    render(<PlayerProfile />);
+    expect(screen.getByText('Pay to Contact (~1 XLM)')).toBeInTheDocument();
+  });
+
+  it('checks the live fee before showing the final confirm message, and shows the confirmed fee when it matches', async () => {
+    mockGetContactFee.mockResolvedValue(1);
+    render(<PlayerProfile />);
+
+    fireEvent.click(screen.getByText('Pay to Contact (~1 XLM)'));
+
+    await waitFor(() => {
+      expect(mockGetContactFee).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Fee: 1 XLM will be deducted from your wallet\./),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('warns clearly when the live fee differs from the cached/env value', async () => {
+    mockGetContactFee.mockResolvedValue(2);
+    render(<PlayerProfile />);
+
+    fireEvent.click(screen.getByText('Pay to Contact (~1 XLM)'));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          /The live contact fee is now 2 XLM — different from the 1 XLM shown initially\. Confirming will charge 2 XLM\./,
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('disables the confirm button while the live fee check is in flight', async () => {
+    let resolveFee: (fee: number) => void = () => {};
+    mockGetContactFee.mockReturnValue(
+      new Promise((resolve) => {
+        resolveFee = resolve;
+      }),
+    );
+    render(<PlayerProfile />);
+
+    fireEvent.click(screen.getByText('Pay to Contact (~1 XLM)'));
+
+    expect(screen.getByText(/Confirming the current fee/)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Confirm' }),
+    ).toBeDisabled();
+
+    resolveFee(1);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Confirm' })).not.toBeDisabled(),
+    );
+  });
+
+  it('falls back to a clearly-labeled estimate when the live fee check fails', async () => {
+    mockGetContactFee.mockRejectedValue(new Error('rpc down'));
+    render(<PlayerProfile />);
+
+    fireEvent.click(screen.getByText('Pay to Contact (~1 XLM)'));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Fee: ~1 XLM \(estimate — could not confirm the live rate\)/),
+      ).toBeInTheDocument();
+    });
+    // The user is not locked out by a failed check — Confirm remains available.
+    expect(screen.getByRole('button', { name: 'Confirm' })).not.toBeDisabled();
   });
 });
 

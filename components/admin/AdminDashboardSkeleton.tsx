@@ -10,6 +10,7 @@
  *   3. Add Validator    – input-shaped bar + add button bar
  *   4. Validators list  – 3 skeleton rows
  *   5. Activity Feed    – 5 skeleton rows
+ *   6. Flagged Activity – 2 skeleton rows (FraudFlagsPanel)
  */
 export default function AdminDashboardSkeleton() {
   return (
@@ -116,6 +117,22 @@ export default function AdminDashboardSkeleton() {
               <div className="h-4 w-20 rounded bg-gray-700 animate-pulse" />
               <div className="h-4 w-24 rounded bg-gray-700 animate-pulse ml-auto shrink-0" />
             </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* ── Flagged Activity ── */}
+      <section className="bg-brand-card border border-gray-800 rounded-xl p-6 flex flex-col gap-4">
+        <div
+          aria-hidden="true"
+          className="h-6 w-40 rounded bg-gray-700 animate-pulse"
+        />
+        <ul aria-hidden="true" className="flex flex-col gap-3">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <li
+              key={i}
+              className="h-20 rounded-lg bg-gray-700 animate-pulse"
+            />
           ))}
         </ul>
       </section>

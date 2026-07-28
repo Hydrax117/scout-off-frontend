@@ -14,7 +14,12 @@ const NETWORK =
     ? Networks.PUBLIC
     : Networks.TESTNET;
 
-export const rpc = new SorobanRpc.Server(RPC_URL, { allowHttp: false });
+// Real testnet/mainnet RPC endpoints are always https, so this only ever
+// allows http for a local/mocked RPC URL (e.g. Docker Compose's
+// http://mock-rpc:8000) — production and testnet configs are unaffected.
+export const rpc = new SorobanRpc.Server(RPC_URL, {
+  allowHttp: RPC_URL.startsWith('http://'),
+});
 
 export function isValidStellarAddress(key: string): boolean {
   return StrKey.isValidEd25519PublicKey(key);

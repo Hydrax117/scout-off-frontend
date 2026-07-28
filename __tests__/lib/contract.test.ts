@@ -46,9 +46,17 @@ import {
   buildApproveMilestone,
   buildPayToContact,
   filterPlayers,
+  getContractVersion,
+  checkContractCompatibility,
+  assertContractCompatible,
+  clearContractCompatibilityCache,
+  EXPECTED_CONTRACT_VERSION,
 } from '../../lib/contract';
-import { ValidationError } from '../../lib/errors';
+import { ValidationError, ContractIncompatibleError } from '../../lib/errors';
 import { rpc } from '../../lib/stellar';
+import { scValToNative } from '@stellar/stellar-sdk';
+
+const mockScValToNative = scValToNative as jest.Mock;
 
 const VALID_ADDRESS =
   'GBR6LYRKEFYV3MG322FYLED6PLOTEV77KCX6AZSR7V4RV7EJLIWOZJWQ';
@@ -65,9 +73,10 @@ describe('contract configuration', () => {
 
     const { getPlayer } = require('../../lib/contract');
 
-    await expect(getPlayer('player_1')).rejects.toThrow(
-      /NEXT_PUBLIC_CONTRACT_ID/,
-    );
+    const error = await getPlayer('player_1').catch((e: Error) => e);
+    expect(error.message).toMatch(/NEXT_PUBLIC_CONTRACT_ID/);
+    expect(error.message).toMatch(/\.env\.local/);
+    expect(error.message).toMatch(/validate-env\.js/);
 
     process.env.NEXT_PUBLIC_CONTRACT_ID = previousContractId;
   });
@@ -315,5 +324,130 @@ describe('buildTx — human-readable errors', () => {
 
     expect(err.message).toMatch(/55/);
     expect(err.message).not.toContain('[object');
+  });
+});
+
+// ── Contract-version compatibility ────────────────────────────────────────────
+
+describe('getContractVersion', () => {
+  beforeEach(() => clearContractCompatibilityCache());
+  afterEach(() => clearContractCompatibilityCache());
+
+  test('returns the deployed version when the contract reports a number', async () => {
+    mockScValToNative.mockReturnValueOnce(EXPECTED_CONTRACT_VERSION);
+    await expect(getContractVersion()).resolves.toBe(EXPECTED_CONTRACT_VERSION);
+  });
+
+  test('returns null when the contract returns a non-number value', async () => {
+    mockScValToNative.mockReturnValueOnce({});
+    await expect(getContractVersion()).resolves.toBeNull();
+  });
+
+  test('returns null (not a throw) when the RPC call fails', async () => {
+    mockRpc.simulateTransaction.mockRejectedValueOnce(new Error('timeout'));
+    await expect(getContractVersion()).resolves.toBeNull();
+  });
+});
+
+describe('checkContractCompatibility', () => {
+  beforeEach(() => clearContractCompatibilityCache());
+  afterEach(() => clearContractCompatibilityCache());
+
+  test('reports "compatible" when versions match', async () => {
+    mockScValToNative.mockReturnValueOnce(EXPECTED_CONTRACT_VERSION);
+    const result = await checkContractCompatibility();
+    expect(result.status).toBe('compatible');
+    expect(result.deployedVersion).toBe(EXPECTED_CONTRACT_VERSION);
+    expect(result.message).toBeNull();
+  });
+
+  test('reports "incompatible" with a clear message when versions differ', async () => {
+    mockScValToNative.mockReturnValueOnce(EXPECTED_CONTRACT_VERSION + 1);
+    const result = await checkContractCompatibility();
+    expect(result.status).toBe('incompatible');
+    expect(result.deployedVersion).toBe(EXPECTED_CONTRACT_VERSION + 1);
+    expect(result.message).toMatch(/update the app|out of sync/i);
+  });
+
+  test('reports "unknown" (not "incompatible") when the contract has no version query', async () => {
+    mockScValToNative.mockReturnValueOnce({});
+    const result = await checkContractCompatibility();
+    expect(result.status).toBe('unknown');
+    expect(result.deployedVersion).toBeNull();
+    expect(result.message).toBeNull();
+  });
+
+  test('caches the result — a second call does not re-hit the RPC', async () => {
+    mockScValToNative.mockReturnValueOnce(EXPECTED_CONTRACT_VERSION);
+    await checkContractCompatibility();
+    const callsAfterFirst = mockRpc.simulateTransaction.mock.calls.length;
+
+    await checkContractCompatibility();
+    expect(mockRpc.simulateTransaction.mock.calls.length).toBe(callsAfterFirst);
+  });
+
+  test('force:true bypasses the cache and re-checks', async () => {
+    mockScValToNative.mockReturnValueOnce(EXPECTED_CONTRACT_VERSION);
+    await checkContractCompatibility();
+    const callsAfterFirst = mockRpc.simulateTransaction.mock.calls.length;
+
+    mockScValToNative.mockReturnValueOnce(EXPECTED_CONTRACT_VERSION);
+    await checkContractCompatibility(true);
+    expect(mockRpc.simulateTransaction.mock.calls.length).toBeGreaterThan(
+      callsAfterFirst,
+    );
+  });
+});
+
+describe('assertContractCompatible', () => {
+  beforeEach(() => clearContractCompatibilityCache());
+  afterEach(() => clearContractCompatibilityCache());
+
+  test('resolves without throwing when compatible', async () => {
+    mockScValToNative.mockReturnValueOnce(EXPECTED_CONTRACT_VERSION);
+    await expect(assertContractCompatible()).resolves.toBeUndefined();
+  });
+
+  test('resolves without throwing when unknown (degrades gracefully)', async () => {
+    mockScValToNative.mockReturnValueOnce({});
+    await expect(assertContractCompatible()).resolves.toBeUndefined();
+  });
+
+  test('throws ContractIncompatibleError with the compatibility message when incompatible', async () => {
+    mockScValToNative.mockReturnValueOnce(EXPECTED_CONTRACT_VERSION + 1);
+    await expect(assertContractCompatible()).rejects.toThrow(
+      ContractIncompatibleError,
+    );
+  });
+});
+
+describe('buildTx short-circuits on known incompatibility', () => {
+  beforeEach(() => clearContractCompatibilityCache());
+  afterEach(() => clearContractCompatibilityCache());
+
+  test('buildRegisterPlayer throws before touching the RPC account lookup', async () => {
+    mockScValToNative.mockReturnValueOnce(EXPECTED_CONTRACT_VERSION + 1);
+
+    await expect(
+      buildRegisterPlayer(
+        VALID_ADDRESS,
+        { name: 'A', age: 20, position: 'ST', region: 'AF', nationality: 'NG' },
+        'QmHash',
+      ),
+    ).rejects.toThrow(ContractIncompatibleError);
+
+    expect(mockRpc.getAccount).not.toHaveBeenCalled();
+  });
+
+  test('buildRegisterPlayer still proceeds when compatibility is unknown', async () => {
+    mockScValToNative.mockReturnValueOnce({});
+
+    await buildRegisterPlayer(
+      VALID_ADDRESS,
+      { name: 'A', age: 20, position: 'ST', region: 'AF', nationality: 'NG' },
+      'QmHash',
+    );
+
+    expect(mockRpc.getAccount).toHaveBeenCalledWith(VALID_ADDRESS);
   });
 });

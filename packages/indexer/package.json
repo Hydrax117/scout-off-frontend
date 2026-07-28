@@ -1,0 +1,15 @@
+{
+  "name": "@scoutoff/indexer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Off-chain Soroban event indexer for the ScoutOff platform. See README.md.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "@types/node": "^20.14.2"
+  }
+}

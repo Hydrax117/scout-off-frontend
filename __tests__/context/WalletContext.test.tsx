@@ -1,6 +1,11 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
+import useSWR from 'swr';
 import { WalletProvider, useWalletContext } from '@/context/WalletContext';
 import { walletAdapters } from '@/lib/walletAdapters';
+import {
+  cacheContactDetails,
+  contactDetailsKey,
+} from '@/lib/contactDetailsCache';
 import type { ReactNode } from 'react';
 
 jest.mock('@/lib/walletAdapters', () => ({
@@ -14,6 +19,10 @@ jest.mock('@/lib/walletAdapters', () => ({
       signTransaction: jest.fn(),
     },
     lobstr: {
+      getPublicKey: jest.fn(),
+      signTransaction: jest.fn(),
+    },
+    ledger: {
       getPublicKey: jest.fn(),
       signTransaction: jest.fn(),
     },
@@ -62,6 +71,9 @@ describe('WalletContext', () => {
   const lobstr = walletAdapters.lobstr as jest.Mocked<
     typeof walletAdapters.lobstr
   >;
+  const ledger = walletAdapters.ledger as jest.Mocked<
+    typeof walletAdapters.ledger
+  >;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -72,6 +84,8 @@ describe('WalletContext', () => {
     albedo.signTransaction.mockResolvedValue(SIGNED_XDR);
     lobstr.getPublicKey.mockResolvedValue(PUBLIC_KEY);
     lobstr.signTransaction.mockResolvedValue(SIGNED_XDR);
+    ledger.getPublicKey.mockResolvedValue(PUBLIC_KEY);
+    ledger.signTransaction.mockResolvedValue(SIGNED_XDR);
 
     const { rpc } = jest.requireMock('@/lib/stellar');
     rpc.getAccount.mockResolvedValue({
@@ -112,6 +126,16 @@ describe('WalletContext', () => {
         await result.current.connectWithProvider('lobstr');
       });
       expect(lobstr.getPublicKey).toHaveBeenCalled();
+      expect(result.current.isAuthenticated).toBe(true);
+    });
+
+    it('calls ledger adapter for ledger provider', async () => {
+      setupSep10();
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+      await act(async () => {
+        await result.current.connectWithProvider('ledger');
+      });
+      expect(ledger.getPublicKey).toHaveBeenCalled();
       expect(result.current.isAuthenticated).toBe(true);
     });
 
@@ -201,6 +225,69 @@ describe('WalletContext', () => {
         expect.any(String),
       );
       expect(rpc.sendTransaction).toHaveBeenCalled();
+    });
+  });
+
+  describe('signOnly', () => {
+    it('throws when no wallet is connected', async () => {
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+      await expect(
+        act(async () => {
+          await result.current.signOnly('some-xdr');
+        }),
+      ).rejects.toThrow('Wallet not connected');
+    });
+
+    it('signs via the adapter without submitting to RPC', async () => {
+      setupSep10();
+      const { rpc } = jest.requireMock('@/lib/stellar');
+      freighter.signTransaction.mockResolvedValue('signed-tx-xdr');
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+      await act(async () => {
+        await result.current.connectWithProvider('freighter');
+      });
+
+      let signed: string;
+      await act(async () => {
+        signed = await result.current.signOnly('tx-xdr');
+      });
+
+      expect(freighter.signTransaction).toHaveBeenCalledWith(
+        'tx-xdr',
+        expect.any(String),
+      );
+      expect(signed!).toBe('signed-tx-xdr');
+      expect(rpc.sendTransaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('disconnect — contact-details cache purge', () => {
+    it('purges cached contact details immediately on logout', async () => {
+      setupSep10();
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+      await act(async () => {
+        await result.current.connectWithProvider('freighter');
+      });
+
+      const key = contactDetailsKey('player-1', PUBLIC_KEY);
+      await act(async () => {
+        await cacheContactDetails(key, { email: 'p@example.com' });
+      });
+
+      const cacheProbe = renderHook(() =>
+        useSWR(key, null, { revalidateOnFocus: false }),
+      );
+      expect(cacheProbe.result.current.data).toEqual({
+        email: 'p@example.com',
+      });
+
+      act(() => {
+        result.current.disconnect();
+      });
+
+      await waitFor(() =>
+        expect(cacheProbe.result.current.data).toBeUndefined(),
+      );
     });
   });
 });

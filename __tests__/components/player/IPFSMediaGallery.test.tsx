@@ -1,6 +1,16 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import IPFSMediaGallery from '@/components/player/IPFSMediaGallery';
+import { useVideoPosterFrame } from '@/hooks/useVideoPosterFrame';
+
+// ── useVideoPosterFrame mock ─────────────────────────────────────────────────
+// The real hook relies on canvas frame capture, which jsdom doesn't support.
+// It's covered by its own dedicated unit tests; here we only need to verify
+// IPFSMediaGallery wires the hook's return value into the <video poster>.
+jest.mock('@/hooks/useVideoPosterFrame', () => ({
+  useVideoPosterFrame: jest.fn(() => null),
+}));
+const mockUseVideoPosterFrame = useVideoPosterFrame as jest.Mock;
 
 // ── next/image mock ───────────────────────────────────────────────────────────
 // Renders a plain <img> so we can assert on src/alt without Next's image
@@ -28,6 +38,7 @@ let observerCallbacks: IntersectionObserverCallback[] = [];
 
 beforeEach(() => {
   observerCallbacks = [];
+  mockUseVideoPosterFrame.mockReturnValue(null);
   global.IntersectionObserver = class {
     private cb: IntersectionObserverCallback;
     constructor(cb: IntersectionObserverCallback) {
@@ -62,13 +73,10 @@ describe('IPFSMediaGallery', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('renders an image tile for a non-video CID', () => {
+  it('renders an image tile for a non-video CID, routed through the media proxy', () => {
     render(<IPFSMediaGallery cids={['QmImageCid123']} />);
     const img = screen.getByAltText('IPFS media QmImageCid123');
-    expect(img).toHaveAttribute(
-      'src',
-      'https://gateway.pinata.cloud/ipfs/QmImageCid123',
-    );
+    expect(img).toHaveAttribute('src', '/api/media/QmImageCid123');
   });
 
   it('renders a grid of tiles, one per CID', () => {
@@ -81,23 +89,48 @@ describe('IPFSMediaGallery', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders a video tile for a .mp4 CID with a poster derived from the CID', () => {
+  it('renders a video tile for a .mp4 CID with no poster attribute until one is captured', () => {
     const { container } = render(<IPFSMediaGallery cids={['QmClip.mp4']} />);
     const video = container.querySelector('video');
     expect(video).toBeInTheDocument();
-    expect(video).toHaveAttribute(
-      'poster',
-      'https://gateway.pinata.cloud/ipfs/QmClip.jpg',
-    );
+    // No broken-image guess (e.g. swapping the extension for a file that
+    // doesn't exist on IPFS) — absent until useVideoPosterFrame resolves one.
+    expect(video).not.toHaveAttribute('poster');
   });
 
   it('renders a video tile for a .webm CID', () => {
     const { container } = render(<IPFSMediaGallery cids={['QmClip.webm']} />);
     const video = container.querySelector('video');
     expect(video).toBeInTheDocument();
-    expect(video).toHaveAttribute(
-      'poster',
-      'https://gateway.pinata.cloud/ipfs/QmClip.jpg',
+    expect(video).not.toHaveAttribute('poster');
+  });
+
+  it('sets the <video poster> to the frame captured by useVideoPosterFrame', () => {
+    mockUseVideoPosterFrame.mockReturnValue('data:image/jpeg;base64,AAAA');
+    const { container } = render(<IPFSMediaGallery cids={['QmClip.mp4']} />);
+    const video = container.querySelector('video');
+    expect(video).toHaveAttribute('poster', 'data:image/jpeg;base64,AAAA');
+  });
+
+  it('only enables poster capture for video CIDs, and only once the tile is visible', () => {
+    render(<IPFSMediaGallery cids={['QmImage.jpg', 'QmClip.mp4']} />);
+
+    // Image tile: never enabled, regardless of visibility.
+    expect(mockUseVideoPosterFrame).toHaveBeenCalledWith(
+      expect.stringContaining('QmImage.jpg'),
+      { enabled: false },
+    );
+    // Video tile: not enabled before the intersection observer fires.
+    expect(mockUseVideoPosterFrame).toHaveBeenCalledWith(
+      expect.stringContaining('QmClip.mp4'),
+      { enabled: false },
+    );
+
+    fireIntersection(1, true);
+
+    expect(mockUseVideoPosterFrame).toHaveBeenLastCalledWith(
+      expect.stringContaining('QmClip.mp4'),
+      { enabled: true },
     );
   });
 
@@ -138,10 +171,7 @@ describe('IPFSMediaGallery', () => {
 
     const source = container.querySelector('source');
     expect(source).toBeInTheDocument();
-    expect(source).toHaveAttribute(
-      'src',
-      'https://gateway.pinata.cloud/ipfs/QmClip.mp4',
-    );
+    expect(source).toHaveAttribute('src', '/api/media/QmClip.mp4');
     expect(source).toHaveAttribute('type', 'video/mp4');
   });
 

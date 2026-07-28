@@ -2,10 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-type EventType =
+export type EventType =
   | 'player_registered'
   | 'milestone_approved'
-  | 'trial_offer_logged';
+  | 'milestone_revoked'
+  | 'scout_subscribed'
+  | 'player_contacted'
+  | 'trial_offer_logged'
+  | 'fees_withdrawn';
 
 export interface FeedEvent {
   id: string;
@@ -18,6 +22,13 @@ const HORIZON_URL =
   process.env.NEXT_PUBLIC_HORIZON_URL ?? 'https://horizon-testnet.stellar.org';
 const CONTRACT_ID = process.env.NEXT_PUBLIC_CONTRACT_ID ?? '';
 const POLL_INTERVAL = 30_000;
+
+// Reconnect tuning for the SSE path: exponential backoff between attempts,
+// capped at MAX_RECONNECT_DELAY_MS, giving up on SSE (and falling back to
+// polling) after MAX_RECONNECT_ATTEMPTS consecutive failures.
+export const MAX_RECONNECT_ATTEMPTS = 5;
+export const BASE_RECONNECT_DELAY_MS = 1_000;
+export const MAX_RECONNECT_DELAY_MS = 30_000;
 
 /** Map a raw Horizon operation record to the FeedEvent schema. */
 function toFeedEvent(op: Record<string, unknown>): FeedEvent | null {
@@ -94,14 +105,48 @@ export function useContractEvents(contractId?: string) {
   useEffect(() => {
     if (!contract) return;
 
-    // ── SSE path ────────────────────────────────────────────────────────────
-    if (typeof EventSource !== 'undefined') {
+    let cancelled = false;
+    let es: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let reconnectAttempts = 0;
+
+    // ── Polling fallback ────────────────────────────────────────────────────
+    function startPolling() {
+      if (pollTimer) return;
+      setIsLive(false);
+
+      async function poll() {
+        try {
+          const { events: incoming, nextCursor } = await fetchOperations(
+            cursorRef.current === 'now' ? undefined : cursorRef.current,
+          );
+          if (!cancelled) {
+            cursorRef.current = nextCursor;
+            mergeEvents(incoming);
+          }
+        } catch {
+          // network errors — silent
+        }
+      }
+
+      poll();
+      pollTimer = setInterval(poll, POLL_INTERVAL);
+    }
+
+    // ── SSE path, with bounded exponential-backoff reconnect ────────────────
+    function connectSSE() {
+      if (cancelled) return;
+
       const url = `${HORIZON_URL}/accounts/${contract}/operations?cursor=now`;
-      const es = new EventSource(url);
+      es = new EventSource(url);
 
       es.addEventListener('message', (ev) => {
         try {
-          const op = JSON.parse(ev.data) as Record<string, unknown>;
+          const op = JSON.parse((ev as MessageEvent).data) as Record<
+            string,
+            unknown
+          >;
           const feedEv = toFeedEvent(op);
           if (feedEv) mergeEvents([feedEv]);
         } catch {
@@ -109,38 +154,47 @@ export function useContractEvents(contractId?: string) {
         }
       });
 
-      es.addEventListener('open', () => setIsLive(true));
-      es.addEventListener('error', () => setIsLive(false));
+      es.addEventListener('open', () => {
+        reconnectAttempts = 0;
+        setIsLive(true);
+      });
 
-      return () => {
-        es.close();
+      es.addEventListener('error', () => {
         setIsLive(false);
-      };
-    }
+        es?.close();
+        es = null;
 
-    // ── Polling fallback ────────────────────────────────────────────────────
-    let cancelled = false;
+        if (cancelled) return;
 
-    async function poll() {
-      try {
-        const { events: incoming, nextCursor } = await fetchOperations(
-          cursorRef.current === 'now' ? undefined : cursorRef.current,
-        );
-        if (!cancelled) {
-          cursorRef.current = nextCursor;
-          mergeEvents(incoming);
+        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+          // SSE has failed too many times in a row — stop retrying it and
+          // fall back to the polling path instead of staying silently dead.
+          startPolling();
+          return;
         }
-      } catch {
-        // network errors — silent
-      }
+
+        const delay = Math.min(
+          BASE_RECONNECT_DELAY_MS * 2 ** reconnectAttempts,
+          MAX_RECONNECT_DELAY_MS,
+        );
+        reconnectAttempts += 1;
+        reconnectTimer = setTimeout(connectSSE, delay);
+      });
     }
 
-    poll();
-    const timer = setInterval(poll, POLL_INTERVAL);
+    if (typeof EventSource !== 'undefined') {
+      connectSSE();
+    } else {
+      startPolling();
+    }
 
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      es?.close();
+      es = null;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (pollTimer) clearInterval(pollTimer);
+      setIsLive(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contract]);

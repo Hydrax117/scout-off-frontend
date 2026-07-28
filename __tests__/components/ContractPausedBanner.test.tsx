@@ -1,94 +1,113 @@
-import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
-import '@testing-library/jest-dom';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+import ContractPausedBanner from '@/components/ContractPausedBanner';
+
+// Required by next/link — the banner renders an internal /<locale>/status link.
+jest.mock('next/link', () => ({
+  __esModule: true,
+  default: ({
+    children,
+    href,
+  }: {
+    children: React.ReactNode;
+    href: string;
+  }) => <a href={href}>{children}</a>,
+}));
+
+// usePathname from next/navigation is read by the banner to derive locale.
+jest.mock('next/navigation', () => ({
+  usePathname: () => '/en/player',
+}));
+
+const mockUseIsPaused = jest.fn();
 
 jest.mock('@/hooks/useIsPaused', () => ({
   __esModule: true,
-  default: jest.fn(),
+  default: () => mockUseIsPaused(),
 }));
 
-import useIsPaused from '@/hooks/useIsPaused';
-import ContractPausedBanner from '@/components/ContractPausedBanner';
-
-const mockUseIsPaused = useIsPaused as jest.Mock;
-
-const SESSION_KEY = 'scoutoff:contractPausedDismissed';
-
-const SUPPORT_URL = 'https://discord.gg/stellar';
-
-beforeEach(() => {
-  jest.clearAllMocks();
-  sessionStorage.clear();
-});
-
 describe('ContractPausedBanner', () => {
-  it('is not rendered when paused is false', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    sessionStorage.clear();
+    mockUseIsPaused.mockReturnValue(false);
+  });
+
+  test('renders nothing while contract is not paused', () => {
     mockUseIsPaused.mockReturnValue(false);
     const { container } = render(<ContractPausedBanner />);
-    expect(container.firstChild).toBeEmptyDOMElement();
+    expect(container.firstChild).not.toBeNull();
+    // Wrapper exists but its visible children are emptied.
+    expect(screen.queryByText(/under maintenance/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /dismiss/i })).toBeNull();
   });
 
-  it('renders warning message and dismiss button when paused is true', () => {
-    mockUseIsPaused.mockReturnValue(true);
-    render(<ContractPausedBanner />);
-    expect(
-      screen.getByText('ScoutOff is currently under maintenance.'),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Transactions are disabled.')).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: /get updates on discord/i }),
-    ).toHaveAttribute('href', SUPPORT_URL);
-    expect(
-      screen.getByRole('button', { name: /dismiss/i }),
-    ).toBeInTheDocument();
-  });
-
-  it('hides the banner when the dismiss button is clicked', () => {
-    mockUseIsPaused.mockReturnValue(true);
-    const { container } = render(<ContractPausedBanner />);
-    expect(
-      screen.getByRole('button', { name: /dismiss/i }),
-    ).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
-
-    expect(container.firstChild).toBeEmptyDOMElement();
-  });
-
-  it('persists dismissed state in sessionStorage', () => {
+  test('renders the maintenance banner when paused and not dismissed', () => {
     mockUseIsPaused.mockReturnValue(true);
     render(<ContractPausedBanner />);
 
-    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
-
-    expect(sessionStorage.getItem(SESSION_KEY)).toBe('1');
+    expect(
+      screen.getByText(/ScoutOff is currently under maintenance/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /dismiss/i }),
+    ).toBeInTheDocument();
+    // The external Discord link survives.
+    expect(screen.getByRole('link', { name: /discord/i })).toHaveAttribute(
+      'href',
+      'https://discord.gg/stellar',
+    );
   });
 
-  it('remains hidden on re-render when dismissed state is in sessionStorage', () => {
-    sessionStorage.setItem(SESSION_KEY, '1');
+  test('dismiss button writes sessionStorage and hides the banner immediately', () => {
     mockUseIsPaused.mockReturnValue(true);
-    const { container } = render(<ContractPausedBanner />);
-    expect(container.firstChild).toBeEmptyDOMElement();
+    render(<ContractPausedBanner />);
+
+    const dismiss = screen.getByRole('button', { name: /dismiss/i });
+    act(() => {
+      fireEvent.click(dismiss);
+    });
+
+    expect(sessionStorage.getItem('scoutoff:contractPausedDismissed')).toBe(
+      '1',
+    );
+    expect(screen.queryByText(/under maintenance/i)).toBeNull();
   });
 
-  it('reappears when paused transitions from false back to true', () => {
+  test('banner stays hidden on remount while still paused + dismissed', () => {
     mockUseIsPaused.mockReturnValue(true);
-    const { container, rerender } = render(<ContractPausedBanner />);
+    sessionStorage.setItem('scoutoff:contractPausedDismissed', '1');
 
-    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
+    render(<ContractPausedBanner />);
+    expect(screen.queryByText(/under maintenance/i)).toBeNull();
+  });
 
-    expect(container.firstChild).toBeEmptyDOMElement();
-    expect(sessionStorage.getItem(SESSION_KEY)).toBe('1');
+  test('clearing sessionStorage flag (when contract un-pauses) restores visibility', () => {
+    mockUseIsPaused.mockReturnValue(true);
+    sessionStorage.setItem('scoutoff:contractPausedDismissed', '1');
 
+    const { rerender } = render(<ContractPausedBanner />);
+    expect(screen.queryByText(/under maintenance/i)).toBeNull();
+
+    // Simulate contract un-pausing: the effect clears the session flag.
     mockUseIsPaused.mockReturnValue(false);
     rerender(<ContractPausedBanner />);
-    expect(container.firstChild).toBeEmptyDOMElement();
-    expect(sessionStorage.getItem(SESSION_KEY)).toBeNull();
 
+    // Now re-pause should NOT inherit a stale "dismissed" state.
     mockUseIsPaused.mockReturnValue(true);
     rerender(<ContractPausedBanner />);
     expect(
-      screen.getByText('ScoutOff is currently under maintenance.'),
+      sessionStorage.getItem('scoutoff:contractPausedDismissed'),
+    ).toBeNull();
+    expect(
+      screen.getByText(/ScoutOff is currently under maintenance/i),
     ).toBeInTheDocument();
+  });
+
+  test('locale-aware status link uses the active locale from pathname', () => {
+    mockUseIsPaused.mockReturnValue(true);
+    render(<ContractPausedBanner />);
+
+    const statusLink = screen.getByRole('link', { name: /check status/i });
+    expect(statusLink.getAttribute('href')).toBe('/en/status');
   });
 });

@@ -12,6 +12,7 @@ import Spinner from '@/components/ui/Spinner';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
 import type { WalletProvider } from '@/context/WalletContext';
+import { Copy, Check } from 'lucide-react';
 
 async function copyToClipboard(text: string): Promise<boolean> {
   if (navigator.clipboard?.writeText) {
@@ -50,28 +51,11 @@ function CopyButton({ text }: { text: string }) {
       aria-label={copied ? 'Address copied' : 'Copy wallet address'}
       className="p-1 rounded hover:bg-brand-green/20 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green"
     >
-      <svg
-        aria-hidden="true"
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        {copied ? (
-          <>
-            <polyline points="20 6 9 17 4 12" />
-          </>
-        ) : (
-          <>
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-          </>
-        )}
-      </svg>
+      {copied ? (
+        <Check className="w-4 h-4" aria-hidden="true" />
+      ) : (
+        <Copy className="w-4 h-4" aria-hidden="true" />
+      )}
     </button>
   );
 }
@@ -162,7 +146,10 @@ export default function WalletButton({
   if (publicKey) {
     return (
       <>
-        <div className="flex items-center gap-1 text-sm bg-brand-card border border-brand-green text-brand-green px-3 py-2 rounded-lg">
+        <div
+          className="flex items-center gap-1 text-sm bg-brand-card border border-brand-green text-brand-green px-3 py-2 rounded-lg"
+          data-tour="wallet-button"
+        >
           <button
             onClick={() => setDisconnectOpen(true)}
             title={t('disconnect')}
@@ -218,6 +205,7 @@ export default function WalletButton({
         onClick={connect}
         disabled={isConnecting}
         aria-pressed={false}
+        data-tour="wallet-button"
         className="text-sm bg-brand-green text-black font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition disabled:opacity-50"
       >
         {isConnecting ? t('connecting') : t('connect')}
@@ -262,10 +250,17 @@ export default function WalletButton({
                     <div className="flex-1 min-w-0">
                       <p className="font-medium">{wp.label}</p>
                       <p className="text-xs text-gray-500">
-                        {wp.provider === 'albedo'
-                          ? t('installMobile')
-                          : t('install')}
+                        {wp.provider === 'ledger'
+                          ? t('ledgerConnect')
+                          : wp.provider === 'albedo'
+                            ? t('installMobile')
+                            : t('install')}
                       </p>
+                      {wp.provider === 'ledger' && (
+                        <p className="text-xs text-yellow-400 mt-1">
+                          {t('ledgerInstructions')}
+                        </p>
+                      )}
                     </div>
                     {isThisConnecting && (
                       <span className="flex items-center gap-2 text-sm text-brand-green shrink-0">

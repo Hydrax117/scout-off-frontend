@@ -1,6 +1,7 @@
 'use client';
 import { memo, useCallback, useEffect, useRef } from 'react';
 import useSWR from 'swr';
+import { Star } from 'lucide-react';
 import { getMilestoneHistory } from '@/lib/contract';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -8,8 +9,16 @@ import { useRouter } from 'next/navigation';
 import { mutate } from 'swr';
 import type { Player, ProgressLevel } from '@/types';
 import { getProgressLabel } from '@/lib/progress';
+import { getMediaProxyUrl } from '@/lib/mediaUrl';
 import ProgressBar from './ProgressBar';
 import Badge from '@/components/ui/Badge';
+import Tooltip from '@/components/ui/Tooltip';
+import { FOOTBALL_POSITIONS } from '@/lib/positions';
+
+/** Look up the full label for a position abbreviation, e.g. 'ST' → 'Striker'. */
+const POSITION_LABEL: Record<string, string> = Object.fromEntries(
+  FOOTBALL_POSITIONS.map(({ value, label }) => [value, label]),
+);
 
 const LEVEL_VARIANT: Record<
   ProgressLevel,
@@ -23,7 +32,14 @@ const LEVEL_VARIANT: Record<
 
 const PREFETCH_DELAY_MS = 200;
 
-function PlayerCard({ player }: { player: Player }) {
+interface PlayerCardProps {
+  player: Player;
+  /** When provided (with onToggleWatchlist), renders a watchlist toggle star. */
+  isWatched?: boolean;
+  onToggleWatchlist?: () => void;
+}
+
+function PlayerCard({ player, isWatched, onToggleWatchlist }: PlayerCardProps) {
   const { id, vitals, progressLevel, ipfsHash } = player;
   const {
     data: milestones,
@@ -105,8 +121,27 @@ function PlayerCard({ player }: { player: Player }) {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onTouchStart={triggerPrefetch}
-      className="bg-brand-card border border-gray-800 rounded-xl p-5 flex flex-col gap-4 hover:border-brand-green transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-green focus:ring-offset-2 focus:ring-offset-black"
+      className="relative bg-brand-card border border-gray-800 rounded-xl p-5 flex flex-col gap-4 hover:border-brand-green transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-green focus:ring-offset-2 focus:ring-offset-black"
     >
+      {onToggleWatchlist && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleWatchlist();
+          }}
+          aria-pressed={!!isWatched}
+          aria-label={isWatched ? 'Remove from watchlist' : 'Add to watchlist'}
+          className="absolute top-3 right-3 inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:text-yellow-400 focus:outline-none focus:ring-2 focus:ring-brand-green"
+        >
+          <Star
+            className={isWatched ? 'text-yellow-400' : ''}
+            fill={isWatched ? 'currentColor' : 'none'}
+            size={18}
+            aria-hidden="true"
+          />
+        </button>
+      )}
       {/* Avatar */}
       <div
         className="w-16 h-16 rounded-full bg-gray-700 overflow-hidden"
@@ -114,7 +149,7 @@ function PlayerCard({ player }: { player: Player }) {
       >
         {ipfsHash && (
           <Image
-            src={`${process.env.NEXT_PUBLIC_IPFS_GATEWAY}/${ipfsHash}`}
+            src={getMediaProxyUrl(ipfsHash)}
             alt={vitals.name}
             width={64}
             height={64}
@@ -126,7 +161,11 @@ function PlayerCard({ player }: { player: Player }) {
       <div>
         <h3 className="font-semibold text-white">{vitals.name}</h3>
         <p className="text-sm text-gray-400">
-          {vitals.position} · {vitals.region}
+          <Tooltip content={POSITION_LABEL[vitals.position] ?? vitals.position}>
+            <span>{vitals.position}</span>
+          </Tooltip>
+          {' · '}
+          {vitals.region}
         </p>
 
         <Badge
@@ -170,5 +209,7 @@ export default memo(
   PlayerCard,
   (prev, next) =>
     prev.player.id === next.player.id &&
-    prev.player.progressLevel === next.player.progressLevel,
+    prev.player.progressLevel === next.player.progressLevel &&
+    prev.isWatched === next.isWatched &&
+    prev.onToggleWatchlist === next.onToggleWatchlist,
 );

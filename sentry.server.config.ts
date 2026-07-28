@@ -7,7 +7,7 @@ if (SENTRY_DSN && env !== 'test' && env !== 'development') {
   Sentry.init({
     dsn: SENTRY_DSN,
     tracesSampleRate: env === 'production' ? 0.1 : 1.0,
-    beforeSend(event) {
+    beforeSend(event: Sentry.ErrorEvent) {
       return scrubWalletAddresses(event);
     },
   });

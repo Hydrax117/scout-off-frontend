@@ -7,6 +7,9 @@
  *
  * – Calls `checkIsValidator` to determine active/former status.
  * – Fetches the validator's approved milestone count from the indexer.
+ * – Looks up the academy (if any) this wallet is a registered signer for
+ *   (issue #663) and shows its name instead of a bare address when found —
+ *   see docs/academy-validator-model.md.
  * – Shows a tooltip with the count when available.
  * – Falls back gracefully to address-only display when the indexer is down or
  *   the contract call fails.
@@ -15,7 +18,7 @@
 import { useEffect, useState } from 'react';
 import Tooltip from '@/components/ui/Tooltip';
 import { checkIsValidator } from '@/lib/contract';
-import { fetchValidatorMilestoneCount } from '@/lib/api';
+import { fetchValidatorMilestoneCount, fetchAcademyForWallet } from '@/lib/api';
 
 interface ValidatorChipProps {
   /** Full Stellar public key of the validator. */
@@ -31,15 +34,17 @@ function truncateAddress(addr: string): string {
 export default function ValidatorChip({ address }: ValidatorChipProps) {
   const [status, setStatus] = useState<Status>('loading');
   const [milestoneCount, setMilestoneCount] = useState<number | null>(null);
+  const [academyName, setAcademyName] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
-      // Fire both requests concurrently; each can fail independently.
-      const [isActive, count] = await Promise.all([
+      // Fire all requests concurrently; each can fail independently.
+      const [isActive, count, academy] = await Promise.all([
         checkIsValidator(address).catch(() => null),
         fetchValidatorMilestoneCount(address),
+        fetchAcademyForWallet(address),
       ]);
 
       if (cancelled) return;
@@ -50,6 +55,7 @@ export default function ValidatorChip({ address }: ValidatorChipProps) {
         setStatus(isActive ? 'active' : 'former');
       }
       setMilestoneCount(count);
+      setAcademyName(academy?.name ?? null);
     }
 
     load();
@@ -81,13 +87,17 @@ export default function ValidatorChip({ address }: ValidatorChipProps) {
     unknown: 'bg-gray-500',
   };
 
-  // Build tooltip text only when data is ready.
-  const tooltipContent =
+  // Build tooltip text only when data is ready. The academy name (if any)
+  // is prepended so a milestone approved by a registered academy signer
+  // reads as "Academy X · Active validator · N milestones approved" rather
+  // than surfacing only the individual wallet.
+  const statusAndCount =
     status === 'loading'
       ? 'Fetching validator information…'
       : milestoneCount !== null
         ? `${statusLabel[status]} · ${milestoneCount} milestone${milestoneCount !== 1 ? 's' : ''} approved`
         : `${statusLabel[status]} · ${truncateAddress(address)}`;
+  const tooltipContent = academyName ? `${academyName} · ${statusAndCount}` : statusAndCount;
 
   const chip = (
     <span
@@ -106,8 +116,14 @@ export default function ValidatorChip({ address }: ValidatorChipProps) {
         ].join(' ')}
       />
 
-      {/* Label: address always visible; status text only when resolved */}
-      <span className="font-mono">{truncateAddress(address)}</span>
+      {/* Label: academy name when this wallet is a registered signer for
+          one, otherwise the raw address — always visible; status text only
+          shown once resolved. */}
+      {academyName ? (
+        <span className="font-medium">{academyName}</span>
+      ) : (
+        <span className="font-mono">{truncateAddress(address)}</span>
+      )}
 
       {status !== 'loading' && status !== 'unknown' && (
         <>

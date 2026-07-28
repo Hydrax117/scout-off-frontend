@@ -83,7 +83,7 @@ export function useValidator(walletAddress?: string | null) {
         await globalMutate(`player:${playerId}`);
         // Invalidate the milestones cache for this player.
         await globalMutate(`milestones:${playerId}`);
-        return result as Player;
+        return result as unknown as Player;
       } catch (e: any) {
         const msg = parseContractError(e);
         setError(msg);

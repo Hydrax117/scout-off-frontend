@@ -25,3 +25,23 @@ updates:
       - dependency-name: "@stellar/stellar-sdk"
         update-types: ["version-update:semver-major"]
         # Reason: Major Stellar SDK bumps usually include breaking Soroban RPC changes that require smart contract compatibility checks.
+
+  # packages/indexer has its own package.json (see its README) — Dependabot
+  # scopes updates per-directory, so it needs its own entry or its
+  # dependencies (currently just typescript/@types/node) go unmonitored.
+  - package-ecosystem: "npm"
+    directory: "/packages/indexer"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+
+    # Group all patch-level updates into a single PR to reduce noise
+    groups:
+      patch-updates:
+        patterns:
+          - "*"
+        update-types:
+          - "patch"

@@ -8,6 +8,10 @@ import { useScout } from '@/hooks/useScout';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useOnboardingTour } from '@/hooks/useOnboardingTour';
+import { useWatchlist } from '@/hooks/useWatchlist';
+import { useSavedSearches } from '@/hooks/useSavedSearches';
+import { useToast } from '@/components/ui/Toast';
 import { getPlayer } from '@/lib/contract';
 import PlayerCard from '@/components/PlayerCard';
 import PlayerCardSkeleton from '@/components/PlayerCardSkeleton';
@@ -15,7 +19,11 @@ import PlayerFilterForm from '@/components/scout/PlayerFilterForm';
 import EmptyState from '@/components/ui/EmptyState';
 import Spinner from '@/components/ui/Spinner';
 import ReferralPanel from '@/components/scout/ReferralPanel';
+import OnboardingTour from '@/components/ui/OnboardingTour';
+import { scoutTourSteps, SCOUT_TOUR_ID } from '@/lib/tourSteps';
 import type { Player, PlayerFilter } from '@/types';
+import PullToRefresh from '@/components/ui/PullToRefresh';
+import ScrollToTop from '@/components/ui/ScrollToTop';
 
 const PAGE_SIZE = 12;
 
@@ -30,9 +38,32 @@ export default function ScoutDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const { players, loading, search, searchByName } = useScout();
+  const tour = useOnboardingTour(SCOUT_TOUR_ID, scoutTourSteps, publicKey ?? undefined);
+
+  const {
+    players,
+    loading,
+    isRateLimited,
+    retryAfterSec,
+    search,
+    searchByName,
+    refetch,
+  } = useScout();
   const { subscription } = useSubscription();
+  const watchlist = useWatchlist(publicKey ?? null);
+  const savedSearches = useSavedSearches(publicKey ?? null);
+  const { show: showToast } = useToast();
   const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!isRateLimited) return;
+    showToast({
+      message: retryAfterSec
+        ? `Searching too fast — please wait ${retryAfterSec}s and try again.`
+        : 'Searching too fast — please slow down and try again.',
+      variant: 'warning',
+    });
+  }, [isRateLimited, retryAfterSec, showToast]);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 60_000);
@@ -137,6 +168,27 @@ export default function ScoutDashboardContent() {
     setResetKey((k) => k + 1);
   }, []);
 
+  const handleToggleWatchlist = useCallback(
+    (targetPlayer: Player) => {
+      const existing = watchlist.entries.find(
+        (e) => e.playerId === targetPlayer.id,
+      );
+      if (existing) {
+        watchlist.remove(existing);
+      } else {
+        watchlist.add(targetPlayer.id);
+      }
+    },
+    [watchlist],
+  );
+
+  const handleSaveSearch = useCallback(
+    (name: string, filter: PlayerFilter) => {
+      savedSearches.save(name, filter);
+    },
+    [savedSearches],
+  );
+
   if (!publicKey) return null;
   if (subscriptionLoading || !isProtected) return null;
 
@@ -144,7 +196,19 @@ export default function ScoutDashboardContent() {
   const showEmptyState = searchHasCompleted && !loading && players.length === 0;
 
   return (
-    <div className="flex flex-col gap-8">
+    <PullToRefresh onRefresh={refetch} isLoading={loading}>
+      <OnboardingTour
+        isVisible={tour.isVisible}
+        currentStep={tour.currentStep}
+        currentStepData={tour.currentStepData}
+        steps={tour.steps}
+        onNext={tour.nextStep}
+        onPrev={tour.prevStep}
+        onDismiss={tour.dismissTour}
+        onSkip={tour.skipTour}
+        onComplete={tour.completeTour}
+      />
+      <div className="flex flex-col gap-8">
       <h1 className="text-3xl font-bold text-white">Scout Dashboard</h1>
 
       {subscription &&
@@ -158,7 +222,10 @@ export default function ScoutDashboardContent() {
 
           if (daysRemaining <= 0) {
             return (
-              <div className="flex items-center gap-3 rounded-xl border border-red-500 bg-brand-card px-4 py-3 text-sm">
+              <div
+                data-tour="subscription-status"
+                className="flex items-center gap-3 rounded-xl border border-red-500 bg-brand-card px-4 py-3 text-sm"
+              >
                 <span className="text-red-400">Subscription expired</span>
                 <Link
                   href="/scout/subscribe"
@@ -172,7 +239,10 @@ export default function ScoutDashboardContent() {
 
           if (daysRemaining <= 7) {
             return (
-              <div className="flex items-center gap-3 rounded-xl border border-orange-400 bg-brand-card px-4 py-3 text-sm text-gray-200">
+              <div
+                data-tour="subscription-status"
+                className="flex items-center gap-3 rounded-xl border border-orange-400 bg-brand-card px-4 py-3 text-sm text-gray-200"
+              >
                 <span>
                   {tierLabel} — expires in {daysRemaining} day
                   {daysRemaining !== 1 ? 's' : ''}
@@ -188,7 +258,10 @@ export default function ScoutDashboardContent() {
           }
 
           return (
-            <div className="flex items-center gap-3 rounded-xl border border-brand-green bg-brand-card px-4 py-3 text-sm text-gray-200">
+            <div
+              data-tour="subscription-status"
+              className="flex items-center gap-3 rounded-xl border border-brand-green bg-brand-card px-4 py-3 text-sm text-gray-200"
+            >
               {tierLabel} — {daysRemaining} days remaining
             </div>
           );
@@ -196,7 +269,70 @@ export default function ScoutDashboardContent() {
 
       <ReferralPanel />
 
-      <div className="bg-brand-card border border-gray-800 rounded-xl p-5 flex flex-col gap-3">
+      {watchlist.entries.length > 0 && (
+        <div className="bg-brand-card border border-gray-800 rounded-xl p-5 flex flex-col gap-3">
+          <h2 className="text-sm font-medium text-gray-300">My Watchlist</h2>
+          <ul className="flex flex-col gap-2">
+            {watchlist.entries.map((entry) => (
+              <li
+                key={entry.id}
+                className="flex items-center justify-between gap-3 text-sm text-gray-200"
+              >
+                <Link
+                  href={`/player/${entry.playerId}`}
+                  className="text-brand-green hover:underline truncate"
+                >
+                  {entry.playerId}
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => watchlist.remove(entry)}
+                  className="px-3 py-1 rounded-lg border border-gray-700 text-xs text-gray-300 hover:border-red-500 hover:text-red-400 transition"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {savedSearches.searches.length > 0 && (
+        <div className="bg-brand-card border border-gray-800 rounded-xl p-5 flex flex-col gap-3">
+          <h2 className="text-sm font-medium text-gray-300">Saved Searches</h2>
+          <ul className="flex flex-col gap-2">
+            {savedSearches.searches.map((s) => (
+              <li
+                key={s.id}
+                className="flex items-center justify-between gap-3 text-sm text-gray-200"
+              >
+                <span className="truncate">{s.name}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleSearch(s.filter)}
+                    className="px-3 py-1 rounded-lg border border-brand-green text-xs text-brand-green hover:bg-brand-green hover:text-black transition"
+                  >
+                    Apply
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => savedSearches.remove(s)}
+                    className="px-3 py-1 rounded-lg border border-gray-700 text-xs text-gray-300 hover:border-red-500 hover:text-red-400 transition"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div
+        className="bg-brand-card border border-gray-800 rounded-xl p-5 flex flex-col gap-3"
+        data-tour="search-section"
+      >
         <label
           className="text-sm font-medium text-gray-300"
           htmlFor="wallet-search"
@@ -234,7 +370,11 @@ export default function ScoutDashboardContent() {
               searchResult !== 'invalid' &&
               searchResult !== 'not-found' && (
                 <div className="mt-2 max-w-sm">
-                  <PlayerCard player={searchResult} />
+                  <PlayerCard
+                    player={searchResult}
+                    isWatched={watchlist.isWatched(searchResult.id)}
+                    onToggleWatchlist={() => handleToggleWatchlist(searchResult)}
+                  />
                 </div>
               )}
           </div>
@@ -269,8 +409,13 @@ export default function ScoutDashboardContent() {
 
       <div
         className={`bg-brand-card border border-gray-800 rounded-xl p-5${nameQuery ? ' opacity-50 pointer-events-none' : ''}`}
+        data-tour="filter-section"
       >
-        <PlayerFilterForm onSearch={handleSearch} resetKey={resetKey} />
+        <PlayerFilterForm
+          onSearch={handleSearch}
+          resetKey={resetKey}
+          onSaveSearch={handleSaveSearch}
+        />
       </div>
 
       {showSkeletons ? (
@@ -311,7 +456,12 @@ export default function ScoutDashboardContent() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {visiblePlayers.map((p) => (
-              <PlayerCard key={p.id} player={p} />
+              <PlayerCard
+                key={p.id}
+                player={p}
+                isWatched={watchlist.isWatched(p.id)}
+                onToggleWatchlist={() => handleToggleWatchlist(p)}
+              />
             ))}
           </div>
 
@@ -372,5 +522,7 @@ export default function ScoutDashboardContent() {
         </>
       )}
     </div>
+    <ScrollToTop />
+    </PullToRefresh>
   );
 }

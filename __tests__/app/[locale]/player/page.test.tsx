@@ -126,8 +126,9 @@ function makePlayerHook(overrides: Partial<ReturnType<typeof usePlayer>> = {}) {
   const defaults: ReturnType<typeof usePlayer> = {
     player: null,
     loading: false,
+    isValidating: false,
     error: null,
-    refetch: jest.fn().mockResolvedValue(undefined),
+    refetch: jest.fn<ReturnType<typeof usePlayer>['refetch']>(),
     optimisticUpdate: jest.fn(),
   };
   return { ...defaults, ...overrides };

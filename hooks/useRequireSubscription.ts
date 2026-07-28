@@ -26,7 +26,10 @@ export function useRequireSubscription() {
         message: 'Your subscription has expired — please renew to continue.',
         variant: 'warning',
       });
-      router.replace(`/${locale}/scout/subscribe`);
+      // Also pass the reason via query param — the toast above can be missed
+      // if the redirect fires before it renders, but this survives the
+      // navigation so the destination page can show a persistent explanation.
+      router.replace(`/${locale}/scout/subscribe?reason=subscription-expired`);
     }
   }, [subscription, isExpired, loading, publicKey, router, locale, show]);
 

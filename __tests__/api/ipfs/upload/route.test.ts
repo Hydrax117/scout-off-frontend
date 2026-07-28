@@ -1,10 +1,47 @@
 /** @jest-environment node */
-import { POST } from '../../../../app/api/ipfs/upload/route';
 import { NextRequest } from 'next/server';
 import axios from 'axios';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
+
+// The route now delegates rate limiting to the shared lib/rateLimit.ts
+// (issue #658 — see lib/rateLimit.ts and __tests__/lib/rateLimit.test.ts
+// for the Redis-backed/in-memory-fallback behavior itself). Here we only
+// need *a* working per-key/window counter so this route's existing
+// "11th request in the window gets rate limited" test still exercises real
+// rate-limiting behavior, without re-testing lib/rateLimit's store
+// selection logic. getClientIp is left as the real implementation since
+// it's a small pure function this suite already exercises directly.
+jest.mock('@/lib/rateLimit', () => {
+  const actual = jest.requireActual('@/lib/rateLimit');
+  const state = new Map<string, { count: number; firstSeen: number }>();
+  return {
+    ...actual,
+    checkRateLimit: jest.fn(
+      async (key: string, opts: { limit: number; windowMs: number }) => {
+        const now = Date.now();
+        const entry = state.get(key);
+        if (!entry || now - entry.firstSeen > opts.windowMs) {
+          state.set(key, { count: 1, firstSeen: now });
+          return { limited: false };
+        }
+        entry.count += 1;
+        if (entry.count > opts.limit) {
+          return {
+            limited: true,
+            retryAfterSec: Math.ceil(
+              (opts.windowMs - (now - entry.firstSeen)) / 1000,
+            ),
+          };
+        }
+        return { limited: false };
+      },
+    ),
+  };
+});
+
+import { POST } from '../../../../app/api/ipfs/upload/route';
 
 const JPEG_HEADER = new Uint8Array([
   0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
@@ -16,7 +53,7 @@ function makeFile(
   name = 'photo.jpg',
   type = 'image/jpeg',
 ): File {
-  return new File([bytes], name, { type });
+  return new File([bytes.buffer as ArrayBuffer], name, { type });
 }
 
 function makeRequest(
@@ -115,6 +152,7 @@ describe('POST /api/ipfs/upload', () => {
 
   it('uploads a valid image to Pinata and returns the CID', async () => {
     mockedAxios.post.mockResolvedValue({ data: { IpfsHash: 'QmTestCid123' } });
+    mockedAxios.get.mockResolvedValue({ data: JPEG_HEADER.buffer });
 
     const file = makeFile(JPEG_HEADER, 'photo.jpg', 'image/jpeg');
     const form = new FormData();
@@ -155,6 +193,7 @@ describe('POST /api/ipfs/upload', () => {
 
   it('sanitizes text fields present alongside the file', async () => {
     mockedAxios.post.mockResolvedValue({ data: { IpfsHash: 'QmSanitized' } });
+    mockedAxios.get.mockResolvedValue({ data: JPEG_HEADER.buffer });
 
     const file = makeFile(JPEG_HEADER, 'photo.jpg', 'image/jpeg');
     const form = new FormData();
@@ -165,6 +204,43 @@ describe('POST /api/ipfs/upload', () => {
     const res = await POST(req);
 
     expect(res.status).toBe(200);
+  });
+
+  describe('post-upload integrity verification (issue #699)', () => {
+    it('returns 502 when the gateway serves content that does not match what was uploaded', async () => {
+      mockedAxios.post.mockResolvedValue({ data: { IpfsHash: 'QmMismatch' } });
+      // Gateway returns different bytes than what we uploaded.
+      mockedAxios.get.mockResolvedValue({
+        data: new Uint8Array([0, 1, 2, 3]).buffer,
+      });
+
+      const file = makeFile(JPEG_HEADER, 'photo.jpg', 'image/jpeg');
+      const form = new FormData();
+      form.append('file', file);
+      const req = makeRequest({ form, ip: 'ip-verify-mismatch' });
+
+      const res = await POST(req);
+
+      expect(res.status).toBe(502);
+      const body = await res.json();
+      expect(body.error).toMatch(/failed integrity verification/i);
+    });
+
+    it('returns 502 with a retryable error when the gateway cannot be reached for verification', async () => {
+      mockedAxios.post.mockResolvedValue({ data: { IpfsHash: 'QmGatewayDown' } });
+      mockedAxios.get.mockRejectedValue(new Error('gateway timeout'));
+
+      const file = makeFile(JPEG_HEADER, 'photo.jpg', 'image/jpeg');
+      const form = new FormData();
+      form.append('file', file);
+      const req = makeRequest({ form, ip: 'ip-verify-unreachable' });
+
+      const res = await POST(req);
+
+      expect(res.status).toBe(502);
+      const body = await res.json();
+      expect(body.error).toMatch(/could not verify the upload/i);
+    });
   });
 
   it('rate limits after exceeding 10 requests from the same IP within the window', async () => {

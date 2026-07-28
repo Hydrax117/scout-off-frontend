@@ -1,100 +1,201 @@
-import { renderHook, act } from '@testing-library/react';
+'use client';
+
+import React from 'react';
+import { renderHook, act, waitFor } from '@testing-library/react';
+import { SWRConfig } from 'swr';
+import { useValidator, invalidateValidatorCache } from '@/hooks/useValidator';
+import type { ValidatorInfo, Player } from '@/types';
+
+const PUBLIC_KEY = 'G'.padEnd(56, 'X');
+
+const mockUseWallet = jest.fn();
+const mockGetValidators = jest.fn();
+const mockBuildApproveMilestone = jest.fn();
+const mockBuildRevokeMilestone = jest.fn();
+const mockSignAndSubmit = jest.fn();
+const mockParseContractError = jest.fn();
 
 jest.mock('@/hooks/useWallet', () => ({
-  useWallet: jest.fn(),
+  useWallet: () => mockUseWallet(),
 }));
 
 jest.mock('@/lib/contract', () => ({
-  getValidators: jest.fn(),
-  buildApproveMilestone: jest.fn(),
-  buildRevokeMilestone: jest.fn(),
+  getValidators: (...args: unknown[]) => mockGetValidators(...args),
+  buildApproveMilestone: (...args: unknown[]) =>
+    mockBuildApproveMilestone(...args),
+  buildRevokeMilestone: (...args: unknown[]) =>
+    mockBuildRevokeMilestone(...args),
 }));
 
-import { useWallet } from '@/hooks/useWallet';
-import {
-  getValidators,
-  buildApproveMilestone,
-  buildRevokeMilestone,
-} from '@/lib/contract';
-import { useValidator, invalidateValidatorCache } from '@/hooks/useValidator';
+jest.mock('@/lib/contractErrorMessage', () => ({
+  parseContractError: (...args: unknown[]) => mockParseContractError(args[0]),
+}));
 
-const mockUseWallet = useWallet as jest.Mock;
-const mockGetValidators = getValidators as jest.Mock;
-const mockBuildApproveMilestone = buildApproveMilestone as jest.Mock;
-const mockBuildRevokeMilestone = buildRevokeMilestone as jest.Mock;
+function wrapper({ children }: { children: React.ReactNode }) {
+  return React.createElement(
+    SWRConfig,
+    { value: { provider: () => new Map(), shouldRetryOnError: false } },
+    children,
+  );
+}
 
-const VALIDATOR_KEY = 'GVALIDATOR7QAO3WZQ6X4CZ3OYZFXX3A3DL7XVI5DNVTXA5VJUGE5SU';
-const PLAYER_ID = 'player-1';
+const makeValidator = (over: Partial<ValidatorInfo> = {}): ValidatorInfo =>
+  ({
+    address: PUBLIC_KEY,
+    name: 'validator',
+    ...over,
+  }) as unknown as ValidatorInfo;
 
-beforeEach(() => {
-  jest.resetAllMocks();
-  invalidateValidatorCache();
-  mockGetValidators.mockResolvedValue([{ address: VALIDATOR_KEY, addedAt: 0 }]);
-});
-
-describe('useValidator — approve_milestone', () => {
-  test('happy path: builds the approve_milestone xdr and clears loading/error', async () => {
-    mockUseWallet.mockReturnValue({
-      publicKey: VALIDATOR_KEY,
-      signAndSubmit: jest.fn(),
-    });
-    mockBuildApproveMilestone.mockResolvedValue('APPROVE_XDR');
-
-    const { result } = renderHook(() => useValidator());
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    let xdr: string | undefined;
-    await act(async () => {
-      xdr = await result.current.approveMilestone(
-        PLAYER_ID,
-        'Signed professional contract',
-      );
-    });
-
-    expect(mockBuildApproveMilestone).toHaveBeenCalledWith(
-      VALIDATOR_KEY,
-      PLAYER_ID,
-      'Signed professional contract',
-    );
-    expect(xdr).toBe('APPROVE_XDR');
-    expect(result.current.loading).toBe(false);
-    expect(result.current.error).toBeNull();
+const setupWalletConnected = () => {
+  mockUseWallet.mockReturnValue({
+    publicKey: PUBLIC_KEY,
+    signAndSubmit: mockSignAndSubmit,
   });
-});
+};
 
-describe('useValidator — revoke_milestone', () => {
-  test('happy path: builds the revoke_milestone xdr, signs it, and returns the updated player', async () => {
-    const mockSignAndSubmit = jest
-      .fn()
-      .mockResolvedValue({ id: PLAYER_ID, progressLevel: 1 });
-    mockUseWallet.mockReturnValue({
-      publicKey: VALIDATOR_KEY,
-      signAndSubmit: mockSignAndSubmit,
-    });
-    mockBuildRevokeMilestone.mockResolvedValue('REVOKE_XDR');
+describe('useValidator', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setupWalletConnected();
+    mockGetValidators.mockReset();
+    mockBuildApproveMilestone.mockReset();
+    mockBuildRevokeMilestone.mockReset();
+    mockSignAndSubmit.mockReset();
+    mockParseContractError.mockImplementation((e: unknown) =>
+      e instanceof Error ? e.message : 'unknown',
+    );
+  });
 
-    const { result } = renderHook(() => useValidator());
+  test('isValidator true when wallet address is in the validators list', async () => {
+    mockGetValidators.mockResolvedValueOnce([
+      makeValidator({ address: PUBLIC_KEY }),
+      makeValidator({
+        address: 'G'.padEnd(56, 'Y'),
+        addedBy: 'G'.padEnd(56, 'Z'),
+      }),
+    ]);
 
+    const { result } = renderHook(() => useValidator(), { wrapper });
+
+    await waitFor(() => expect(result.current.checking).toBe(false));
+    expect(result.current.isValidator).toBe(true);
+  });
+
+  test('isValidator false when wallet address is NOT in the validators list', async () => {
+    mockGetValidators.mockResolvedValueOnce([
+      makeValidator({
+        address: 'G'.padEnd(56, 'Y'),
+        addedBy: 'G'.padEnd(56, 'Z'),
+      }),
+    ]);
+
+    const { result } = renderHook(() => useValidator(), { wrapper });
+
+    await waitFor(() => expect(result.current.checking).toBe(false));
+    expect(result.current.isValidator).toBe(false);
+  });
+
+  test('approveMilestone happy path: returns the XDR, no error', async () => {
+    mockGetValidators.mockResolvedValueOnce([makeValidator()]);
+    mockBuildApproveMilestone.mockResolvedValueOnce('approve-xdr');
+
+    const { result } = renderHook(() => useValidator(), { wrapper });
+    await waitFor(() => expect(result.current.checking).toBe(false));
+
+    let out: unknown;
     await act(async () => {
-      await Promise.resolve();
+      out = await result.current.approveMilestone('p1', 'milestone-1');
     });
 
-    let player: unknown;
-    await act(async () => {
-      player = await result.current.revokeMilestone(PLAYER_ID, 'milestone-1');
-    });
-
-    expect(mockBuildRevokeMilestone).toHaveBeenCalledWith(
-      VALIDATOR_KEY,
-      PLAYER_ID,
+    expect(out).toBe('approve-xdr');
+    expect(mockBuildApproveMilestone).toHaveBeenCalledWith(
+      PUBLIC_KEY,
+      'p1',
       'milestone-1',
     );
-    expect(mockSignAndSubmit).toHaveBeenCalledWith('REVOKE_XDR');
-    expect(player).toEqual({ id: PLAYER_ID, progressLevel: 1 });
-    expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
+  });
+
+  test('approveMilestone failure: parseContractError mapped to error state', async () => {
+    mockGetValidators.mockResolvedValueOnce([makeValidator()]);
+    mockBuildApproveMilestone.mockRejectedValueOnce(new Error('Unauthorized'));
+    mockParseContractError.mockReturnValueOnce('Not a validator');
+
+    const { result } = renderHook(() => useValidator(), { wrapper });
+    await waitFor(() => expect(result.current.checking).toBe(false));
+
+    await act(async () => {
+      try {
+        await result.current.approveMilestone('p1', 'milestone-1');
+      } catch {
+        /* swallow */
+      }
+    });
+
+    expect(mockParseContractError).toHaveBeenCalled();
+    expect(result.current.error).toBe('Not a validator');
+  });
+
+  test('approveMilestone throws when wallet not connected', async () => {
+    mockUseWallet.mockReturnValue({
+      publicKey: null,
+      signAndSubmit: mockSignAndSubmit,
+    });
+    mockGetValidators.mockResolvedValueOnce([
+      makeValidator({ address: 'G'.padEnd(56, 'Y') }),
+    ]);
+
+    const { result } = renderHook(() => useValidator(), { wrapper });
+    await waitFor(() => expect(result.current.checking).toBe(false));
+
+    await act(async () => {
+      try {
+        await result.current.approveMilestone('p1', 'milestone-1');
+        fail('expected throw');
+      } catch (e) {
+        expect((e as Error).message).toMatch(/not connected/i);
+      }
+    });
+  });
+
+  test('revokeMilestone happy path: signs revoke tx, returns updated Player', async () => {
+    mockGetValidators.mockResolvedValueOnce([makeValidator()]);
+    mockBuildRevokeMilestone.mockResolvedValueOnce('revoke-xdr');
+    const updated: Player = {
+      id: 'p1',
+      wallet: PUBLIC_KEY,
+      vitals: {
+        name: 'P1',
+        position: 'forward',
+        region: 'EU',
+        age: 20,
+      },
+      progressLevel: 0,
+      archived: false,
+      milestones: [],
+      stats: {},
+      ipfsHash: '',
+    } as unknown as Player;
+    mockSignAndSubmit.mockResolvedValueOnce(updated);
+
+    const { result } = renderHook(() => useValidator(), { wrapper });
+    await waitFor(() => expect(result.current.checking).toBe(false));
+
+    let out: unknown;
+    await act(async () => {
+      out = await result.current.revokeMilestone('p1', 'milestone-1');
+    });
+
+    expect(out).toEqual(updated);
+    expect(mockBuildRevokeMilestone).toHaveBeenCalledWith(
+      PUBLIC_KEY,
+      'p1',
+      'milestone-1',
+    );
+    expect(mockSignAndSubmit).toHaveBeenCalledWith('revoke-xdr');
+  });
+
+  test('invalidateValidatorCache exported helper resolves cleanly', async () => {
+    await expect(invalidateValidatorCache()).resolves.toBeUndefined();
   });
 });

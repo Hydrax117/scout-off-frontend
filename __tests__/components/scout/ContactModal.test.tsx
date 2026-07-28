@@ -16,15 +16,13 @@ const PLAYER_ID = 'player-123';
 
 function setHook(
   overrides: {
-    unlock?: { contactDetails?: Record<string, string | undefined> };
-    loading?: boolean;
-    error?: { code?: number; message?: string } | null;
+    contactDetails?: Record<string, string | undefined>;
+    clear?: jest.Mock;
   } = {},
 ) {
   mockUsePayToContact.mockReturnValue({
-    unlock: undefined,
-    loading: false,
-    error: null,
+    contactDetails: undefined,
+    clear: jest.fn(),
     ...overrides,
   });
 }
@@ -42,16 +40,17 @@ describe('ContactModal', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('passes the playerId through to the hook', () => {
+  it('passes the playerId through to the hook so it reads the same cache entry unlock() populated', () => {
     render(<ContactModal isOpen onClose={jest.fn()} playerId={PLAYER_ID} />);
     expect(mockUsePayToContact).toHaveBeenCalledWith(PLAYER_ID);
   });
 
-  it('shows a spinner while loading', () => {
-    setHook({ loading: true });
+  it('shows a placeholder when nothing has been unlocked for this player yet', () => {
     render(<ContactModal isOpen onClose={jest.fn()} playerId={PLAYER_ID} />);
 
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument();
+    expect(
+      screen.getByText('No contact details unlocked for this player yet.'),
+    ).toBeInTheDocument();
   });
 
   it('renders contact details with copy buttons for each present field', async () => {
@@ -60,12 +59,10 @@ describe('ContactModal', () => {
       .spyOn(navigator.clipboard, 'writeText')
       .mockResolvedValue(undefined);
     setHook({
-      unlock: {
-        contactDetails: {
-          email: 'scout@example.com',
-          phone: '+123456789',
-          telegram: '@scoutguy',
-        },
+      contactDetails: {
+        email: 'scout@example.com',
+        phone: '+123456789',
+        telegram: '@scoutguy',
       },
     });
     render(<ContactModal isOpen onClose={jest.fn()} playerId={PLAYER_ID} />);
@@ -82,9 +79,7 @@ describe('ContactModal', () => {
   });
 
   it('only renders rows for contact fields that are present', () => {
-    setHook({
-      unlock: { contactDetails: { email: 'only@example.com' } },
-    });
+    setHook({ contactDetails: { email: 'only@example.com' } });
     render(<ContactModal isOpen onClose={jest.fn()} playerId={PLAYER_ID} />);
 
     expect(screen.getByText('Email: only@example.com')).toBeInTheDocument();
@@ -92,49 +87,16 @@ describe('ContactModal', () => {
     expect(screen.queryByText(/^Telegram:/)).not.toBeInTheDocument();
   });
 
-  it('maps a known contract error code to a human-readable message', () => {
-    setHook({ error: { code: 7 } });
-    render(<ContactModal isOpen onClose={jest.fn()} playerId={PLAYER_ID} />);
-
-    expect(
-      screen.getByText('Insufficient XLM balance to pay the contact fee.'),
-    ).toBeInTheDocument();
-  });
-
-  it('maps the subscription-expired error code', () => {
-    setHook({ error: { code: 8 } });
-    render(<ContactModal isOpen onClose={jest.fn()} playerId={PLAYER_ID} />);
-
-    expect(
-      screen.getByText('Your scout subscription has expired. Please renew.'),
-    ).toBeInTheDocument();
-  });
-
-  it('falls back to the raw error message when no code is present', () => {
-    setHook({ error: { message: 'Unexpected failure occurred.' } });
-    render(<ContactModal isOpen onClose={jest.fn()} playerId={PLAYER_ID} />);
-
-    expect(
-      screen.getByText('Unexpected failure occurred.'),
-    ).toBeInTheDocument();
-  });
-
-  it('does not render contact details while still loading', () => {
-    setHook({
-      loading: true,
-      unlock: { contactDetails: { email: 'scout@example.com' } },
-    });
-    render(<ContactModal isOpen onClose={jest.fn()} playerId={PLAYER_ID} />);
-
-    expect(screen.queryByText(/^Email:/)).not.toBeInTheDocument();
-  });
-
-  it('calls onClose when the modal close button is clicked', async () => {
+  it('purges the cached contact details and calls onClose when closed', async () => {
     const user = userEvent.setup();
+    const clear = jest.fn();
     const onClose = jest.fn();
+    setHook({ contactDetails: { email: 'scout@example.com' }, clear });
     render(<ContactModal isOpen onClose={onClose} playerId={PLAYER_ID} />);
 
     await user.click(screen.getByRole('button', { name: 'Close modal' }));
+
+    expect(clear).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

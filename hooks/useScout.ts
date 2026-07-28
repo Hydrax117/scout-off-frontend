@@ -2,7 +2,7 @@
 import { useState, useCallback } from 'react';
 import useSWR, { mutate as globalMutate } from 'swr';
 import { filterPlayers } from '@/lib/contract';
-import { searchPlayersByName } from '@/lib/api';
+import { searchPlayersByName, SearchRateLimitedError } from '@/lib/api';
 import type { Player, PlayerFilter } from '@/types';
 
 /**
@@ -28,12 +28,14 @@ export function invalidateScoutSearch(filter: PlayerFilter): Promise<void> {
 export function useScout() {
   const [searchKey, setSearchKey] = useState<string | null>(null);
 
-  const { data, error, isValidating } = useSWR<Player[]>(
+  const { data, error, isValidating, mutate } = useSWR<Player[]>(
     searchKey,
     async (key: string) => {
       if (key.startsWith('scout:name:')) {
         const name = key.slice('scout:name:'.length);
-        return searchPlayersByName(name);
+        const results = await searchPlayersByName(name);
+        // Filter out archived profiles
+        return results.filter((p) => !p.archived);
       }
       // contract filter key: "scout:contract:{region}:{position}:{minLevel}"
       const parts = key.split(':');
@@ -41,7 +43,8 @@ export function useScout() {
       const position = parts[3] ?? '';
       const minLevel = Number(parts[4] ?? 0);
       const results = await filterPlayers(region, position, minLevel);
-      return results as Player[];
+      // Filter out archived profiles
+      return (results as Player[]).filter((p) => !p.archived);
     },
     {
       dedupingInterval: 60_000,
@@ -63,7 +66,11 @@ export function useScout() {
     players: data ?? [],
     loading: isValidating,
     error: error?.message ?? null,
+    isRateLimited: error instanceof SearchRateLimitedError,
+    retryAfterSec:
+      error instanceof SearchRateLimitedError ? error.retryAfterSec : null,
     search,
     searchByName,
+    refetch: () => mutate() as Promise<void>,
   };
 }

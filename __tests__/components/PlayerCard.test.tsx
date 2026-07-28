@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { Player } from '@/types';
 import { PROGRESS_LABELS } from '@/types';
+import { FOOTBALL_POSITIONS } from '@/lib/positions';
 
 // ── Module mocks (hoisted by Jest) ───────────────────────────────────────────
 
@@ -124,11 +125,11 @@ describe('PlayerCard — rendering', () => {
 
   it('renders position and region in the details text', () => {
     render(<PlayerCard player={mockPlayer} />);
-    expect(
-      screen.getByText(
-        `${mockPlayer.vitals.position} · ${mockPlayer.vitals.region}`,
-      ),
-    ).toBeInTheDocument();
+    // Position is now inside a Tooltip wrapper so it renders as a child span.
+    expect(screen.getByText(mockPlayer.vitals.position)).toBeInTheDocument();
+    // Region appears as plain text in the same <p>; grab the containing paragraph.
+    const para = screen.getByText(mockPlayer.vitals.position).closest('p');
+    expect(para).toHaveTextContent(mockPlayer.vitals.region);
   });
 
   it('renders the progress level badge with the correct variant', () => {
@@ -147,13 +148,13 @@ describe('PlayerCard — rendering', () => {
     expect(viewProfileLink).toHaveAttribute('href', `/player/${mockPlayer.id}`);
   });
 
-  it('renders the player image when an IPFS hash is present', () => {
+  it('renders the player image when an IPFS hash is present, via the media proxy route', () => {
     render(<PlayerCard player={mockPlayer} />);
     const image = screen.getByAltText(mockPlayer.vitals.name);
     expect(image).toBeInTheDocument();
     expect(image).toHaveAttribute(
       'src',
-      `${process.env.NEXT_PUBLIC_IPFS_GATEWAY}/${mockPlayer.ipfsHash}`,
+      `/api/media/${mockPlayer.ipfsHash}`,
     );
   });
 
@@ -162,6 +163,55 @@ describe('PlayerCard — rendering', () => {
     expect(
       screen.queryByAltText(mockPlayer.vitals.name),
     ).not.toBeInTheDocument();
+  });
+});
+
+// ── #895: Position abbreviation Tooltip ──────────────────────────────────────
+
+describe('PlayerCard — position Tooltip', () => {
+  it('shows the full position name in a tooltip on hover for a known abbreviation', () => {
+    // Use a player with a known FOOTBALL_POSITIONS value so the lookup works.
+    const stPlayer: Player = {
+      ...mockPlayer,
+      vitals: { ...mockPlayer.vitals, position: 'ST' },
+    };
+    const expectedLabel =
+      FOOTBALL_POSITIONS.find((p) => p.value === 'ST')!.label; // 'Striker'
+
+    render(<PlayerCard player={stPlayer} />);
+
+    // The abbreviation badge should be visible.
+    expect(screen.getByText('ST')).toBeInTheDocument();
+
+    // Hover over the position span to trigger the tooltip.
+    fireEvent.mouseEnter(screen.getByText('ST'));
+
+    // Tooltip content should now be in the document.
+    expect(screen.getByRole('tooltip')).toHaveTextContent(expectedLabel);
+  });
+
+  it('hides the tooltip after mouseLeave', () => {
+    const stPlayer: Player = {
+      ...mockPlayer,
+      vitals: { ...mockPlayer.vitals, position: 'ST' },
+    };
+    render(<PlayerCard player={stPlayer} />);
+
+    const positionEl = screen.getByText('ST');
+    fireEvent.mouseEnter(positionEl);
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+
+    fireEvent.mouseLeave(positionEl);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the raw abbreviation text when the position is not in the map', () => {
+    // 'Forward' is not in FOOTBALL_POSITIONS so POSITION_LABEL won't have it.
+    render(<PlayerCard player={mockPlayer} />);
+    const positionEl = screen.getByText('Forward');
+    fireEvent.mouseEnter(positionEl);
+    // Tooltip should still render, falling back to the raw value.
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Forward');
   });
 });
 

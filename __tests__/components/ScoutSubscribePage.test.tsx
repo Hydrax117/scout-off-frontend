@@ -2,12 +2,24 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+let mockSearchParam: string | null = null;
+
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn() }),
+  useSearchParams: () => ({
+    get: (key: string) => (key === 'reason' ? mockSearchParam : null),
+    toString: () => '',
+  }),
 }));
 
 jest.mock('@/hooks/useSubscription', () => ({
   useSubscription: jest.fn(),
+}));
+
+jest.mock('@/hooks/useWallet', () => ({
+  useWallet: () => ({
+    publicKey: 'GABC1234567890ABCDE1234567890ABCDE1234567890ABCDE123456',
+  }),
 }));
 
 jest.mock('@/components/ui/ErrorBoundary', () => ({
@@ -54,7 +66,31 @@ function expiredSub(tier = 'basic') {
 }
 
 describe('ScoutSubscribePage', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSearchParam = null;
+  });
+
+  describe('redirect reason banner', () => {
+    it('shows the subscription-expired explanation when redirected here', () => {
+      mockSearchParam = 'subscription-expired';
+      expiredSub('basic');
+      render(<ScoutSubscribePage />);
+      expect(
+        screen.getByText(
+          'Your subscription has expired — please renew to continue.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('does not show a redirect-reason banner on a direct visit', () => {
+      noSub();
+      render(<ScoutSubscribePage />);
+      expect(
+        screen.queryByText(/please renew to continue/i),
+      ).not.toBeInTheDocument();
+    });
+  });
 
   describe('active subscription banner', () => {
     it('renders banner when subscription is active', () => {

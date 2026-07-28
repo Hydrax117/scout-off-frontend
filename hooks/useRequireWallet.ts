@@ -13,7 +13,7 @@ export function useRequireWallet() {
     // prevents a flash-redirect for users who are already authenticated.
     if (isRestoringSession) return;
     if (!isConnecting && !isAuthenticated) {
-      router.replace('/');
+      router.replace('/?reason=wallet-required');
     }
   }, [publicKey, isAuthenticated, isConnecting, isRestoringSession, router]);
 

@@ -1,5 +1,18 @@
 import '@testing-library/jest-dom';
-import { jest } from '@jest/globals';
+
+/**
+ * Clear localStorage before each test so WalletProvider's session-restore
+ * useEffect does not trip on a stale session left over from a prior test.
+ * jsdom shares Storage across tests in the same file by default.
+ */
+beforeEach(() => {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.clear();
+  }
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.clear();
+  }
+});
 
 process.env.NEXT_PUBLIC_SOROBAN_RPC = 'https://soroban-testnet.stellar.org';
 process.env.NEXT_PUBLIC_NETWORK = 'testnet';

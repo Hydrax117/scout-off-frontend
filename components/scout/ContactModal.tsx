@@ -1,7 +1,6 @@
 'use client';
 
 import Modal from '@/components/ui/Modal';
-import Spinner from '@/components/ui/Spinner';
 import { usePayToContact } from '@/hooks/usePayToContact';
 
 interface ContactModalProps {
@@ -10,43 +9,45 @@ interface ContactModalProps {
   playerId: string;
 }
 
-const ERROR_MESSAGES: Record<number, string> = {
-  7: 'Insufficient XLM balance to pay the contact fee.',
-  8: 'Your scout subscription has expired. Please renew.',
-  9: 'The contract is currently paused. Please try again later.',
-};
-
+/**
+ * Displays contact details already unlocked via usePayToContact's unlock()
+ * — this component never triggers unlock() itself, so rendering it never
+ * causes a second pay_to_contact charge. It reads the same session-bounded
+ * cache entry (see lib/contactDetailsCache.ts) that the caller's unlock()
+ * populated, keyed by (playerId, scout wallet).
+ *
+ * Closing the modal immediately purges the cached details — a player's
+ * unlocked PII shouldn't keep sitting in memory just because a scout closed
+ * the dialog without navigating away or logging out.
+ */
 export default function ContactModal({
   isOpen,
   onClose,
   playerId,
 }: ContactModalProps) {
-  const { unlock, loading, error } = usePayToContact(playerId);
+  const { contactDetails, clear } = usePayToContact(playerId);
 
-  const contactDetails = unlock?.contactDetails;
+  function handleClose() {
+    clear();
+    onClose();
+  }
 
   const handleCopy = (value: string) => {
     navigator.clipboard.writeText(value);
   };
 
-  const errorMessage = error?.code
-    ? ERROR_MESSAGES[error.code]
-    : error?.message;
-
   return (
-    <Modal isOpen={isOpen} onClose={onClose}>
+    <Modal isOpen={isOpen} onClose={handleClose}>
       <div className="p-6 space-y-4">
         <h2 className="text-lg font-semibold">Player Contact Details</h2>
 
-        {loading && (
-          <div className="flex justify-center py-6">
-            <Spinner />
-          </div>
+        {!contactDetails && (
+          <p className="text-sm text-gray-500">
+            No contact details unlocked for this player yet.
+          </p>
         )}
 
-        {errorMessage && <p className="text-red-500 text-sm">{errorMessage}</p>}
-
-        {contactDetails && !loading && (
+        {contactDetails && (
           <div className="space-y-3">
             {contactDetails.email && (
               <div className="flex items-center justify-between">
@@ -54,7 +55,7 @@ export default function ContactModal({
                   Email: {contactDetails.email}
                 </span>
                 <button
-                  onClick={() => handleCopy(contactDetails.email)}
+                  onClick={() => handleCopy(contactDetails.email!)}
                   className="text-xs text-blue-500 hover:underline ml-2"
                 >
                   Copy
@@ -67,7 +68,7 @@ export default function ContactModal({
                   Phone: {contactDetails.phone}
                 </span>
                 <button
-                  onClick={() => handleCopy(contactDetails.phone)}
+                  onClick={() => handleCopy(contactDetails.phone!)}
                   className="text-xs text-blue-500 hover:underline ml-2"
                 >
                   Copy
@@ -80,7 +81,7 @@ export default function ContactModal({
                   Telegram: {contactDetails.telegram}
                 </span>
                 <button
-                  onClick={() => handleCopy(contactDetails.telegram)}
+                  onClick={() => handleCopy(contactDetails.telegram!)}
                   className="text-xs text-blue-500 hover:underline ml-2"
                 >
                   Copy

@@ -1,4 +1,55 @@
 {
+  "validator": {
+    "title": "Dashibodi ya Mthibitishaji",
+    "verifying": "Inathibitisha hali ya mthibitishaji…",
+    "access_only_title": "Mthibitishaji Pekee",
+    "access_only_description": "Pochi yako haijasajiliwa kama mthibitishaji aliyekubaliwa. Wasiliana na msimamizi kuomba ufikiaji wa mthibitishaji.",
+    "find_player": "Tafuta Mchezaji"
+  },
+  "admin": {
+    "title": "Dashibodi ya Msimamizi",
+    "contract": "Mkataba",
+    "copy_contract_id": "Nakili kitambulisho cha mkataba kwenye ubao wa kunakili",
+    "copied": "Imenakiliwa!",
+    "copy": "Nakili",
+    "circuit_breaker": "Kukatiza kwa Dharura",
+    "paused": "Imesimamishwa",
+    "active": "Inafanya kazi",
+    "pause_contract": "Simamisha Mkataba",
+    "unpause_contract": "Anzisha Mkataba tena",
+    "pause_confirm": "Una uhakika unataka kusimamisha mkataba? Shughuli zote zitasimamishwa.",
+    "unpause_confirm": "Una uhakika unataka kuanzisha mkataba tena?",
+    "platform_fees": "Ada za Jukwaa",
+    "accumulated": "Zilizokusanywa",
+    "withdraw_fees": "Toa Ada",
+    "withdraw_confirm": "Toa {amount} XLM kwenye pochi yako?",
+    "add_validator": "Ongeza Mthibitishaji",
+    "validator_placeholder": "Ufunguo wa umma wa Stellar (G...)",
+    "add": "Ongeza",
+    "validators": "Wathibitishaji",
+    "no_validators": "Hakuna wathibitishaji walioidhinishwa.",
+    "remove": "Ondoa",
+    "activity": "Shughuli",
+    "loading": "Inapakia…",
+    "no_activity_title": "Bado hakuna shughuli",
+    "no_activity_description": "Matukio ya mkataba yataonekana hapa baada ya miamala kurekodiwa.",
+    "previous": "Iliyotangulia",
+    "next": "Inayofuata",
+    "page_of": "Ukurasa {page} wa {total}",
+    "referral_program": "Mpango wa Rufaa",
+    "no_referral_title": "Bado hakuna shughuli za rufaa",
+    "no_referral_description": "Misimbo na rufaa zilizofanikiwa zitazalishwa na watafutaji zitaonekana hapa.",
+    "codes_generated": "Misimbo Iliyotengenezwa",
+    "successful_referrals": "Rufaa Zilizofanikiwa",
+    "top_referrers": "Watafutaji Wanaoongoza",
+    "referrals_singular": "rufaa",
+    "referrals_plural": "rufaa",
+    "code_singular": "msimbo",
+    "code_plural": "misimbo",
+    "recovery_failed": "Imeshindwa kupakia data ya msimamizi. Tafadhali angalia muunganisho wako na jaribu tena.",
+    "retry": "Jaribu tena",
+    "unauthorized_message": "Hauruhusiwi: pochi ya msimamizi inahitajika."
+  },
   "app_title": "ScoutOff",
   "nav": {
     "scout_dashboard": "Dashibodi ya Scout",
@@ -35,9 +86,14 @@
     "french": "Français",
     "swahili": "Kiswahili"
   },
+  "validator": {
+    "title": "Dashibodi ya Mthibitishaji",
+    "verifying": "Inathibitisha hali ya mthibitishaji…",
+    "access_only_title": "Mthibitishaji Pekee",
+    "access_only_description": "Pochi yako haijasajiliwa kama mthibitishaji aliyekubaliwa. Wasiliana na msimamizi kuomba ufikiaji wa mthibitishaji.",
+    "find_player": "Tafuta Mchezaji"
+  },
   "scout_dashboard": {
-    "title": "Dashibodi ya Scout",
-    "welcome": "TODO: Machine-translated - Karibu kwenye dashibodi ya Scout",
     "description": "TODO: Machine-translated - Dhibiti wachezaji na majaribio",
     "recent_activity": "TODO: Machine-translated - Shughuli ya Hivi Karibuni",
     "players": "Wachezaji",
@@ -82,7 +138,9 @@
     "address": "Anwani",
     "invalid_address": "TODO: Machine-translated - Anwani ya Stellar sio sahihi",
     "connection_failed": "TODO: Machine-translated - Kushindwa kuunganisha pochi",
-    "balanceError": "TODO: Machine-translated - Salio halipatikani — kosa la mtandao"
+    "balanceError": "TODO: Machine-translated - Salio halipatikani — kosa la mtandao",
+    "ledgerConnect": "TODO: Machine-translated - Pochi ya vifaa — unganisha kupitia USB",
+    "ledgerInstructions": "TODO: Machine-translated - Unganisha kifaa chako cha Ledger kupitia USB na ufungue programu ya Stellar."
   },
   "errors": {
     "not_found": "Haijafikiwa",
@@ -109,6 +167,38 @@
     "howItWorksTitle": "TODO: Machine-translated - Jinsi itakavyofanya kazi",
     "howItWorksDescription": "TODO: Machine-translated - Wafadhili watanunua Tokeni za Mchezaji zinazowakilisha hisa katika mapato ya baadaye ya mchezaji. Fedha zilizokusanywa zinaelekezwa moja kwa moja kwenye mafunzo, usafiri, na maendeleo, huku sehemu ya mapato ya baadaye ya mchezaji kwenye blockchain ikirejeshwa kwa wamiliki wa tokeni — yote yakisimamiwa na mikataba mahiri ya Soroban.",
     "notice": "TODO: Machine-translated - Ukurasa huu ni nafasi ya muda. Hakuna tokeni zinazoweza kununuliwa bado na hakuna mwingiliano wa blockchain unaopatikana hapa."
+  },
+  "footer": {
+    "changelog": "TODO: Machine-translated - Mabadiliko",
+    "status": "TODO: Machine-translated - Hali"
+  },
+  "changelog": {
+    "back_to_home": "TODO: Machine-translated - Rudi kwenye mwanzo",
+    "page_title": "TODO: Machine-translated - Mabadiliko",
+    "page_description": "TODO: Machine-translated - Mabadiliko na maboresho ya hivi karibuni ya jukwaa.",
+    "eyebrow": "TODO: Machine-translated - Mabadiliko ya jukwaa",
+    "english_notice": "TODO: Machine-translated - Changelog hii inapatikana kwa Kiingereza pekee kwa sasa.",
+    "added": "TODO: Machine-translated - Iliyoongezwa",
+    "improved": "TODO: Machine-translated - Iliboreshwa",
+    "fixed": "TODO: Machine-translated - Iliyorekebishwa",
+    "empty_title": "TODO: Machine-translated - Mabadiliko hayapatikani",
+    "empty_description": "TODO: Machine-translated - Hatukuweza kupakia mabadiliko kwa sasa. Tafadhali angalia tena baadaye."
+  },
+  "status": {
+    "back_to_home": "TODO: Machine-translated - Rudi kwenye mwanzo",
+    "page_title": "TODO: Machine-translated - Hali ya Mfumo",
+    "page_description": "TODO: Machine-translated - Angalia kama tatizo unaloona ni hitilafu inayojulikana ya jukwaa lote na kagua matukio ya awali.",
+    "eyebrow": "TODO: Machine-translated - Hali ya jukwaa",
+    "dependencies_title": "TODO: Machine-translated - Utegemezi unaofuatiliwa",
+    "dependency_frontend": "TODO: Machine-translated - Frontend",
+    "dependency_backend": "TODO: Machine-translated - API ya nyuma",
+    "dependency_rpc": "TODO: Machine-translated - Soroban RPC / Horizon",
+    "live_status_title": "TODO: Machine-translated - Hali ya moja kwa moja na historia ya matukio",
+    "live_status_description": "TODO: Machine-translated - Hali ya wakati halisi na muhtasari wa historia ya matukio ya ScoutOff hufuatiliwa kwenye ukurasa wetu wa nje wa hali, unaosasishwa kiotomatiki matatizo yanapogunduliwa na kutatuliwa.",
+    "live_status_cta": "TODO: Machine-translated - Tazama ukurasa wa hali ya moja kwa moja",
+    "incident_history_note": "TODO: Machine-translated - Matukio ya awali na utatuzi wake yameorodheshwa kwenye ukurasa wa hali hapo juu.",
+    "empty_title": "TODO: Machine-translated - Ukurasa wa hali bado haujawekwa",
+    "empty_description": "TODO: Machine-translated - Ukurasa wa hali ya moja kwa moja bado haujaunganishwa. Tafadhali angalia Discord ya ScoutOff kwa masasisho wakati huo huo."
   },
   "progress_levels": {
     "level0": "Haijathibitishwa",

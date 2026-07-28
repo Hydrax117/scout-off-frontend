@@ -5,12 +5,19 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useRequireWallet } from '@/hooks/useRequireWallet';
 import { usePlayer } from '@/hooks/usePlayer';
+import { useOnboardingTour } from '@/hooks/useOnboardingTour';
 import ProgressBar from '@/components/ProgressBar';
 import PlayerProfileForm from '@/components/player/PlayerProfileForm';
 import UpdateProfileForm from '@/components/player/UpdateProfileForm';
 import MilestoneTimeline from '@/components/player/MilestoneTimeline';
+import ArchiveProfileModal from '@/components/player/ArchiveProfileModal';
+import BackupWalletModal from '@/components/player/BackupWalletModal';
+import OnboardingTour from '@/components/ui/OnboardingTour';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
+import { playerTourSteps, PLAYER_TOUR_ID } from '@/lib/tourSteps';
 import type { Player, PlayerVitals } from '@/types';
+import PullToRefresh from '@/components/ui/PullToRefresh';
+import Spinner from '@/components/ui/Spinner';
 
 type TabId = 'register' | 'profile';
 
@@ -19,38 +26,13 @@ const TABS: { id: TabId; labelKey: string }[] = [
   { id: 'profile', labelKey: 'tab_profile' },
 ] as const;
 
-/** Spinner used in the pending-confirmation badge */
-function InlineSpinner() {
-  return (
-    <svg
-      className="animate-spin h-3 w-3"
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-      />
-    </svg>
-  );
-}
-
 function PlayerDashboardContent() {
   const { walletAddress: publicKey } = useRequireWallet();
-  const { player, loading, refetch, optimisticUpdate } = usePlayer(publicKey);
+  const { player, loading, isValidating, refetch, optimisticUpdate } = usePlayer(publicKey);
   const t = useTranslations('player_dashboard');
   const router = useRouter();
+
+  const tour = useOnboardingTour(PLAYER_TOUR_ID, playerTourSteps, publicKey ?? undefined);
 
   const [successPlayerId, setSuccessPlayerId] = useState<string | null>(null);
   const [redirectCountdown, setRedirectCountdown] = useState(3);
@@ -58,6 +40,8 @@ function PlayerDashboardContent() {
 
   /** True while we're waiting for on-chain confirmation of a just-registered profile */
   const [isPendingConfirmation, setIsPendingConfirmation] = useState(false);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [showBackupWalletModal, setShowBackupWalletModal] = useState(false);
 
   const isRegistered = !!player;
 
@@ -183,7 +167,19 @@ function PlayerDashboardContent() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto flex flex-col gap-8">
+    <PullToRefresh onRefresh={refetch} isLoading={isValidating}>
+      <OnboardingTour
+        isVisible={tour.isVisible}
+        currentStep={tour.currentStep}
+        currentStepData={tour.currentStepData}
+        steps={tour.steps}
+        onNext={tour.nextStep}
+        onPrev={tour.prevStep}
+        onDismiss={tour.dismissTour}
+        onSkip={tour.skipTour}
+        onComplete={tour.completeTour}
+      />
+      <div className="max-w-2xl mx-auto flex flex-col gap-8">
       <h1 className="text-3xl font-bold text-white">{t('title')}</h1>
 
       <div
@@ -225,6 +221,7 @@ function PlayerDashboardContent() {
         id="tabpanel-register"
         aria-labelledby="tab-register"
         hidden={activeTab !== 'register'}
+        data-tour="registration-section"
       >
         {activeTab === 'register' && (
           <div className="bg-brand-card border border-gray-800 rounded-xl p-6">
@@ -252,7 +249,7 @@ function PlayerDashboardContent() {
                 data-testid="pending-confirmation"
                 className="flex items-center gap-2 rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300"
               >
-                <InlineSpinner />
+                <Spinner size="sm" aria-hidden="true" />
                 <span>Confirming on-chainΓÇª This may take a few seconds.</span>
               </div>
             )}
@@ -299,23 +296,47 @@ function PlayerDashboardContent() {
                 <h2 className="text-xl font-semibold text-white">
                   {player.vitals.name}
                 </h2>
-                {isPendingConfirmation && (
-                  <span
-                    aria-hidden="true"
-                    className="inline-flex items-center gap-1.5 rounded-full border border-yellow-500/40 bg-yellow-500/10 px-2.5 py-1 text-xs font-medium text-yellow-300"
-                  >
-                    <InlineSpinner />
-                    Pending
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {player.archived && (
+                    <span className="inline-flex items-center rounded-full border border-yellow-500/40 bg-yellow-500/10 px-2.5 py-1 text-xs font-medium text-yellow-300">
+                      Archived
+                    </span>
+                  )}
+                  {isPendingConfirmation && (
+                    <span
+                      aria-hidden="true"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-yellow-500/40 bg-yellow-500/10 px-2.5 py-1 text-xs font-medium text-yellow-300"
+                    >
+                      <Spinner size="sm" aria-hidden="true" />
+                      Pending
+                    </span>
+                  )}
+                </div>
               </div>
               <p className="text-gray-400 text-sm">
                 {player.vitals.position} ┬╖ {player.vitals.region}
               </p>
-              <ProgressBar level={player.progressLevel} />
+              <div data-tour="progress-section">
+                <ProgressBar level={player.progressLevel} />
+              </div>
+              <button
+                onClick={() => setShowArchiveModal(true)}
+                className="text-xs text-gray-400 hover:text-gray-300 transition self-start px-2 py-1.5 rounded hover:bg-gray-800/50"
+              >
+                {player.archived ? 'Restore profile' : 'Archive profile'}
+              </button>
+              <button
+                onClick={() => setShowBackupWalletModal(true)}
+                className="text-xs text-gray-400 hover:text-gray-300 transition self-start px-2 py-1.5 rounded hover:bg-gray-800/50"
+              >
+                Recovery settings
+              </button>
             </div>
 
-            <div className="bg-brand-card border border-gray-800 rounded-xl p-6">
+            <div
+              className="bg-brand-card border border-gray-800 rounded-xl p-6"
+              data-tour="milestones-section"
+            >
               <h3 className="font-semibold text-white mb-6">
                 {t('milestones')}
               </h3>
@@ -333,7 +354,32 @@ function PlayerDashboardContent() {
           </div>
         ) : null}
       </div>
+
+      {isRegistered && player && (
+      <>
+      <ArchiveProfileModal
+        player={player}
+        isOpen={showArchiveModal}
+        onClose={() => setShowArchiveModal(false)}
+        onSuccess={(updated) => {
+          optimisticUpdate(updated);
+          refetch();
+        }}
+      />
+
+      <BackupWalletModal
+        player={player}
+        isOpen={showBackupWalletModal}
+        onClose={() => setShowBackupWalletModal(false)}
+        onSuccess={(updated) => {
+          optimisticUpdate(updated);
+          refetch();
+        }}
+      />
+      </>
+      )}
     </div>
+    </PullToRefresh>
   );
 }
 

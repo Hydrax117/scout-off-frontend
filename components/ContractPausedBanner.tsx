@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import Link from 'next/link';
 import useIsPaused from '@/hooks/useIsPaused';
 
 const SESSION_KEY = 'scoutoff:contractPausedDismissed';
@@ -9,6 +11,8 @@ const SUPPORT_URL = 'https://discord.gg/stellar';
 export default function ContractPausedBanner() {
   const paused = useIsPaused();
   const [dismissed, setDismissed] = useState(false);
+  const pathname = usePathname() ?? '/';
+  const locale = pathname.split('/')[1] || 'en';
 
   useEffect(() => {
     try {
@@ -54,7 +58,17 @@ export default function ContractPausedBanner() {
                 className="underline font-medium"
               >
                 Get updates on Discord
-              </a>
+              </a>{' '}
+              <span>
+                or{' '}
+                <Link
+                  href={`/${locale}/status`}
+                  className="underline font-medium"
+                >
+                  check status
+                </Link>
+                .
+              </span>
             </span>
           </div>
           <button

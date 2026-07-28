@@ -5,12 +5,8 @@ import api from '@/lib/api';
 import {
   useContractEvents,
   type FeedEvent as LiveFeedEvent,
+  type EventType,
 } from '@/hooks/useContractEvents';
-
-type EventType =
-  | 'player_registered'
-  | 'milestone_approved'
-  | 'trial_offer_logged';
 
 interface FeedEvent {
   id: string;
@@ -31,7 +27,11 @@ function timeAgo(ms: number) {
 const ICONS: Record<EventType, JSX.Element> = {
   player_registered: <span>👤</span>,
   milestone_approved: <span>🏆</span>,
+  milestone_revoked: <span>⚠️</span>,
+  scout_subscribed: <span>⭐</span>,
+  player_contacted: <span>📇</span>,
   trial_offer_logged: <span>📣</span>,
+  fees_withdrawn: <span>💰</span>,
 };
 
 function renderDescription(ev: FeedEvent) {
@@ -52,6 +52,38 @@ function renderDescription(ev: FeedEvent) {
     case 'trial_offer_logged': {
       const player = ev.payload?.playerName || ev.payload?.playerId || 'Player';
       return <>{player} received a trial offer</>;
+    }
+    case 'milestone_revoked': {
+      const player = ev.payload?.playerName || ev.payload?.playerId || 'Player';
+      const milestone =
+        ev.payload?.milestone || ev.payload?.milestoneId || 'a milestone';
+      return (
+        <>
+          {milestone} revoked for {player}
+        </>
+      );
+    }
+    case 'scout_subscribed': {
+      const who = ev.payload?.scoutName || ev.payload?.scoutId || 'A scout';
+      const tier = ev.payload?.tier;
+      return (
+        <>
+          {who} subscribed{tier ? ` (${tier})` : ''}
+        </>
+      );
+    }
+    case 'player_contacted': {
+      const who = ev.payload?.scoutName || ev.payload?.scoutId || 'A scout';
+      const player = ev.payload?.playerName || ev.payload?.playerId || 'a player';
+      return (
+        <>
+          {who} contacted {player}
+        </>
+      );
+    }
+    case 'fees_withdrawn': {
+      const amount = ev.payload?.amountXlm || ev.payload?.amount;
+      return <>Platform fees withdrawn{amount ? ` (${amount} XLM)` : ''}</>;
     }
     default:
       return <>Event</>;

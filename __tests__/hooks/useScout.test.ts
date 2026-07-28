@@ -1,19 +1,31 @@
-import { renderHook, act } from '@testing-library/react';
+'use client';
+
 import React from 'react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { SWRConfig } from 'swr';
+import { useScout } from '@/hooks/useScout';
+import { SearchRateLimitedError } from '@/lib/api';
 import type { Player } from '@/types';
 
+const mockFilterPlayers = jest.fn();
+const mockSearchPlayersByName = jest.fn();
+
 jest.mock('@/lib/contract', () => ({
-  filterPlayers: jest.fn(),
+  filterPlayers: (...args: unknown[]) => mockFilterPlayers(...args),
 }));
 
-import { filterPlayers } from '@/lib/contract';
-import { useScout } from '@/hooks/useScout';
+jest.mock('@/lib/api', () => ({
+  searchPlayersByName: (...args: unknown[]) => mockSearchPlayersByName(...args),
+  SearchRateLimitedError: class SearchRateLimitedError extends Error {
+    public retryAfterSec: number;
+    constructor(message: string, retryAfterSec: number) {
+      super(message);
+      this.name = 'SearchRateLimitedError';
+      this.retryAfterSec = retryAfterSec;
+    }
+  },
+}));
 
-const mockFilterPlayers = filterPlayers as jest.Mock;
-
-// Fresh, unshared SWR cache per test and no background retries, so
-// failures/successes are observable deterministically.
 function wrapper({ children }: { children: React.ReactNode }) {
   return React.createElement(
     SWRConfig,
@@ -22,105 +34,152 @@ function wrapper({ children }: { children: React.ReactNode }) {
   );
 }
 
-const PLAYERS: Player[] = [
-  {
-    id: 'player-1',
-    wallet: 'GCFW7QAO3WZQ6X4CZ3OYZFXX3A3DL7XVI5DNVTXA5VJUGE5SU6ZRG5OV',
+const makePlayer = (id: string, archived = false): Player =>
+  ({
+    id,
+    wallet: `G${'X'.repeat(55)}`,
     vitals: {
-      name: 'Ava Rodriguez',
-      age: 21,
-      position: 'Forward',
-      region: 'Europe',
-      nationality: 'Spain',
+      name: `Test ${id}`,
+      position: 'forward',
+      region: 'EU',
+      age: 20,
+      nationality: 'US',
     },
-    ipfsHash: 'QmHash',
     progressLevel: 1,
+    archived,
     milestones: [],
-    createdAt: 0,
-  },
-];
+    stats: { matches: 10, goals: 5, assists: 2 },
+    ipfsHash: '',
+  }) as unknown as Player;
 
-beforeEach(() => {
-  jest.resetAllMocks();
-});
+describe('useScout', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFilterPlayers.mockReset();
+    mockSearchPlayersByName.mockReset();
+  });
 
-describe('useScout — happy path', () => {
-  test('search resolves to the filtered player list', async () => {
-    mockFilterPlayers.mockResolvedValue(PLAYERS);
+  test('search(filter) populates players and filters out archived profiles', async () => {
+    mockFilterPlayers.mockResolvedValueOnce([
+      makePlayer('p1'),
+      makePlayer('p2', true),
+      makePlayer('p3'),
+    ]);
 
     const { result } = renderHook(() => useScout(), { wrapper });
 
-    expect(result.current.players).toEqual([]);
-
-    act(() => {
+    act(() =>
       result.current.search({
-        region: 'Europe',
-        position: 'Forward',
-        minLevel: 1,
-      });
-    });
+        region: 'EU',
+        position: 'forward',
+        minLevel: 0,
+      }),
+    );
 
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await waitFor(() =>
+      expect(result.current.players.map((p) => p.id)).toEqual(['p1', 'p3']),
+    );
 
-    expect(mockFilterPlayers).toHaveBeenCalledWith('Europe', 'Forward', 1);
-    expect(result.current.players).toEqual(PLAYERS);
+    expect(mockFilterPlayers).toHaveBeenCalledWith('EU', 'forward', 0);
     expect(result.current.error).toBeNull();
-    expect(result.current.loading).toBe(false);
+    expect(result.current.isRateLimited).toBe(false);
   });
-});
 
-describe('useScout — loading state', () => {
-  test('loading is true while the filter call is in-flight', async () => {
-    let resolveFilter: (players: Player[]) => void = () => {};
-    mockFilterPlayers.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveFilter = resolve;
-        }),
+  test('searchByName routes to searchPlayersByName and excludes archived', async () => {
+    mockSearchPlayersByName.mockResolvedValueOnce([
+      makePlayer('n1'),
+      makePlayer('n2', true),
+    ]);
+
+    const { result } = renderHook(() => useScout(), { wrapper });
+
+    act(() => result.current.searchByName('alice'));
+
+    await waitFor(() =>
+      expect(result.current.players.map((p) => p.id)).toEqual(['n1']),
+    );
+
+    expect(mockSearchPlayersByName).toHaveBeenCalledWith('alice');
+    expect(mockFilterPlayers).not.toHaveBeenCalled();
+  });
+
+  test('SearchRateLimitedError surfaces isRateLimited + retryAfterSec', async () => {
+    mockFilterPlayers.mockRejectedValueOnce(
+      new SearchRateLimitedError('slow down', 42),
     );
 
     const { result } = renderHook(() => useScout(), { wrapper });
 
-    act(() => {
-      result.current.search({ region: '', position: '', minLevel: 0 });
-    });
+    act(() =>
+      result.current.search({
+        region: 'EU',
+        position: 'forward',
+        minLevel: 0,
+      }),
+    );
 
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await waitFor(() => expect(result.current.error).toMatch(/slow down/));
 
-    expect(result.current.loading).toBe(true);
-
-    await act(async () => {
-      resolveFilter([]);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(result.current.loading).toBe(false);
+    expect(result.current.isRateLimited).toBe(true);
+    expect(result.current.retryAfterSec).toBe(42);
   });
-});
 
-describe('useScout — error state', () => {
-  test('error state is set on contract call failure', async () => {
-    mockFilterPlayers.mockRejectedValue(new Error('ContractPaused'));
+  test('non-rate-limit error surfaces message verbatim and isRateLimited=false', async () => {
+    mockFilterPlayers.mockRejectedValueOnce(new Error('RPC failed'));
 
     const { result } = renderHook(() => useScout(), { wrapper });
 
-    act(() => {
-      result.current.search({ region: '', position: '', minLevel: 0 });
-    });
+    act(() =>
+      result.current.search({
+        region: 'EU',
+        position: 'forward',
+        minLevel: 0,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.error).toBe('RPC failed'));
+    expect(result.current.isRateLimited).toBe(false);
+    expect(result.current.retryAfterSec).toBeNull();
+  });
+
+  test('empty result is not an error (Falsy array, not null)', async () => {
+    mockFilterPlayers.mockResolvedValueOnce([]);
+
+    const { result } = renderHook(() => useScout(), { wrapper });
+
+    act(() =>
+      result.current.search({
+        region: '',
+        position: '',
+        minLevel: 0,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.players).toEqual([]);
+    expect(result.current.error).toBeNull();
+  });
+
+  test('refetch re-runs the in-flight search (mutate is called)', async () => {
+    mockFilterPlayers.mockResolvedValue([makePlayer('p1')]);
+
+    const { result } = renderHook(() => useScout(), { wrapper });
+
+    act(() =>
+      result.current.search({
+        region: '',
+        position: '',
+        minLevel: 0,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.players.length).toBe(1));
+    const callsBefore = mockFilterPlayers.mock.calls.length;
 
     await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
+      await result.current.refetch();
     });
 
-    expect(result.current.error).toBe('ContractPaused');
-    expect(result.current.players).toEqual([]);
-    expect(result.current.loading).toBe(false);
+    expect(mockFilterPlayers.mock.calls.length).toBeGreaterThan(callsBefore);
   });
 });

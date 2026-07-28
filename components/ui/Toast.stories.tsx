@@ -66,6 +66,29 @@ export const Warning: Story = {
   ),
 };
 
+export const WithUndoAction: Story = {
+  render: () => {
+    function Demo() {
+      const { show } = useToast();
+      return (
+        <Button
+          onClick={() =>
+            show({
+              message: 'Removed from watchlist.',
+              variant: 'info',
+              duration: 5000,
+              action: { label: 'Undo', onClick: () => alert('Undone!') },
+            })
+          }
+        >
+          Show toast with Undo
+        </Button>
+      );
+    }
+    return <Demo />;
+  },
+};
+
 export const AllVariants: Story = {
   name: 'All Variants (trigger all)',
   render: () => {

@@ -26,20 +26,25 @@ Stellar Network
     ▼
 ┌─────────────────────────────┐
 │  Event Listener / Poller    │  Polls ledger-by-ledger; tracks last
-│  (ledgerTracker.ts)         │  indexed sequence + network head
+│  (eventPoller.ts)           │  indexed sequence + network head
+│  updates ledgerTracker.ts   │  via ledgerTracker.ts
 └────────────┬────────────────┘
              │  decoded EventType
-             ▼
-┌─────────────────────────────┐
-│  IndexerMetrics             │  In-process counters, latency EMA,
-│  (metrics/IndexerMetrics.ts)│  sliding-window rates, health flag
-└────────────┬────────────────┘
-             │
-             ▼
-┌─────────────────────────────┐
-│  HTTP Server (server.ts)    │  GET /health  GET /metrics
-│  Port: 3001 (default)       │
-└─────────────────────────────┘
+             ├─────────────────────────────┐
+             ▼                             ▼
+┌─────────────────────────────┐  ┌─────────────────────────────┐
+│  IndexerMetrics             │  │  EventStore                 │
+│  (metrics/IndexerMetrics.ts)│  │  (db/eventStore.ts)         │
+│  In-process counters,       │  │  SQLite-backed persistence  │
+│  latency EMA, health flag   │  │  for querying event history │
+└────────────┬────────────────┘  └────────────┬────────────────┘
+             │                                 │
+             ▼                                 ▼
+┌───────────────────────────────────────────────────────────────┐
+│  HTTP Server (server.ts)                                       │
+│  GET /health  GET /metrics  GET /events  GET /players/:id/events│
+│  Port: 3001 (default)                                           │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 Key design decisions:
@@ -48,6 +53,7 @@ Key design decisions:
 - **Singleton `IndexerMetrics`** — safe to import from multiple modules; one registry per process.
 - **Fixed-size sliding window** (500 entries, 60 s) bounds memory growth while still producing meaningful rate and p95 latency values.
 - **Ledger lag tracking** — `ledgerTracker` independently tracks the network head vs. last indexed ledger so the `/health` endpoint can report degraded state when the indexer falls behind.
+- **`better-sqlite3` for event persistence** — a single embedded file database, not a separate DB server to run/deploy alongside a small indexer process. Synchronous API keeps the poll loop simple (no interleaved async writes to reason about).
 
 ---
 
@@ -59,13 +65,11 @@ Key design decisions:
 - Access to a Stellar Soroban RPC endpoint (testnet or mainnet)
 - The deployed ScoutOff contract address
 
+This package is an npm workspace (declared in the repo root's `package.json`), so a single `npm install` at the repo root installs everything needed for both the frontend app and this package — there's no separate install step required here.
+
 ### Install
 
 ```bash
-# From the repo root
-npm install
-
-# Or from this package directory
 cd packages/indexer
 npm install
 ```
@@ -73,26 +77,38 @@ npm install
 ### Build
 
 ```bash
+# From the repo root
+npm run build --workspace=packages/indexer
+
+# Or from this package directory
 cd packages/indexer
-npx tsc
+npm run build
 # Output written to dist/
 ```
 
 ### Run
 
 ```bash
+cd packages/indexer
+
 # Default port 3001
-node dist/server.js
+npm start
+# equivalent to: node dist/index.js
 
 # Override port
-PORT=9090 node dist/server.js
+PORT=9090 npm start
 ```
 
-### Development (watch mode)
+### Docker
 
 ```bash
-npx ts-node-dev src/server.ts
+docker build -t scoutoff-indexer packages/indexer
+docker run -p 3001:3001 scoutoff-indexer
 ```
+
+Or, as part of the full local stack (frontend + indexer + mocked RPC/API), see the "Docker Compose Quick Start" section in [DEVELOPMENT.md](../../DEVELOPMENT.md).
+
+> **Note:** `package.json`/`tsconfig.json` here are a minimal scaffold added to make this package buildable/containerizable (see [#675](https://github.com/scout-off/scout-off-frontend/issues/675)). A fuller npm-package setup (proper `exports`, publishing config, a watch-mode dev script) is tracked separately as a companion packaging issue.
 
 ---
 
@@ -107,6 +123,7 @@ npx ts-node-dev src/server.ts
 | `POLL_INTERVAL_MS`   | No       | `5000`             | How often (ms) to poll for new ledgers                           |
 | `START_LEDGER`       | No       | `0`                | Ledger sequence to start indexing from (0 = latest)              |
 | `LOG_LEVEL`          | No       | `info`             | Log verbosity: `debug`, `info`, `warn`, `error`                  |
+| `INDEXER_DB_PATH`    | No       | `./data/indexer.db` (`:memory:` when `NODE_ENV=test`) | Path to the SQLite event store file          |
 
 Copy `.env.example` in the repo root and fill in the required values:
 
@@ -119,6 +136,12 @@ cp ../../.env.example ../../.env.local
 ## Indexed Event Schema
 
 The indexer processes seven event types emitted by the ScoutOff contract. All events carry a `ledger` sequence number and `timestamp` (Unix seconds) sourced from the Soroban event envelope.
+
+`eventPoller.ts`'s `decodeEvent` assumes the common Soroban convention —
+`topic[0]` is a Symbol equal to the event name, `value` is a Map/struct
+holding the other fields below — since no Rust contract source lives in
+this repository to confirm the wire format against. If the deployed
+contract encodes events differently, only `decodeEvent` needs to change.
 
 ### `player_registered`
 
@@ -272,9 +295,72 @@ const metrics = IndexerMetrics.getInstance(mockNow);
 
 ## Querying Indexed Data
 
+### Storage schema
+
+`db/eventStore.ts` persists every successfully decoded event into a single SQLite `events` table:
+
+| Column        | Type      | Description                                                          |
+| ------------- | --------- | --------------------------------------------------------------------- |
+| `id`          | INTEGER   | Autoincrement primary key                                             |
+| `event_type`  | TEXT      | One of the 7 documented event types                                   |
+| `player_id`   | TEXT      | `data.player_id` when present (NULL otherwise) — indexed              |
+| `scout`       | TEXT      | `data.scout` when present (NULL otherwise)                            |
+| `validator`   | TEXT      | `data.validator` when present (NULL otherwise)                        |
+| `ledger`      | INTEGER   | Ledger sequence — indexed, used for ordering and pagination           |
+| `timestamp`   | INTEGER   | Unix seconds, from the event envelope                                 |
+| `data`        | TEXT      | Full decoded event payload as JSON (all type-specific fields live here) |
+| `inserted_at` | INTEGER   | Unix ms when the row was written, for operational debugging           |
+
+Design rationale: `event_type`, `player_id`, `scout`, `validator`, and `ledger` are the fields queries actually filter or sort by, so they get real indexed columns (`idx_events_player_ledger`, `idx_events_type_ledger`, `idx_events_ledger`). Everything else — `milestone_id`, `description`, `new_level`, `fee_xlm`, `tier`, `expiry`, `details`, `amount_xlm`, `to`, `revoked_by`, `wallet`, `ipfs_hash` — stays in the `data` JSON blob rather than becoming 15+ mostly-NULL columns shared across 7 unrelated event shapes. If a second use case needs to filter/sort on one of those fields, promote it to a real column then (see the companion issue's guidance to scope this conservatively).
+
+This schema is enough to reconstruct, per player: the current approved-milestone set (apply `milestone_approved` in ledger order, remove on a later `milestone_revoked` for the same `milestone_id` — see `lib/indexerClient.ts`'s `getMilestoneHistoryFromIndexer` on the frontend), subscription history (`scout_subscribed` events by `scout`), and contact-unlock history (`player_contacted` events by `player_id` or `scout`).
+
 ### HTTP API
 
-The indexer exposes two endpoints from `server.ts`:
+The indexer exposes four endpoints from `server.ts`:
+
+#### `GET /events`
+
+Query events across all players, optionally filtered.
+
+| Query param | Required | Description                                                    |
+| ----------- | -------- | ---------------------------------------------------------------- |
+| `type`      | No       | One of the 7 documented event types. `400` if unrecognized.      |
+| `player_id` | No       | Not applicable here — use `/players/:id/events` instead.         |
+| `limit`     | No       | Page size, default 50, capped at 200. `400` if not a positive integer. |
+| `before`    | No       | Keyset cursor: only returns events with `ledger` strictly less than this value. Pass the previous page's `nextCursor`. |
+
+```bash
+curl 'http://localhost:3001/events?type=milestone_approved&limit=20'
+```
+
+```json
+{
+  "events": [
+    {
+      "id": 42,
+      "type": "milestone_approved",
+      "playerId": "player-1",
+      "scout": null,
+      "validator": "GVALIDATOR...",
+      "ledger": 54321,
+      "timestamp": 1700000000,
+      "data": { "player_id": "player-1", "milestone_id": "m1", "description": "Scored 20 goals", "validator": "GVALIDATOR...", "new_level": 2, "ledger": 54321, "timestamp": 1700000000 }
+    }
+  ],
+  "nextCursor": 54100
+}
+```
+
+`nextCursor` is `null` once there are no more matching events older than the current page.
+
+#### `GET /players/:id/events`
+
+Same filtering/pagination as `GET /events`, scoped to one player's events (matches on the `player_id` column).
+
+```bash
+curl 'http://localhost:3001/players/player-1/events?limit=50'
+```
 
 #### `GET /health`
 
@@ -379,5 +465,13 @@ npx jest packages/indexer --coverage
 
 Test files live in:
 
-- `src/__tests__/server.test.ts` — HTTP server endpoint tests
+- `src/__tests__/server.test.ts` — HTTP server endpoint tests, including `/events` and `/players/:id/events`
+- `src/__tests__/eventPoller.test.ts` — event decoding, poll-cycle ledger advancement, RPC/decode error handling, and event persistence, against a mocked RPC client and an in-memory `EventStore`
+- `src/db/__tests__/eventStore.test.ts` — `EventStore` unit tests (schema, insert, type/player filters, ordering, keyset pagination)
 - `src/metrics/__tests__/` — `IndexerMetrics` unit tests (singleton, counters, sliding window, p95, health flag)
+
+---
+
+## Frontend Integration
+
+`lib/indexerClient.ts` (root of the frontend app, not this package) is the reference client for this query API, configured via `NEXT_PUBLIC_INDEXER_API_URL` (default `http://localhost:3001`). `hooks/useMilestoneHistory.ts` reads a player's milestone history from `GET /players/:id/events` first, falling back to a direct Soroban contract simulation only if the indexer is unreachable — the intended data path this package exists to serve, and the pattern future hooks (activity feeds, subscription history) should follow instead of calling Horizon/Soroban RPC directly. See `lib/indexerClient.ts`'s `getMilestoneHistoryFromIndexer` for the event-log-to-milestone-list reconstruction.

@@ -2,7 +2,10 @@
 import { POST } from '../../../../app/api/auth/sep10/route';
 import { NextRequest } from 'next/server';
 
-// Mock stellar-sdk so tests don't need real Stellar keys or network access
+// Mock stellar-sdk so tests don't need real Stellar keys or network access.
+// Keypair.fromSecret is mocked to return the secret itself as the "public
+// key", so route.ts's `Keypair.fromSecret(serverKey).publicKey()` resolves
+// to `process.env.SEP10_SERVER_KEY` for assertion purposes below.
 jest.mock('@stellar/stellar-sdk', () => ({
   WebAuth: {
     verifyChallengeTxSigners: jest.fn(),
@@ -10,6 +13,11 @@ jest.mock('@stellar/stellar-sdk', () => ({
   Networks: {
     TESTNET: 'Test SDF Network ; September 2015',
     PUBLIC: 'Public Global Stellar Network ; September 2015',
+  },
+  Keypair: {
+    fromSecret: jest.fn((secret: string) => ({
+      publicKey: () => secret,
+    })),
   },
 }));
 
@@ -139,18 +147,18 @@ describe('POST /api/auth/sep10 — malformed request body', () => {
   });
 });
 
-describe('POST /api/auth/sep10 — origin fallback to Host header', () => {
-  test('allows request when NEXT_PUBLIC_BASE_URL is unset and Origin matches Host', async () => {
+describe('POST /api/auth/sep10 — SEP10_ALLOWED_ORIGINS allow-list', () => {
+  test('allows request when Origin matches an entry in SEP10_ALLOWED_ORIGINS', async () => {
     delete process.env.NEXT_PUBLIC_BASE_URL;
+    process.env.SEP10_ALLOWED_ORIGINS =
+      'https://scoutoff.app,https://www.scoutoff.app';
     mockVerify.mockReturnValueOnce(undefined);
 
     const req = new NextRequest('http://localhost:3000/api/auth/sep10', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        origin: 'http://localhost:3000',
-        host: 'localhost:3000',
-        // no x-forwarded-proto → falls back to "http"
+        origin: 'https://www.scoutoff.app',
       },
       body: JSON.stringify({
         signedXdr: SIGNED_XDR,
@@ -160,17 +168,19 @@ describe('POST /api/auth/sep10 — origin fallback to Host header', () => {
 
     const res = await POST(req);
     expect(res.status).toBe(200);
+
+    delete process.env.SEP10_ALLOWED_ORIGINS;
   });
 
-  test('blocks request when NEXT_PUBLIC_BASE_URL is unset and Origin mismatches Host', async () => {
+  test('blocks request when Origin is not in SEP10_ALLOWED_ORIGINS', async () => {
     delete process.env.NEXT_PUBLIC_BASE_URL;
+    process.env.SEP10_ALLOWED_ORIGINS = 'https://scoutoff.app';
 
     const req = new NextRequest('http://localhost:3000/api/auth/sep10', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        origin: 'https://attacker.com',
-        host: 'localhost:3000',
+        origin: 'https://evil.com',
       },
       body: JSON.stringify({
         signedXdr: SIGNED_XDR,
@@ -180,6 +190,123 @@ describe('POST /api/auth/sep10 — origin fallback to Host header', () => {
 
     const res = await POST(req);
     expect(res.status).toBe(403);
+    expect(mockVerify).not.toHaveBeenCalled();
+
+    delete process.env.SEP10_ALLOWED_ORIGINS;
+  });
+});
+
+describe('POST /api/auth/sep10 — forged Host header can no longer bypass origin checks', () => {
+  test('rejects a request whose Host/X-Forwarded-Proto headers are crafted to match Origin, when neither is in the allow-list', async () => {
+    // Regression test for #659: previously, when NEXT_PUBLIC_BASE_URL was
+    // unset, the "allowed" origin was derived from the request's own Host /
+    // X-Forwarded-Proto headers — both fully attacker-controlled — making
+    // `origin === allowed` trivially satisfiable by any non-browser client
+    // that sets Host and X-Forwarded-Proto to match its own forged Origin.
+    delete process.env.NEXT_PUBLIC_BASE_URL;
+    delete process.env.SEP10_ALLOWED_ORIGINS;
+    process.env.NEXT_PUBLIC_DOMAIN = 'localhost:3000';
+
+    const forgedOrigin = 'https://attacker.example';
+    const req = new NextRequest('http://localhost:3000/api/auth/sep10', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: forgedOrigin,
+        host: 'attacker.example',
+        'x-forwarded-proto': 'https',
+      },
+      body: JSON.stringify({
+        signedXdr: SIGNED_XDR,
+        publicKey: VALID_PUBLIC_KEY,
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body).toEqual({ error: 'Forbidden' });
+    expect(mockVerify).not.toHaveBeenCalled();
+
+    delete process.env.NEXT_PUBLIC_DOMAIN;
+  });
+});
+
+describe('POST /api/auth/sep10 — local dev fallback (NODE_ENV !== production)', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  afterEach(() => {
+    Object.defineProperty(process.env, 'NODE_ENV', {
+      value: originalNodeEnv,
+      configurable: true,
+    });
+  });
+
+  test('allows http://<NEXT_PUBLIC_DOMAIN> by default when no allow-list is configured', async () => {
+    delete process.env.NEXT_PUBLIC_BASE_URL;
+    delete process.env.SEP10_ALLOWED_ORIGINS;
+    process.env.NEXT_PUBLIC_DOMAIN = 'localhost:3000';
+    Object.defineProperty(process.env, 'NODE_ENV', {
+      value: 'test',
+      configurable: true,
+    });
+    mockVerify.mockReturnValueOnce(undefined);
+
+    const req = new NextRequest('http://localhost:3000/api/auth/sep10', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'http://localhost:3000',
+      },
+      body: JSON.stringify({
+        signedXdr: SIGNED_XDR,
+        publicKey: VALID_PUBLIC_KEY,
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+
+    delete process.env.NEXT_PUBLIC_DOMAIN;
+  });
+});
+
+describe('POST /api/auth/sep10 — production fails closed with no allow-list configured', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  afterEach(() => {
+    Object.defineProperty(process.env, 'NODE_ENV', {
+      value: originalNodeEnv,
+      configurable: true,
+    });
+  });
+
+  test('returns 403 in production when neither SEP10_ALLOWED_ORIGINS nor NEXT_PUBLIC_BASE_URL is set', async () => {
+    delete process.env.NEXT_PUBLIC_BASE_URL;
+    delete process.env.SEP10_ALLOWED_ORIGINS;
+    Object.defineProperty(process.env, 'NODE_ENV', {
+      value: 'production',
+      configurable: true,
+    });
+
+    const req = new NextRequest('http://localhost:3000/api/auth/sep10', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'https://scoutoff.app',
+        host: 'scoutoff.app',
+        'x-forwarded-proto': 'https',
+      },
+      body: JSON.stringify({
+        signedXdr: SIGNED_XDR,
+        publicKey: VALID_PUBLIC_KEY,
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body).toEqual({ error: 'Forbidden' });
     expect(mockVerify).not.toHaveBeenCalled();
   });
 });

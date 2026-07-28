@@ -1,16 +1,19 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 import { useRequireWallet } from '@/hooks/useRequireWallet';
 import { checkIsValidator } from '@/lib/contract';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import EmptyState from '@/components/ui/EmptyState';
 import ValidatorPlayerSearch from '@/components/validator/ValidatorPlayerSearch';
+import ApprovedPlayersRoster from '@/components/validator/ApprovedPlayersRoster';
 import ApproveForm from '@/components/validator/ApproveForm';
 import RevokeForm from '@/components/validator/RevokeForm';
 import type { Player } from '@/types';
 
 function ValidatorDashboardContent() {
   const { walletAddress: publicKey } = useRequireWallet();
+  const t = useTranslations('validator');
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -42,10 +45,8 @@ function ValidatorDashboardContent() {
   if (authChecking) {
     return (
       <div className="flex flex-col gap-8">
-        <h1 className="text-3xl font-bold text-white">Validator Dashboard</h1>
-        <p className="text-gray-400 animate-pulse">
-          Verifying validator status…
-        </p>
+        <h1 className="text-3xl font-bold text-white">{t('title')}</h1>
+        <p className="text-gray-400 animate-pulse">{t('verifying')}</p>
       </div>
     );
   }
@@ -54,10 +55,10 @@ function ValidatorDashboardContent() {
   if (!isAuthorized) {
     return (
       <div className="flex flex-col gap-8">
-        <h1 className="text-3xl font-bold text-white">Validator Dashboard</h1>
+        <h1 className="text-3xl font-bold text-white">{t('title')}</h1>
         <EmptyState
-          title="Validator Access Only"
-          description="Your wallet is not registered as an approved validator. Contact an administrator to request validator access."
+          title={t('access_only_title')}
+          description={t('access_only_description')}
         />
       </div>
     );
@@ -65,13 +66,18 @@ function ValidatorDashboardContent() {
 
   return (
     <div className="flex flex-col gap-8">
-      <h1 className="text-3xl font-bold text-white">Validator Dashboard</h1>
+      <h1 className="text-3xl font-bold text-white">{t('title')}</h1>
 
       {/* Player search section */}
       <div className="bg-brand-card border border-gray-800 rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-white mb-4">Find a Player</h2>
+        <h2 className="text-lg font-semibold text-white mb-4">
+          {t('find_player')}
+        </h2>
         <ValidatorPlayerSearch onSelect={handlePlayerSelected} />
       </div>
+
+      {/* Approved players roster */}
+      <ApprovedPlayersRoster validatorAddress={publicKey} />
 
       {/* Selected player section */}
       {selectedPlayer && (

@@ -13,9 +13,29 @@ import {
 
 type ToastVariant = 'success' | 'error' | 'info' | 'warning';
 
+/**
+ * Sentinel CustomEvent types the WalletContext dispatches when a stored
+ * session can't be rehydrated on mount. The ToastProvider listens for these
+ * and surfaces a non-blocking toast — see Issue #13.
+ */
+export const SESSION_EXPIRED_EVENT = 'scoutoff:session-expired';
+
+interface SessionExpiredDetail {
+  message: string;
+}
+
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface ToastOptions {
   message: string;
   variant: ToastVariant;
+  /** Overrides the default 4000ms auto-dismiss timeout. */
+  duration?: number;
+  /** Optional secondary action (e.g. "Undo") rendered alongside the dismiss button. */
+  action?: ToastAction;
 }
 
 interface ToastItem extends ToastOptions {
@@ -62,6 +82,24 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const toastTimers = useRef<Record<string, number>>({});
 
+  // Listen for non-React signals (e.g. WalletContext's session-expired
+  // CustomEvent, see Issue #13) and surface them as toasts. The provider
+  // owns the handler so callers don't need to thread `useToast` through
+  // every layer of the layout.
+  useEffect(() => {
+    function onSessionExpired(e: Event) {
+      const detail = (e as CustomEvent<SessionExpiredDetail>).detail;
+      const message =
+        detail?.message ??
+        'Your session expired. Please reconnect your wallet to continue.';
+      show({ message, variant: 'warning' });
+    }
+    window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+    return () =>
+      window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const removeToast = useCallback((id: string) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
     const timeoutId = toastTimers.current[id];
@@ -90,7 +128,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
       toastTimers.current[id] = window.setTimeout(() => {
         removeToast(id);
-      }, 4000);
+      }, toast.duration ?? 4000);
     },
     [removeToast],
   );
@@ -109,9 +147,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={contextValue}>
       {children}
+      {/*
+        Per Issue #28:
+          • The container has aria-live="polite" + aria-atomic="true" so all
+            incoming toasts are announced as a single, complete region update.
+          • Each <div role="status"> per toast carries its own aria-label =
+            "<variant>: <message>", giving screen-reader users a unique,
+            self-describing announcement.
+          • Error toasts additionally flip aria-live to "assertive" so they
+            interrupt the current reading (matching ToastProvider convention
+            for transient failures that need user attention now).
+      */}
       <div
         aria-live="polite"
-        aria-atomic="false"
+        aria-atomic="true"
         className="pointer-events-none fixed inset-x-0 bottom-5 z-50 flex justify-end px-4 sm:px-6"
       >
         <div className="flex w-full max-w-sm flex-col gap-3">
@@ -120,9 +169,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             return (
               <div
                 key={toast.id}
-                role="alert"
-                aria-live="polite"
+                role={toast.variant === 'error' || toast.variant === 'warning' ? 'alert' : 'status'}
+                aria-live={toast.variant === 'error' ? 'assertive' : 'polite'}
                 aria-atomic="true"
+                aria-label={`${meta.label} notification: ${toast.message}`}
                 className={`pointer-events-auto flex items-start gap-3 rounded-xl border border-gray-800 border-l-4 bg-brand-card p-4 shadow-2xl ${meta.border}`}
               >
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/5">
@@ -140,10 +190,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   <p className="font-semibold text-white">{meta.label}</p>
                   <p>{toast.message}</p>
                 </div>
+                {toast.action && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toast.action?.onClick();
+                      removeToast(toast.id);
+                    }}
+                    className="ml-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-1.5 text-sm font-medium text-brand-green transition hover:bg-gray-800"
+                  >
+                    {toast.action.label}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => removeToast(toast.id)}
-                  aria-label="Dismiss notification"
+                  aria-label="Close notification"
                   className="ml-1 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-700 bg-gray-900 text-gray-400 transition hover:bg-gray-800 hover:text-white"
                 >
                   <span aria-hidden="true">×</span>

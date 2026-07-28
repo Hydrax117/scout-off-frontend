@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { sanitize } from '@/lib/sanitize';
 import { useWallet } from '@/hooks/useWallet';
+import { usePlayer } from '@/hooks/usePlayer';
 import useIsPaused from '@/hooks/useIsPaused';
 import { extractContractErrorKey } from '@/lib/contractErrorMessage';
 import { buildRegisterPlayer } from '@/lib/contract';
@@ -110,6 +111,7 @@ export default function PlayerOnboardingWizard({
   onSuccess,
 }: PlayerOnboardingWizardProps) {
   const { publicKey, signAndSubmit } = useWallet();
+  const { player, loading: playerLoading } = usePlayer(publicKey);
   const isPaused = useIsPaused();
   const tErrors = useTranslations('contractErrors');
 
@@ -339,6 +341,19 @@ export default function PlayerOnboardingWizard({
   const shortCid = data.ipfsHash
     ? `${data.ipfsHash.slice(0, 8)}…${data.ipfsHash.slice(-6)}`
     : '';
+
+  if (!playerLoading && player) {
+    return (
+      <div
+        role="alert"
+        className="rounded-md border border-yellow-500 bg-yellow-950/30 p-4 text-center"
+      >
+        <p className="text-sm text-yellow-400 font-medium">
+          A profile already exists for this wallet. You cannot register again.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">

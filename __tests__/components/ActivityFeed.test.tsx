@@ -72,6 +72,52 @@ describe('ActivityFeed', () => {
     });
   });
 
+  it('renders labels for the 4 newly-supported event types', async () => {
+    const now = Date.now();
+    const events = [
+      {
+        id: 'evt-revoked',
+        type: 'milestone_revoked',
+        createdAt: Math.floor(now / 1000) - 60,
+        payload: { playerName: 'Revoked Player', milestone: 'Speed Drill' },
+      },
+      {
+        id: 'evt-subscribed',
+        type: 'scout_subscribed',
+        createdAt: Math.floor(now / 1000) - 90,
+        payload: { scoutName: 'Jane', tier: 'pro' },
+      },
+      {
+        id: 'evt-contacted',
+        type: 'player_contacted',
+        createdAt: Math.floor(now / 1000) - 120,
+        payload: { scoutName: 'Jane', playerName: 'Contacted Player' },
+      },
+      {
+        id: 'evt-withdrawn',
+        type: 'fees_withdrawn',
+        createdAt: Math.floor(now / 1000) - 150,
+        payload: { amountXlm: '10' },
+      },
+    ];
+    mockGet.mockResolvedValue({ data: events });
+
+    render(<ActivityFeed />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Speed Drill revoked for Revoked Player'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Jane subscribed (pro)')).toBeInTheDocument();
+      expect(
+        screen.getByText('Jane contacted Contacted Player'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Platform fees withdrawn (10 XLM)'),
+      ).toBeInTheDocument();
+    });
+  });
+
   it('shows timestamps in a human-readable format', async () => {
     // Freeze the clock so the "Xs ago" label can't drift while the
     // component fetches/renders under CI load.

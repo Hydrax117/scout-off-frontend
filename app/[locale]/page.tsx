@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 import {
   MessageCircle,
   BookOpen,
@@ -6,7 +7,9 @@ import {
   ShieldCheck,
   Users,
   TrendingUp,
+  Radio,
 } from 'lucide-react';
+import RedirectReasonBanner from '@/components/ui/RedirectReasonBanner';
 
 // ── Feature card data ─────────────────────────────────────────────────────────
 const features = [
@@ -36,9 +39,23 @@ const features = [
   },
 ];
 
-export default function HomePage() {
+export default async function HomePage({
+  params,
+  searchParams,
+}: {
+  params: { locale: string };
+  searchParams?: { reason?: string | string[] };
+}) {
+  const locale = params.locale;
+  const t = await getTranslations({ locale, namespace: 'footer' });
+
   return (
     <div className="flex flex-col gap-24 pb-20">
+      {searchParams?.reason && (
+        <div className="px-4">
+          <RedirectReasonBanner reason={searchParams.reason} />
+        </div>
+      )}
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section
         className="relative flex flex-col items-center text-center gap-8 py-24 px-4 overflow-hidden rounded-2xl"
@@ -156,6 +173,20 @@ export default function HomePage() {
               <BookOpen size={15} />
               README
             </a>
+            <Link
+              href={`/${locale}/changelog`}
+              className="flex items-center gap-1.5 text-gray-400 hover:text-white text-sm transition"
+            >
+              <BookOpen size={15} />
+              {t('changelog')}
+            </Link>
+            <Link
+              href={`/${locale}/status`}
+              className="flex items-center gap-1.5 text-gray-400 hover:text-white text-sm transition"
+            >
+              <Radio size={15} />
+              {t('status')}
+            </Link>
           </nav>
         </div>
       </footer>

@@ -1,6 +1,9 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { axe, toHaveNoViolations } from 'jest-axe';
+
+expect.extend(toHaveNoViolations);
 
 jest.mock('@/hooks/useWallet', () => ({
   useWallet: jest.fn(),
@@ -298,5 +301,26 @@ describe('Navbar', () => {
     // The top-level mock returns isPaused:false, so the banner must be absent.
     render(<Navbar />);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  // ── Accessibility ──────────────────────────────────────────────────────────
+  // Issue #722: audit of the app's branding/logo area (the ScoutOff wordmark
+  // link) for accessibility violations, including missing alt text on any
+  // future image-based logo.
+
+  test('has no accessibility violations', async () => {
+    mockUseWallet.mockReturnValue({
+      publicKey: null,
+      isConnecting: false,
+      connect: jest.fn(),
+      disconnect: jest.fn(),
+      signAndSubmit: jest.fn(),
+    });
+    mockUsePathname.mockReturnValue('/en');
+
+    const { container } = render(<Navbar />);
+
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

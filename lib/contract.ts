@@ -27,7 +27,7 @@ import {
   signAndSubmitTx,
   isValidStellarAddress,
 } from './stellar';
-import { ValidationError } from './errors';
+import { ValidationError, ContractIncompatibleError } from './errors';
 import type {
   PlayerVitals,
   ValidatorInfo,
@@ -42,7 +42,7 @@ function getContract() {
 
   if (!contractId) {
     throw new Error(
-      'Missing NEXT_PUBLIC_CONTRACT_ID. Set the deployed Soroban contract ID in your environment before making contract calls.',
+      'Missing NEXT_PUBLIC_CONTRACT_ID. Add it to .env.local (copy from .env.example). Example: NEXT_PUBLIC_CONTRACT_ID=CABC... Run node scripts/validate-env.js to verify your environment.',
     );
   }
 
@@ -99,6 +99,159 @@ async function captureContractError(
   });
 }
 
+// ── Contract-version compatibility ─────────────────────────────────────────────
+//
+// The deployed Soroban contract can be upgraded/migrated independently of this
+// frontend. Without a check, a mismatched ABI (renamed method, reordered args,
+// changed return shape) surfaces as an opaque simulation/build error deep
+// inside a multi-step flow — after a user has already uploaded media and
+// filled out a form.
+//
+// `checkContractCompatibility` reads the contract's self-reported interface
+// version (if it exposes one) and compares it to `EXPECTED_CONTRACT_VERSION`.
+// `assertContractCompatible` is called at the top of `buildTx`, so every
+// write helper in this file (`buildRegisterPlayer`, `buildApproveMilestone`,
+// etc.) short-circuits before any RPC round-trip when a mismatch is known.
+//
+// Contracts that don't expose a version query at all are treated as
+// "unknown" — not blocked — so first-generation deployments keep working.
+//
+// Updating this when the contract changes:
+//   1. Bump `EXPECTED_CONTRACT_VERSION` in the same PR that updates the
+//      `buildTx`/`simulateTx` call shapes in this file to match a new
+//      contract ABI.
+//   2. If the contract exposes a version bump of its own (e.g. a new
+//      `get_contract_version` return value), the two should move together.
+//   3. See "Contract Version Compatibility" in DEVELOPMENT.md for the
+//      end-to-end migration checklist.
+
+/** Contract ABI/interface version this file's `build*`/`simulateTx` calls target. */
+export const EXPECTED_CONTRACT_VERSION = 1;
+
+/** How long a compatibility result is trusted before being re-checked. */
+const COMPATIBILITY_CACHE_TTL_MS = 5 * 60 * 1000;
+
+export type CompatibilityStatus = 'compatible' | 'incompatible' | 'unknown';
+
+export interface ContractCompatibility {
+  status: CompatibilityStatus;
+  /** The version the deployed contract reports, or `null` if it doesn't expose one. */
+  deployedVersion: number | null;
+  expectedVersion: number;
+  /** User-facing explanation, set only when `status === 'incompatible'`. */
+  message: string | null;
+}
+
+let compatibilityCache: {
+  result: ContractCompatibility;
+  checkedAt: number;
+} | null = null;
+let inFlightCompatibilityCheck: Promise<ContractCompatibility> | null = null;
+
+/**
+ * Reads the deployed contract's self-reported interface version via the
+ * `get_contract_version` read-only method.
+ *
+ * Returns `null` — not a thrown error — when the contract doesn't implement
+ * this method, or the query otherwise fails, so callers can treat "no
+ * version info" as "unknown" rather than "broken".
+ */
+export async function getContractVersion(): Promise<number | null> {
+  try {
+    const result = await simulateTx('get_contract_version', []);
+    return typeof result === 'number' ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Compares the deployed contract's version against {@link EXPECTED_CONTRACT_VERSION}.
+ *
+ * The result is cached for {@link COMPATIBILITY_CACHE_TTL_MS} so repeated calls
+ * (e.g. on every write attempt) don't each incur an RPC round-trip. Concurrent
+ * callers during a cache miss share a single in-flight request.
+ *
+ * @param force - Bypass the cache and re-check immediately. Useful right after
+ *                a known contract migration, or from a manual "retry" action.
+ */
+export async function checkContractCompatibility(
+  force = false,
+): Promise<ContractCompatibility> {
+  const now = Date.now();
+  if (
+    !force &&
+    compatibilityCache &&
+    now - compatibilityCache.checkedAt < COMPATIBILITY_CACHE_TTL_MS
+  ) {
+    return compatibilityCache.result;
+  }
+
+  if (!force && inFlightCompatibilityCheck) {
+    return inFlightCompatibilityCheck;
+  }
+
+  inFlightCompatibilityCheck = (async () => {
+    const deployedVersion = await getContractVersion();
+    let result: ContractCompatibility;
+
+    if (deployedVersion === null) {
+      result = {
+        status: 'unknown',
+        deployedVersion: null,
+        expectedVersion: EXPECTED_CONTRACT_VERSION,
+        message: null,
+      };
+    } else if (deployedVersion === EXPECTED_CONTRACT_VERSION) {
+      result = {
+        status: 'compatible',
+        deployedVersion,
+        expectedVersion: EXPECTED_CONTRACT_VERSION,
+        message: null,
+      };
+    } else {
+      result = {
+        status: 'incompatible',
+        deployedVersion,
+        expectedVersion: EXPECTED_CONTRACT_VERSION,
+        message: `This app (expects contract v${EXPECTED_CONTRACT_VERSION}) is out of sync with the deployed contract (v${deployedVersion}). Please refresh the page or check for an app update before continuing — transactions are disabled until versions match.`,
+      };
+    }
+
+    compatibilityCache = { result, checkedAt: Date.now() };
+    return result;
+  })();
+
+  try {
+    return await inFlightCompatibilityCheck;
+  } finally {
+    inFlightCompatibilityCheck = null;
+  }
+}
+
+/** Clears the cached compatibility result, forcing the next check to hit the RPC again. */
+export function clearContractCompatibilityCache(): void {
+  compatibilityCache = null;
+  inFlightCompatibilityCheck = null;
+}
+
+/**
+ * Throws {@link ContractIncompatibleError} if the deployed contract is known
+ * to be incompatible with this app build. Called at the top of `buildTx` so
+ * every write helper short-circuits before building or simulating a
+ * transaction. `'unknown'` and `'compatible'` both proceed — an unknown
+ * result means the contract doesn't expose version info, which is treated
+ * as "proceed with caution" rather than blocking every user.
+ */
+export async function assertContractCompatible(): Promise<void> {
+  const { status, message } = await checkContractCompatibility();
+  if (status === 'incompatible') {
+    throw new ContractIncompatibleError(
+      message ?? 'Deployed contract is incompatible with this app version.',
+    );
+  }
+}
+
 // ── Write helper (requires a real funded account) ─────────────────────────────
 
 /** Enforces the source === signer invariant before any RPC call is made. */
@@ -119,6 +272,7 @@ async function buildTx(
   sourcePublicKey: string,
   authSigner: string = sourcePublicKey,
 ) {
+  await assertContractCompatible();
   assertSourceMatchesSigner(sourcePublicKey, authSigner);
   const contract = getContract();
   const account = await rpc.getAccount(sourcePublicKey);
@@ -492,7 +646,14 @@ export async function buildLogTrialOffer(
   playerId: string,
   details: TrialOfferDetails,
 ): Promise<string> {
-  validateTrialOfferInputs(scoutKey, playerId, details);
+  if (!isValidStellarAddress(scoutKey)) {
+    throw new ValidationError(
+      `scoutKey "${scoutKey}" is not a valid Stellar address`,
+    );
+  }
+  if (!playerId.trim()) {
+    throw new ValidationError('playerId must be a non-empty string');
+  }
   return buildTx(
     'log_trial_offer',
     [
@@ -764,6 +925,25 @@ export async function getSubscription(scout: string) {
   return simulateTx('get_subscription', [
     nativeToScVal(scout, { type: 'address' }),
   ]);
+}
+
+/**
+ * Reads the contract's currently configured `pay_to_contact` fee, in XLM.
+ *
+ * {@link PLATFORM_CONTACT_FEE_XLM} is a build-time constant baked into the
+ * frontend; the contract's actual fee configuration can change independently
+ * of a frontend deploy. Callers displaying the fee to a scout immediately
+ * before they confirm a `pay_to_contact` transaction should prefer this over
+ * the static constant, and fall back to labeling the constant as an estimate
+ * if this call fails.
+ *
+ * This is a read-only simulation — no transaction is built or submitted.
+ *
+ * @returns A Promise resolving to the current contact fee, in XLM.
+ * @throws {Error} If the RPC simulation request fails or returns an unexpected result.
+ */
+export async function getContactFee(): Promise<number> {
+  return simulateTx('get_contact_fee', []);
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AFRICAN_REGIONS_GROUPED } from '@/lib/regions';
 import { FOOTBALL_POSITIONS } from '@/lib/positions';
+import Select from '@/components/ui/Select';
 import type { PlayerFilter, ProgressLevel } from '@/types';
 
 const DEBOUNCE_MS = 300;
@@ -36,12 +37,15 @@ export interface PlayerFilterFormProps {
   className?: string;
   /** Increment to imperatively reset all controls and retrigger the search with defaults. */
   resetKey?: number;
+  /** When provided, renders a "Save search" control that persists the current filter under a name. */
+  onSaveSearch?: (name: string, filter: PlayerFilter) => void;
 }
 
 export default function PlayerFilterForm({
   onSearch,
   className = '',
   resetKey = 0,
+  onSaveSearch,
 }: PlayerFilterFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -52,6 +56,9 @@ export default function PlayerFilterForm({
     position: searchParams.get('position') ?? DEFAULTS.position,
     level: Number(searchParams.get('level') ?? DEFAULTS.level) as ProgressLevel,
   }));
+
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [saveSearchName, setSaveSearchName] = useState('');
 
   // Cancel pending debounce on unmount
   useEffect(() => {
@@ -98,6 +105,15 @@ export default function PlayerFilterForm({
     [filter, updateURL, scheduleSearch],
   );
 
+  const handleSaveSearch = useCallback(() => {
+    if (!onSaveSearch) return;
+    const name = saveSearchName.trim();
+    if (!name) return;
+    onSaveSearch(name, toPlayerFilter(filter));
+    setSaveSearchName('');
+    setShowSaveInput(false);
+  }, [onSaveSearch, saveSearchName, filter]);
+
   const handleReset = useCallback(() => {
     if (debounceRef.current !== null) clearTimeout(debounceRef.current);
     setFilter(DEFAULTS);
@@ -120,76 +136,55 @@ export default function PlayerFilterForm({
       className={`flex flex-wrap gap-4 items-end ${className}`}
     >
       {/* Region */}
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor="filter-region"
-          className="text-xs font-medium text-gray-400"
-        >
-          Region
-        </label>
-        <select
-          id="filter-region"
-          className="input w-44"
-          value={filter.region}
-          onChange={(e) => handleChange('region', e.target.value)}
-        >
-          <option value="">All regions</option>
-          {Object.entries(AFRICAN_REGIONS_GROUPED).map(([group, regions]) => (
-            <optgroup key={group} label={group}>
-              {regions.map(({ label, value }) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </div>
+      <Select
+        id="filter-region"
+        label="Region"
+        className="w-44"
+        value={filter.region}
+        onChange={(e) => handleChange('region', e.target.value)}
+      >
+        <option value="">All regions</option>
+        {Object.entries(AFRICAN_REGIONS_GROUPED).map(([group, regions]) => (
+          <optgroup key={group} label={group}>
+            {regions.map(({ label, value }) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </Select>
 
       {/* Position */}
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor="filter-position"
-          className="text-xs font-medium text-gray-400"
-        >
-          Position
-        </label>
-        <select
-          id="filter-position"
-          className="input w-40"
-          value={filter.position}
-          onChange={(e) => handleChange('position', e.target.value)}
-        >
-          <option value="">Any position</option>
-          {FOOTBALL_POSITIONS.map(({ label, value }) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </div>
+      <Select
+        id="filter-position"
+        label="Position"
+        className="w-40"
+        value={filter.position}
+        onChange={(e) => handleChange('position', e.target.value)}
+      >
+        <option value="">Any position</option>
+        {FOOTBALL_POSITIONS.map(({ label, value }) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
+      </Select>
 
       {/* Min Level */}
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor="filter-level"
-          className="text-xs font-medium text-gray-400"
-        >
-          Min Level
-        </label>
-        <select
-          id="filter-level"
-          className="input w-36"
-          value={filter.level}
-          onChange={(e) => handleChange('level', e.target.value)}
-        >
-          {LEVEL_OPTIONS.map(({ label, value }) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </div>
+      <Select
+        id="filter-level"
+        label="Min Level"
+        className="w-36"
+        value={String(filter.level)}
+        onChange={(e) => handleChange('level', e.target.value)}
+      >
+        {LEVEL_OPTIONS.map(({ label, value }) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
+      </Select>
 
       {/* Reset */}
       <button
@@ -199,6 +194,61 @@ export default function PlayerFilterForm({
       >
         Reset Filters
       </button>
+
+      {/* Save search */}
+      {onSaveSearch &&
+        (showSaveInput ? (
+          <div className="flex items-end gap-2">
+            <div className="flex flex-col gap-1">
+              <label
+                htmlFor="save-search-name"
+                className="text-xs font-medium text-gray-400"
+              >
+                Search name
+              </label>
+              <input
+                id="save-search-name"
+                className="input w-40"
+                value={saveSearchName}
+                onChange={(e) => setSaveSearchName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSaveSearch();
+                  }
+                }}
+                placeholder="e.g. Lagos strikers"
+                autoFocus
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleSaveSearch}
+              disabled={!saveSearchName.trim()}
+              className="px-4 py-2 rounded-lg border border-brand-green text-sm text-brand-green disabled:opacity-40 hover:bg-brand-green hover:text-black transition"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowSaveInput(false);
+                setSaveSearchName('');
+              }}
+              className="px-3 py-2 rounded-lg border border-gray-700 text-sm text-gray-300 hover:border-gray-500 transition"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowSaveInput(true)}
+            className="px-4 py-2 rounded-lg border border-gray-700 text-sm text-gray-300 hover:border-brand-green hover:text-white transition"
+          >
+            Save search
+          </button>
+        ))}
     </div>
   );
 }

@@ -43,6 +43,11 @@ jest.mock('@/components/validator/ValidatorPlayerSearch', () => ({
   },
 }));
 
+jest.mock('@/components/validator/ApprovedPlayersRoster', () => ({
+  __esModule: true,
+  default: () => <div data-testid="approved-players-roster" />,
+}));
+
 jest.mock('@/components/validator/ApproveForm', () => ({
   __esModule: true,
   default: () => <div data-testid="approve-form">Approve form</div>,

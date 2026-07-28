@@ -1,11 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import { sanitize } from '@/lib/sanitize';
+import { hasValidMagicBytes, bufToHex } from '@/lib/fileSignature';
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { createRequestLogger } from '@/lib/logger';
+import {
+  verifyUploadedContent,
+  UploadVerificationError,
+} from '@/lib/uploadVerification';
 
 /**
  * POST /api/ipfs/upload
  *
- * Rate limiting: max 10 uploads per IP per 60 seconds.
+ * Whole-file, single-request upload. For large video files on constrained
+ * connections, prefer the chunked/resumable flow at
+ * /api/ipfs/upload/{init,chunk,complete} (see lib/ipfs.ts's
+ * uploadToIPFSChunked) — this endpoint remains for small files / direct
+ * single-shot callers.
+ *
+ * Rate limiting: max 10 uploads per IP per 60 seconds, enforced via the
+ * shared lib/rateLimit.ts (Redis-backed in production, in-memory in dev —
+ * see that file for why a per-route in-memory Map isn't sufficient).
  * When exceeded, responds with 429 Too Many Requests and Retry-After header.
  *
  * Real client IP is extracted from the x-forwarded-for header.
@@ -19,126 +34,17 @@ const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 /** Accepted MIME type prefixes */
 const ALLOWED_MIME_PREFIXES = ['image/', 'video/'];
 
-/** Convert a Uint8Array to a lowercase hex string for logging */
-function bufToHex(buf: Uint8Array): string {
-  return Array.from(buf)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-/**
- * Validate file magic bytes against known image/video signatures.
- * Accepts JPEG, PNG, GIF, WebP, AVIF, MP4/MOV, WebM, MKV, AVI, MKV.
- */
-function hasValidMagicBytes(header: Uint8Array): boolean {
-  // JPEG: FF D8 FF
-  if (header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff)
-    return true;
-  // PNG: 89 50 4E 47
-  if (
-    header[0] === 0x89 &&
-    header[1] === 0x50 &&
-    header[2] === 0x4e &&
-    header[3] === 0x47
-  )
-    return true;
-  // GIF: 47 49 46 38
-  if (
-    header[0] === 0x47 &&
-    header[1] === 0x49 &&
-    header[2] === 0x46 &&
-    header[3] === 0x38
-  )
-    return true;
-  // WebP: 52 49 46 46 ?? ?? ?? ?? 57 45 42 50
-  if (
-    header[0] === 0x52 &&
-    header[1] === 0x49 &&
-    header[2] === 0x46 &&
-    header[3] === 0x46 &&
-    header[8] === 0x57 &&
-    header[9] === 0x45 &&
-    header[10] === 0x42 &&
-    header[11] === 0x50
-  )
-    return true;
-  // MP4/MOV/M4V ftyp box: bytes 4-7 = 66 74 79 70
-  if (
-    header[4] === 0x66 &&
-    header[5] === 0x74 &&
-    header[6] === 0x79 &&
-    header[7] === 0x70
-  )
-    return true;
-  // WebM/MKV: 1A 45 DF A3
-  if (
-    header[0] === 0x1a &&
-    header[1] === 0x45 &&
-    header[2] === 0xdf &&
-    header[3] === 0xa3
-  )
-    return true;
-  // AVI: 52 49 46 46 ?? ?? ?? ?? 41 56 49 20
-  if (
-    header[0] === 0x52 &&
-    header[1] === 0x49 &&
-    header[2] === 0x46 &&
-    header[3] === 0x46 &&
-    header[8] === 0x41 &&
-    header[9] === 0x56 &&
-    header[10] === 0x49
-  )
-    return true;
-  return false;
-}
-
-type RateEntry = { count: number; firstSeen: number };
-const ipRateMap = new Map<string, RateEntry>();
-
-function getClientIp(req: NextRequest): string {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
-  const realIp = req.headers.get('x-real-ip');
-  if (realIp) return realIp;
-  return 'unknown';
-}
-
-function checkRateLimit(ip: string): {
-  limited: boolean;
-  retryAfterSec?: number;
-} {
-  const now = Date.now();
-  const entry = ipRateMap.get(ip);
-  if (!entry) {
-    ipRateMap.set(ip, { count: 1, firstSeen: now });
-    return { limited: false };
-  }
-
-  if (now - entry.firstSeen > WINDOW_MS) {
-    ipRateMap.set(ip, { count: 1, firstSeen: now });
-    return { limited: false };
-  }
-
-  entry.count += 1;
-  ipRateMap.set(ip, entry);
-
-  if (entry.count > RATE_LIMIT) {
-    const retryAfterSec = Math.ceil(
-      (WINDOW_MS - (now - entry.firstSeen)) / 1000,
-    );
-    return { limited: true, retryAfterSec };
-  }
-
-  return { limited: false };
-}
-
 export async function POST(req: NextRequest) {
+  const log = createRequestLogger(req);
   const ip = getClientIp(req);
 
   // Rate limiting check
-  const rl = checkRateLimit(ip);
+  const rl = await checkRateLimit(`ipfs-upload:${ip}`, {
+    limit: RATE_LIMIT,
+    windowMs: WINDOW_MS,
+  });
   if (rl.limited) {
-    console.warn(`[IPFS rate limit] Too many uploads from IP: ${ip}`);
+    log.warn('Rate limit exceeded', { ip });
     const retryAfter = rl.retryAfterSec ?? 60;
     return NextResponse.json(
       { error: 'Too many requests' },
@@ -173,9 +79,7 @@ export async function POST(req: NextRequest) {
 
   // ── 2. Size check (issue #119) ──────────────────────────────────────────────
   if (file.size > MAX_FILE_SIZE_BYTES) {
-    console.warn(
-      `[IPFS upload] Rejected oversized file: size=${file.size} type=${file.type} ip=${ip}`,
-    );
+    log.warn('Rejected oversized file', { size: file.size, type: file.type, ip });
     return NextResponse.json(
       {
         error: `File exceeds the 100 MB size limit (received ${(file.size / 1024 / 1024).toFixed(1)} MB)`,
@@ -190,9 +94,7 @@ export async function POST(req: NextRequest) {
     mimeType.startsWith(prefix),
   );
   if (!mimeAllowed) {
-    console.warn(
-      `[IPFS upload] Rejected disallowed MIME type: type=${file.type} size=${file.size} ip=${ip}`,
-    );
+    log.warn('Rejected disallowed MIME type', { type: file.type, size: file.size, ip });
     return NextResponse.json(
       {
         error: `File type "${file.type}" is not allowed. Only image/* and video/* files are accepted.`,
@@ -207,9 +109,12 @@ export async function POST(req: NextRequest) {
   const headerBuffer = new Uint8Array(await headerSlice.arrayBuffer());
 
   if (!hasValidMagicBytes(headerBuffer)) {
-    console.warn(
-      `[IPFS upload] Rejected spoofed MIME type: type=${file.type} size=${file.size} ip=${ip} header=${bufToHex(headerBuffer)}`,
-    );
+    log.warn('Rejected spoofed MIME type', {
+      type: file.type,
+      size: file.size,
+      ip,
+      header: bufToHex(headerBuffer),
+    });
     return NextResponse.json(
       {
         error:
@@ -220,6 +125,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 5. Forward to Pinata ────────────────────────────────────────────────────
+  let cid: string;
   try {
     const pinataForm = new FormData();
     pinataForm.append('file', file);
@@ -234,13 +140,41 @@ export async function POST(req: NextRequest) {
         },
       },
     );
-
-    return NextResponse.json({ cid: data.IpfsHash });
+    cid = data.IpfsHash;
   } catch (err) {
-    console.error(`[IPFS upload] Pinata error: ip=${ip}`, err);
+    log.error('Pinata upload failed', {
+      ip,
+      reason: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json(
       { error: 'Failed to upload file to IPFS' },
       { status: 502 },
     );
   }
+
+  // ── 6. Post-upload integrity verification (issue #699) ─────────────────────
+  // Re-fetch the CID from the gateway and confirm it's byte-identical to what
+  // we just sent, before telling the caller the upload succeeded — see
+  // lib/uploadVerification.ts for why this checks gateway-retrievable bytes
+  // rather than recomputing the CID itself.
+  try {
+    await verifyUploadedContent(cid, Buffer.from(await file.arrayBuffer()));
+  } catch (err) {
+    log.error('Upload verification failed', {
+      ip,
+      cid,
+      reason: err instanceof Error ? err.message : String(err),
+    });
+    return NextResponse.json(
+      {
+        error:
+          err instanceof UploadVerificationError
+            ? err.message
+            : 'Upload verification failed. Please try again.',
+      },
+      { status: 502 },
+    );
+  }
+
+  return NextResponse.json({ cid });
 }

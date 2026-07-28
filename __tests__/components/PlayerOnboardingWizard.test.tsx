@@ -34,6 +34,10 @@ jest.mock('@/hooks/useIsPaused', () => ({
   default: jest.fn().mockReturnValue(false),
 }));
 
+jest.mock('@/hooks/usePlayer', () => ({
+  usePlayer: jest.fn().mockReturnValue({ player: null, loading: false }),
+}));
+
 jest.mock('@/lib/contract', () => ({
   buildRegisterPlayer: jest.fn(),
 }));
@@ -60,6 +64,7 @@ const mockedUseWallet = useWallet as jest.MockedFunction<typeof useWallet>;
 const mockedBuildRegisterPlayer = buildRegisterPlayer as jest.MockedFunction<
   typeof buildRegisterPlayer
 >;
+const mockedUsePlayer = require('@/hooks/usePlayer').usePlayer as jest.Mock;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -77,8 +82,14 @@ function setupWallet(overrides: Partial<ReturnType<typeof useWallet>> = {}) {
   } as any);
 }
 
-function renderWizard(onSuccess = jest.fn()) {
+function renderWizard(onSuccess = jest.fn(), playerObj = null) {
   setupWallet();
+  mockedUsePlayer.mockReturnValue({
+    player: playerObj,
+    loading: false,
+    refetch: jest.fn(),
+    optimisticUpdate: jest.fn(),
+  });
   return render(<PlayerOnboardingWizard onSuccess={onSuccess} />);
 }
 
@@ -556,19 +567,39 @@ describe('PlayerOnboardingWizard', () => {
 
   // ── Conditional rendering ─────────────────────────────────────────────────
 
-  it('shows the wizard when the player has not yet registered', () => {
-    setupWallet();
-    const player: Player | null = null;
+  it('shows an error message preventing duplicate registration when profile already exists', () => {
+    const existingPlayer = {
+      id: 'player-1',
+      wallet: MOCK_PUBLIC_KEY,
+      vitals: {
+        name: 'Existing Player',
+        age: 25,
+        position: 'ST',
+        region: 'nigeria',
+        nationality: 'Nigerian',
+      },
+      ipfsHash: 'QmExistingHash',
+      progressLevel: 0,
+      milestones: [],
+      createdAt: 1234567890,
+    };
+    renderWizard(jest.fn(), existingPlayer as any);
 
-    render(
-      <div>
-        {player ? (
-          <p data-testid="dashboard">Dashboard</p>
-        ) : (
-          <PlayerOnboardingWizard onSuccess={jest.fn()} />
-        )}
-      </div>,
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'A profile already exists for this wallet. You cannot register again.'
     );
+    expect(
+      screen.queryByRole('heading', { name: /personal information/i })
+    ).toBeNull();
+  });
+
+  it('shows the wizard when the player has not yet registered', () => {
+    // renderWizard() defaults to a null player, resetting the usePlayer mock
+    // the previous ("profile already exists") test left pointed at a
+    // registered player — mockReturnValue persists across tests since
+    // jest.clearAllMocks() in beforeEach only clears call history, not
+    // implementations.
+    renderWizard();
 
     expect(
       screen.getByRole('heading', { name: /personal information/i }),

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createRequestLogger } from '@/lib/logger';
 
 /**
  * CSP Report Endpoint
@@ -8,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * and logs them for monitoring and debugging purposes.
  */
 export async function POST(request: NextRequest) {
+  const log = createRequestLogger(request);
   const contentType = request.headers.get('content-type') ?? '';
   const mediaType = contentType.split(';')[0].trim().toLowerCase();
   if (
@@ -20,9 +22,7 @@ export async function POST(request: NextRequest) {
   try {
     const report = await request.json();
 
-    // Log the CSP violation report
-    console.log('CSP Violation Report:', {
-      timestamp: new Date().toISOString(),
+    log.info('CSP violation report received', {
       userAgent: request.headers.get('user-agent'),
       report,
     });
@@ -30,7 +30,9 @@ export async function POST(request: NextRequest) {
     // Return 204 No Content as per CSP specification
     return new NextResponse(null, { status: 204 });
   } catch (error) {
-    console.error('Error processing CSP report:', error);
+    log.error('Failed to process CSP report', {
+      reason: error instanceof Error ? error.message : String(error),
+    });
     // Still return 204 to avoid cascading errors
     return new NextResponse(null, { status: 204 });
   }

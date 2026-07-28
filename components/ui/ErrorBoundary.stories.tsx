@@ -12,7 +12,7 @@ const meta: Meta<typeof ErrorBoundary> = {
 export default meta;
 type Story = StoryObj<typeof ErrorBoundary>;
 
-function ThrowOnMount() {
+function ThrowOnMount(): never {
   throw new Error('Simulated render error for Storybook preview');
 }
 

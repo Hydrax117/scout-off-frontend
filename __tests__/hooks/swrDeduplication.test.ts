@@ -8,7 +8,7 @@
  * Each test uses a fresh SWR cache (provider: () => new Map()) so test runs
  * never bleed into one another.
  */
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import React from 'react';
 import { SWRConfig } from 'swr';
 import type { Player, Milestone } from '@/types';
@@ -20,7 +20,15 @@ jest.mock('@/lib/contract', () => ({
   getMilestoneHistory: jest.fn(),
 }));
 
+// useMilestoneHistory reads from the indexer first, falling back to the
+// contract only when the indexer errors — force that fallback path here so
+// these dedup tests keep exercising getMilestoneHistory directly.
+jest.mock('@/lib/indexerClient', () => ({
+  getMilestoneHistoryFromIndexer: jest.fn(),
+}));
+
 import { getPlayer, filterPlayers, getMilestoneHistory } from '@/lib/contract';
+import { getMilestoneHistoryFromIndexer } from '@/lib/indexerClient';
 import { usePlayer } from '@/hooks/usePlayer';
 import { useScout } from '@/hooks/useScout';
 import { useMilestoneHistory } from '@/hooks/useMilestoneHistory';
@@ -28,6 +36,8 @@ import { useMilestoneHistory } from '@/hooks/useMilestoneHistory';
 const mockGetPlayer = getPlayer as jest.Mock;
 const mockFilterPlayers = filterPlayers as jest.Mock;
 const mockGetMilestoneHistory = getMilestoneHistory as jest.Mock;
+const mockGetMilestoneHistoryFromIndexer =
+  getMilestoneHistoryFromIndexer as jest.Mock;
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
 const PLAYER: Player = {
@@ -70,6 +80,13 @@ function makeWrapper() {
 
 beforeEach(() => {
   jest.resetAllMocks();
+  // Reset clears the inline mock impl set at module-mock time too; every
+  // test forces the indexer to error so getMilestoneHistory keeps being the
+  // thing under test here (see the useMilestoneHistory-specific dedup tests
+  // below, which are the only ones that exercise this fallback).
+  mockGetMilestoneHistoryFromIndexer.mockRejectedValue(
+    new Error('indexer unreachable'),
+  );
 });
 
 // ── usePlayer deduplication ───────────────────────────────────────────────────
@@ -212,10 +229,7 @@ describe('useMilestoneHistory — SWR deduplication', () => {
       { wrapper },
     );
 
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await waitFor(() => expect(mockGetMilestoneHistory).toHaveBeenCalled());
 
     expect(mockGetMilestoneHistory).toHaveBeenCalledTimes(1);
     expect(result.current.r1.milestones).toEqual(MILESTONES);
@@ -243,20 +257,16 @@ describe('useMilestoneHistory — SWR deduplication', () => {
       wrapper,
     });
 
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
+    await waitFor(() => expect(mockGetMilestoneHistory).toHaveBeenCalled());
     expect(mockGetMilestoneHistory).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       result.current.refetch();
-      await Promise.resolve();
-      await Promise.resolve();
     });
 
-    expect(mockGetMilestoneHistory).toHaveBeenCalledTimes(2);
+    await waitFor(() =>
+      expect(mockGetMilestoneHistory).toHaveBeenCalledTimes(2),
+    );
   });
 
   test('two hooks with different playerIDs fire separate getMilestoneHistory calls', async () => {
@@ -266,11 +276,8 @@ describe('useMilestoneHistory — SWR deduplication', () => {
     renderHook(() => useMilestoneHistory('player-1'), { wrapper });
     renderHook(() => useMilestoneHistory('player-2'), { wrapper });
 
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(mockGetMilestoneHistory).toHaveBeenCalledTimes(2);
+    await waitFor(() =>
+      expect(mockGetMilestoneHistory).toHaveBeenCalledTimes(2),
+    );
   });
 });

@@ -8,9 +8,21 @@ import {
   updateNetworkLedger,
   resetLedgerState,
 } from '../ledgerTracker';
+import { EventStore } from '../db/eventStore';
+import type { DecodedEvent } from '../eventPoller';
 
 // Import server after mocking so it uses our module state
 import { server } from '../server';
+
+function makeDecoded(overrides: Partial<DecodedEvent> = {}): DecodedEvent {
+  return {
+    type: 'milestone_approved',
+    ledger: 100,
+    timestamp: 1_700_000_000,
+    data: { player_id: 'player-1', milestone_id: 'm1', validator: 'GVAL' },
+    ...overrides,
+  };
+}
 
 function request(
   path: string,
@@ -43,11 +55,14 @@ afterAll((done) => {
 beforeEach(() => {
   IndexerMetrics.resetInstance();
   resetLedgerState();
+  EventStore.resetInstance();
+  EventStore.getInstance(':memory:');
 });
 
 afterEach(() => {
   IndexerMetrics.resetInstance();
   resetLedgerState();
+  EventStore.resetInstance();
 });
 
 // ── /health ──────────────────────────────────────────────────────────────────
@@ -131,6 +146,86 @@ describe('GET /metrics', () => {
     // Neither updateLastLedger nor updateNetworkLedger called
     const { body } = await request('/metrics');
     expect(body).toContain('indexer_ledger_lag 0');
+  });
+});
+
+// ── GET /events ──────────────────────────────────────────────────────────────
+
+describe('GET /events', () => {
+  test('returns an empty page when no events have been indexed', async () => {
+    const { status, body } = await request('/events');
+    expect(status).toBe(200);
+    expect(JSON.parse(body)).toEqual({ events: [], nextCursor: null });
+  });
+
+  test('returns indexed events newest-ledger-first', async () => {
+    const store = EventStore.getInstance();
+    store.insertEvent(makeDecoded({ ledger: 10 }));
+    store.insertEvent(makeDecoded({ ledger: 20 }));
+
+    const { body } = await request('/events');
+    const json = JSON.parse(body);
+    expect(json.events.map((e: { ledger: number }) => e.ledger)).toEqual([20, 10]);
+  });
+
+  test('filters by type', async () => {
+    const store = EventStore.getInstance();
+    store.insertEvent(makeDecoded({ type: 'milestone_approved' }));
+    store.insertEvent(
+      makeDecoded({
+        type: 'player_contacted',
+        data: { player_id: 'player-1', scout: 'GS' },
+      }),
+    );
+
+    const { body } = await request('/events?type=player_contacted');
+    const json = JSON.parse(body);
+    expect(json.events).toHaveLength(1);
+    expect(json.events[0].type).toBe('player_contacted');
+  });
+
+  test('rejects an unknown event type with 400', async () => {
+    const { status, body } = await request('/events?type=not_a_real_type');
+    expect(status).toBe(400);
+    expect(JSON.parse(body).error).toMatch(/unknown event type/i);
+  });
+
+  test('rejects a non-numeric limit with 400', async () => {
+    const { status } = await request('/events?limit=abc');
+    expect(status).toBe(400);
+  });
+});
+
+// ── GET /players/:id/events ────────────────────────────────────────────────
+
+describe('GET /players/:id/events', () => {
+  test('returns only events for the requested player', async () => {
+    const store = EventStore.getInstance();
+    store.insertEvent(makeDecoded({ data: { player_id: 'player-1' } }));
+    store.insertEvent(makeDecoded({ data: { player_id: 'player-2' } }));
+
+    const { status, body } = await request('/players/player-1/events');
+    expect(status).toBe(200);
+    const json = JSON.parse(body);
+    expect(json.events).toHaveLength(1);
+    expect(json.events[0].playerId).toBe('player-1');
+  });
+
+  test('supports pagination via limit and the returned nextCursor', async () => {
+    const store = EventStore.getInstance();
+    for (let ledger = 1; ledger <= 3; ledger++) {
+      store.insertEvent(makeDecoded({ ledger, data: { player_id: 'player-1' } }));
+    }
+
+    const page1 = JSON.parse(await (await request('/players/player-1/events?limit=2')).body);
+    expect(page1.events.map((e: { ledger: number }) => e.ledger)).toEqual([3, 2]);
+    expect(page1.nextCursor).toBe(2);
+
+    const page2 = JSON.parse(
+      await (await request(`/players/player-1/events?limit=2&before=${page1.nextCursor}`)).body,
+    );
+    expect(page2.events.map((e: { ledger: number }) => e.ledger)).toEqual([1]);
+    expect(page2.nextCursor).toBeNull();
   });
 });
 

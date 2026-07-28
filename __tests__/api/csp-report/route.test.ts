@@ -39,13 +39,15 @@ describe('POST /api/csp-report', () => {
     const res = await POST(req);
 
     expect(res.status).toBe(204);
-    expect(consoleLogSpy).toHaveBeenCalledWith(
-      'CSP Violation Report:',
-      expect.objectContaining({
-        userAgent: 'jest-test-agent',
-        report,
-      }),
-    );
+    expect(consoleLogSpy).toHaveBeenCalledTimes(1);
+    const line = JSON.parse(consoleLogSpy.mock.calls[0][0]);
+    expect(line).toMatchObject({
+      level: 'info',
+      message: 'CSP violation report received',
+      userAgent: 'jest-test-agent',
+      report,
+    });
+    expect(typeof line.requestId).toBe('string');
   });
 
   it('accepts application/json content type as well', async () => {
@@ -75,9 +77,10 @@ describe('POST /api/csp-report', () => {
 
     expect(res.status).toBe(204);
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
-    const [message, error] = consoleErrorSpy.mock.calls[0];
-    expect(message).toBe('Error processing CSP report:');
-    expect(String(error)).toMatch(/not valid JSON|Unexpected token/);
+    const line = JSON.parse(consoleErrorSpy.mock.calls[0][0]);
+    expect(line.level).toBe('error');
+    expect(line.message).toBe('Failed to process CSP report');
+    expect(line.reason).toMatch(/not valid JSON|Unexpected token/);
   });
 });
 

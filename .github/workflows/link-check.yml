@@ -1,0 +1,17 @@
+name: Link Checker
+
+on:
+  schedule:
+    - cron: '0 0 * * 0' # Runs every Sunday at 00:00 UTC
+  workflow_dispatch:
+
+jobs:
+  linkcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run lychee link checker
+        uses: lycheeverse/lychee-action@v1
+        with:
+          args: "--no-progress --exclude 'mailto|github.com/.*#' README.md DEVELOPMENT.md DEPLOYMENT.md CONTRIBUTING.md packages/indexer/README.md"
+          # The workflow will fail if any broken links are found.

@@ -2,7 +2,24 @@
 import { useCallback } from 'react';
 import useSWR, { mutate as globalMutate } from 'swr';
 import { getMilestoneHistory } from '@/lib/contract';
+import { getMilestoneHistoryFromIndexer } from '@/lib/indexerClient';
 import type { Milestone } from '@/types';
+
+/**
+ * Reads from packages/indexer's query API first — off-chain, so it doesn't
+ * hit Soroban RPC — and only falls back to the direct contract simulation
+ * (`getMilestoneHistory`) if the indexer is unreachable or errors, so a
+ * dev environment without the indexer running (or a temporary indexer
+ * outage) doesn't take milestone history down with it.
+ */
+async function fetchMilestoneHistory(playerID: string): Promise<Milestone[]> {
+  try {
+    return await getMilestoneHistoryFromIndexer(playerID);
+  } catch {
+    const result = await getMilestoneHistory(playerID);
+    return (result as Milestone[] | null) ?? [];
+  }
+}
 
 /**
  * Cache key scheme for useMilestoneHistory:
@@ -32,10 +49,7 @@ export function useMilestoneHistory(playerID: string | null) {
     mutate,
   } = useSWR<Milestone[]>(
     milestonesKey(playerID),
-    async () => {
-      const result = await getMilestoneHistory(playerID!);
-      return (result as Milestone[] | null) ?? [];
-    },
+    () => fetchMilestoneHistory(playerID!),
     {
       dedupingInterval: 5_000, // no duplicate RPC calls for the same player within 5 s
       revalidateOnFocus: false,

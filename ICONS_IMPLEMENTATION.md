@@ -15,9 +15,9 @@ Successfully implemented the ScoutOff application icon system including SVG bran
    - Foreground: White (`#ffffff`)
    - Design: Scout binoculars + football badge
    - Crisp scaling at any size
-   - 32 KB file size
+   - ~1.2 KB file size
 
-**Pending PNG Generation** (On-demand via script):
+**PNG Icons** (generated via `npm run generate:icons`, committed to `public/icons/`):
 
 - `icon-16x16.png` — Browser tab favicon
 - `icon-32x32.png` — Larger browser favicon
@@ -173,18 +173,20 @@ scout-off-frontend/
 ├── app/layout.tsx                    [MODIFIED] — Added favicon references
 ├── public/manifest.json              [MODIFIED] — Updated icon declarations
 ├── package.json                      [MODIFIED] — Added generate:icons script
-├── public/icons/icon.svg             [CREATED]  — SVG source (32 KB)
-├── public/icons/icon-16x16.png       [PENDING]  — Run generate:icons to create
-├── public/icons/icon-32x32.png       [PENDING]  — Run generate:icons to create
-├── public/icons/icon-192x192.png     [PENDING]  — Run generate:icons to create
-├── public/icons/icon-512x512.png     [PENDING]  — Run generate:icons to create
-├── public/icons/icon-maskable-512x512.png [PENDING] — Run generate:icons to create
+├── public/icons/icon.svg             [CREATED]  — SVG source (~1.2 KB)
+├── public/icons/icon-16x16.png       [CREATED]  — Generated via `npm run generate:icons`
+├── public/icons/icon-32x32.png       [CREATED]  — Generated via `npm run generate:icons`
+├── public/icons/icon-192x192.png     [CREATED]  — Generated via `npm run generate:icons`
+├── public/icons/icon-512x512.png     [CREATED]  — Generated via `npm run generate:icons`
+├── public/icons/icon-maskable-512x512.png [CREATED] — Generated via `npm run generate:icons`
 ├── scripts/generate-icons.js         [CREATED]  — PNG generation script
 ├── scripts/generate-icons.py         [CREATED]  — Alternative Python script
 └── ICON_GUIDE.md                     [CREATED]  — Comprehensive documentation
 ```
 
-## How to Complete the Implementation
+## How to Regenerate PNG Icons
+
+The steps below were used to produce the icon files already committed in `public/icons/`. Follow them again if `icon.svg` changes and the PNGs need to be regenerated.
 
 ### Step 1: Generate PNG Icons
 
@@ -271,7 +273,7 @@ icon-maskable-512x512.png
 
 ## Verification Checklist
 
-- [ ] All PNG files exist in `public/icons/`
+- [x] All PNG files exist in `public/icons/`
 - [ ] Browser favicon displays in tab (hard refresh if needed)
 - [ ] Browser DevTools shows all icons in manifest
 - [ ] PWA install button appears in Chrome
@@ -313,5 +315,5 @@ icon-maskable-512x512.png
 ---
 
 **Implementation Date**: June 2, 2026  
-**Status**: ✅ Complete (PNG generation pending user action)  
+**Status**: ✅ Complete — placeholder PNG icons generated via `npm run generate:icons` and committed to `public/icons/`  
 **Issue**: #115 — Application Icons

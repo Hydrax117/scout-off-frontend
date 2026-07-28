@@ -119,8 +119,11 @@ jest.mock('@/lib/contract', () => ({
 }));
 
 const mockFetchActivityEvents = jest.fn();
+const mockGetReferralOverview = jest.fn();
 jest.mock('@/lib/api', () => ({
   fetchActivityEvents: (...args: unknown[]) => mockFetchActivityEvents(...args),
+  getReferralOverview: (...args: unknown[]) =>
+    mockGetReferralOverview(...args),
 }));
 
 jest.mock('@/lib/contractErrorMessage', () => ({
@@ -138,6 +141,10 @@ function defaultActivity() {
   return { events: [], total: 0 };
 }
 
+function defaultReferralOverview() {
+  return { totalCodes: 0, totalSuccessfulReferrals: 0, topReferrers: [] };
+}
+
 describe('AdminDashboard page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -146,6 +153,7 @@ describe('AdminDashboard page', () => {
     mockGetPlatformFees.mockResolvedValue(0);
     mockGetContractPaused.mockResolvedValue(false);
     mockFetchActivityEvents.mockResolvedValue(defaultActivity());
+    mockGetReferralOverview.mockResolvedValue(defaultReferralOverview());
   });
 
   it('renders nothing when no wallet is connected', () => {
@@ -199,7 +207,7 @@ describe('AdminDashboard page', () => {
       await screen.findByRole('heading', { name: 'Admin Dashboard' }),
     ).toBeInTheDocument();
     expect(screen.getByText('Active')).toBeInTheDocument();
-    expect(screen.getByText(/42 XLM/)).toBeInTheDocument();
+    expect(screen.getByText(/42\.00 XLM/)).toBeInTheDocument();
     expect(screen.getByText('Validators (1)')).toBeInTheDocument();
     expect(screen.getByText(VALID_VALIDATOR_ADDRESS)).toBeInTheDocument();
   });
@@ -313,6 +321,51 @@ describe('AdminDashboard page', () => {
     });
   });
 
+  it('shows a toast when the referral overview fails to load', async () => {
+    mockPublicKey = ADMIN_ADDRESS;
+    mockGetReferralOverview.mockRejectedValue(new Error('referrals down'));
+
+    render(<AdminDashboard />);
+
+    await waitFor(() => {
+      expect(mockShow).toHaveBeenCalledWith({
+        message: 'Failed to load referral program data.',
+        variant: 'error',
+      });
+    });
+  });
+
+  it('shows the empty state for the referral program when there is no activity', async () => {
+    mockPublicKey = ADMIN_ADDRESS;
+    render(<AdminDashboard />);
+    expect(
+      await screen.findByText('No referral activity yet'),
+    ).toBeInTheDocument();
+  });
+
+  it('renders referral program totals and top referrers', async () => {
+    mockPublicKey = ADMIN_ADDRESS;
+    mockGetReferralOverview.mockResolvedValue({
+      totalCodes: 12,
+      totalSuccessfulReferrals: 5,
+      topReferrers: [
+        {
+          scoutWallet: VALID_VALIDATOR_ADDRESS,
+          totalCodes: 8,
+          successfulReferrals: 4,
+        },
+      ],
+    });
+
+    render(<AdminDashboard />);
+
+    expect(await screen.findByText('Referral Program')).toBeInTheDocument();
+    expect(screen.getByText('12')).toBeInTheDocument();
+    expect(screen.getByText('5')).toBeInTheDocument();
+    expect(screen.getByText(VALID_VALIDATOR_ADDRESS)).toBeInTheDocument();
+    expect(screen.getByText('4 referrals · 8 codes')).toBeInTheDocument();
+  });
+
   it('adds a validator through the confirm dialog flow', async () => {
     mockPublicKey = ADMIN_ADDRESS;
     mockBuildAddValidator.mockResolvedValue('add-xdr');
@@ -400,7 +453,7 @@ describe('AdminDashboard page', () => {
     mockSignAndSubmit.mockResolvedValue({ hash: 'withdraw-hash' });
 
     render(<AdminDashboard />);
-    await screen.findByText(/100 XLM/);
+    await screen.findByText(/100\.00 XLM/);
 
     fireEvent.click(screen.getByRole('button', { name: 'Withdraw Fees' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -421,7 +474,7 @@ describe('AdminDashboard page', () => {
     mockSignAndSubmit.mockRejectedValue(new Error('signing failed'));
 
     render(<AdminDashboard />);
-    await screen.findByText(/100 XLM/);
+    await screen.findByText(/100\.00 XLM/);
 
     fireEvent.click(screen.getByRole('button', { name: 'Withdraw Fees' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
