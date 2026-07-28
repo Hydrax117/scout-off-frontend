@@ -8,6 +8,7 @@ import { usePlayer } from '@/hooks/usePlayer';
 import { usePayToContact } from '@/hooks/usePayToContact';
 import { useSubscription } from '@/hooks/useSubscription';
 import { PLATFORM_CONTACT_FEE_XLM, getContactFee } from '@/lib/contract';
+import XlmFiatDisplay from '@/components/ui/XlmFiatDisplay';
 import ProgressBar from '@/components/ProgressBar';
 import PlayerProfileSkeleton from '@/components/PlayerProfileSkeleton';
 import PlayerStatsCard from '@/components/player/PlayerStatsCard';
@@ -240,9 +241,14 @@ export default function PlayerProfile() {
             disabled={contacting}
             className="bg-brand-green text-black font-semibold py-3 rounded-xl hover:opacity-90 transition disabled:opacity-50"
           >
-            {contacting
-              ? 'Processing…'
-              : `Pay to Contact (~${PLATFORM_CONTACT_FEE_XLM} XLM)`}
+            {contacting ? (
+              'Processing…'
+            ) : (
+              <span className="flex flex-col items-center gap-0.5">
+                <span>Pay to Contact</span>
+                <XlmFiatDisplay xlmAmount={displayFee} className="items-center" />
+              </span>
+            )}
           </button>
           {contactTxStatus && (
             <TransactionStatus
