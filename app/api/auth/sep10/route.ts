@@ -1,6 +1,10 @@
 import { WebAuth, Networks } from '@stellar/stellar-sdk';
 import { NextRequest, NextResponse } from 'next/server';
 
+/** Default session durations (in seconds). */
+const DEFAULT_SESSION_SECS = 60 * 60 * 24; // 24 hours
+const REMEMBER_ME_SESSION_SECS = 60 * 60 * 24 * 30; // 30 days
+
 function getAllowedOrigin(req: NextRequest): string | null {
   const configured = process.env.NEXT_PUBLIC_BASE_URL;
   if (configured) return configured;
@@ -19,7 +23,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  let body: { signedXdr?: string; publicKey?: string };
+  let body: { signedXdr?: string; publicKey?: string; rememberMe?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -29,7 +33,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { signedXdr, publicKey } = body ?? {};
+  const { signedXdr, publicKey, rememberMe } = body ?? {};
   if (!signedXdr || !publicKey) {
     return NextResponse.json(
       { error: 'Missing signedXdr or publicKey' },
@@ -54,12 +58,15 @@ export async function POST(req: NextRequest) {
       homeDomain,
     );
 
-    const response = NextResponse.json({ success: true });
+    const maxAge = rememberMe ? REMEMBER_ME_SESSION_SECS : DEFAULT_SESSION_SECS;
+
+    const response = NextResponse.json({ success: true, maxAge });
     response.cookies.set('session', publicKey, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       path: '/',
+      maxAge,
     });
     return response;
   } catch (error) {

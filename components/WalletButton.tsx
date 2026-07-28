@@ -98,7 +98,10 @@ export default function WalletButton({
     connectWithProvider,
   } = useWallet();
 
-  // ── Wallet install detection ───────────────────────────────────────────────
+  // ── Remember me state ────────────────────────────────────────────────────
+  const [rememberMe, setRememberMe] = useState(false);
+
+  // ── Wallet install detection ─────────────────────────────────────────────
   const [installedMap, setInstalledMap] = useState<
     Partial<Record<WalletProvider, boolean>>
   >({});
@@ -131,7 +134,7 @@ export default function WalletButton({
       (wp) => installedMap[wp.provider as WalletProvider] === false,
     );
 
-  // ── Disconnect confirmation state ──────────────────────────────────────────
+  // ── Disconnect confirmation state ────────────────────────────────────────
   const [disconnectOpen, setDisconnectOpen] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
@@ -145,10 +148,10 @@ export default function WalletButton({
     }
   }, [disconnect]);
 
-  // ── Provider connection ────────────────────────────────────────────────────
+  // ── Provider connection ──────────────────────────────────────────────────
   async function handleConnectWithProvider(provider: WalletProvider) {
     try {
-      await connectWithProvider(provider);
+      await connectWithProvider(provider, rememberMe);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Failed to connect wallet';
@@ -275,6 +278,25 @@ export default function WalletButton({
               })
             )}
           </div>
+
+          {/* ── Remember this device checkbox ── */}
+          <label className="flex items-start gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-800 text-brand-green focus:ring-brand-green focus:ring-offset-0 cursor-pointer"
+            />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium text-gray-200 group-hover:text-white transition">
+                {t('rememberDevice')}
+              </span>
+              <span className="text-xs text-gray-500">
+                {t('rememberDeviceHint')}
+              </span>
+            </div>
+          </label>
+
           <button
             type="button"
             onClick={closeWalletModal}

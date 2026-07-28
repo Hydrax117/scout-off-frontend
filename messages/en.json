@@ -82,7 +82,30 @@
     "address": "Address",
     "invalid_address": "Invalid Stellar address",
     "connection_failed": "Failed to connect wallet",
-    "balanceError": "Balance unavailable — network error"
+    "balanceError": "Balance unavailable — network error",
+    "rememberDevice": "Remember this device",
+    "rememberDeviceHint": "Stay signed in for 30 days. Only use on trusted, personal devices.",
+    "accountSwitcherLabel": "Switch account",
+    "currentAccount": "Current",
+    "switchAccountTitle": "Switch Account",
+    "removeAccountConfirmTitle": "Remove remembered account?",
+    "removeAccountConfirmMessage": "This will remove the account from the switcher. You can always reconnect it later.",
+    "forgetAllAccounts": "Forget all remembered devices",
+    "forgetAllConfirmTitle": "Forget all remembered devices?",
+    "forgetAllConfirmMessage": "This will revoke remembered-device status for all previously connected accounts. You will need to re-authenticate with your wallet.",
+    "accountSwitched": "Switched account successfully.",
+    "accountSwitchFailed": "Failed to switch accounts. Please try again."
+  },
+  "session": {
+    "expiringSoonTitle": "Session Expiring Soon",
+    "expiringSoonMessage": "Your session will expire in approximately {minutes, plural, =1 {1 minute} other {# minutes}}. Re-authenticate now to stay connected without interruption.",
+    "reauthenticate": "Re-authenticate now",
+    "dismiss": "Dismiss",
+    "renewedSuccess": "Session renewed successfully.",
+    "renewFailed": "Failed to renew session. Please try again."
+  },
+  "offline": {
+    "bannerMessage": "You are currently offline. Some features may be unavailable."
   },
   "errors": {
     "not_found": "Not found",

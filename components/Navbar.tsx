@@ -4,6 +4,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import WalletButton from './WalletButton';
+import AccountSwitcher from './AccountSwitcher';
 import { useContractStatus } from '@/hooks/useContractStatus';
 import { useWallet } from '@/hooks/useWallet';
 
@@ -193,6 +194,7 @@ export default function Navbar() {
               </span>
             )}
 
+            <AccountSwitcher />
             <WalletButton />
           </div>
 
@@ -300,7 +302,8 @@ export default function Navbar() {
             </div>
 
             {/* Wallet — balance hidden on mobile to prevent overflow */}
-            <div className="border-t border-gray-800 mt-1 pt-3">
+            <div className="border-t border-gray-800 mt-1 pt-3 flex items-center gap-2">
+              <AccountSwitcher />
               <WalletButton hideBalance />
             </div>
           </div>

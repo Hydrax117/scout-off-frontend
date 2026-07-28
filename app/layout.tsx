@@ -4,6 +4,8 @@ import Navbar from '@/components/Navbar';
 import { ToastProvider } from '@/components/ui/Toast';
 import { WalletProvider } from '@/context/WalletContext';
 import ContractPausedBanner from '@/components/ContractPausedBanner';
+import OfflineBanner from '@/components/OfflineBanner';
+import SessionExpiryWarning from '@/components/SessionExpiryWarning';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 
@@ -75,8 +77,10 @@ export default async function RootLayout({
         <NextIntlClientProvider locale={locale} messages={messages}>
           <WalletProvider>
             <ToastProvider>
+              <OfflineBanner />
               <Navbar />
               <ContractPausedBanner />
+              <SessionExpiryWarning />
               <main id="main-content" className="max-w-6xl mx-auto px-4 py-8">
                 {children}
               </main>
