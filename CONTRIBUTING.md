@@ -123,6 +123,31 @@ Use clear, descriptive branch names based on the type of work.
 - `work`
 - `temp`
 
+## Commit Message Convention
+
+This project enforces the [Conventional Commits](https://www.conventionalcommits.org/) format via commitlint. Every commit message must follow the pattern:
+
+```
+<type>(<scope>): <description>
+```
+
+Allowed types: `feat`, `fix`, `build`, `chore`, `ci`, `docs`, `perf`, `refactor`, `revert`, `style`, `test`.
+
+### Good examples
+
+- `feat: add player profile IPFS upload`
+- `fix(scout-dashboard): correct pagination offset`
+- `chore(deps): bump axios to 1.7.2`
+- `test(hooks): add useSearchPlayers test`
+- `docs: update CONTRIBUTING.md with commit format`
+
+### Bad examples
+
+- `fixed bug`
+- `WIP`
+- `Update file`
+- `asdf`
+
 ## Development Workflow
 
 1. Create a branch from `main`:
@@ -172,16 +197,26 @@ cd ../scout-off-contracts && cargo test
 
 Run smart contract tests when your frontend changes depend on on-chain contract behavior, contract IDs, or Soroban interaction logic.
 
-## Husky Pre-Commit Hooks
+## Husky Hooks
 
-This project uses Husky to run checks before each commit. The repository has a pre-commit hook at `.husky/pre-commit` that executes `npx --no-install lint-staged`.
+This project uses Husky to run checks before each commit and push.
+
+### Pre-commit hook
+
+The pre-commit hook at `.husky/pre-commit` executes `npx --no-install lint-staged`.
 
 `lint-staged` runs:
 
 - `eslint --fix` on staged `.js`, `.jsx`, `.ts`, and `.tsx` files
 - `prettier --write` on staged `.json`, `.css`, `.md`, and `.mdx` files
 
-These hooks help keep commits clean and consistent.
+### Pre-push hook
+
+The pre-push hook at `.husky/pre-push` runs the full test suite via `npm test`. This ensures that no branch is pushed with broken tests.
+
+### Commit-msg hook
+
+The commit-msg hook at `.husky/commit-msg` runs `@commitlint/cli` with `@commitlint/config-conventional` to enforce the [Conventional Commits](https://www.conventionalcommits.org/) format.
 
 ### Bypassing hooks
 
@@ -189,6 +224,7 @@ Only bypass hooks in an emergency:
 
 ```bash
 git commit --no-verify
+git push --no-verify
 ```
 
 Do not use `--no-verify` for PRs targeting `main`.
@@ -197,6 +233,7 @@ Do not use `--no-verify` for PRs targeting `main`.
 
 - [ ] Tests pass locally
 - [ ] Environment validation passes (`node scripts/validate-env.js`)
+- [ ] Lighthouse CI passes (performance ≥ 80)
 - [ ] No secrets or credentials committed
 - [ ] New features include tests where applicable
 - [ ] Documentation updated where necessary
@@ -221,6 +258,7 @@ assignment is needed — GitHub applies CODEOWNERS rules on PR creation.
 
 - The frontend repository is configured for GitHub Actions in `.github/workflows/ci.yml`.
 - `npm run lint`, `npm run test`, and `node scripts/validate-env.js` are all part of the CI validation path.
+- Lighthouse CI runs on every PR as a `lighthouse` job — reports are uploaded as build artifacts.
 - If Husky hooks are not active after cloning, run `npm run prepare`.
 - For offline PR-body drafts used when opening cross-fork PRs against `scout-off/scout-off-frontend:main`, see [docs/pr-bodies/](docs/pr-bodies/) — each file matches a branch in the bulk-deploy stack and is passed to `gh pr create --body-file`.
 
