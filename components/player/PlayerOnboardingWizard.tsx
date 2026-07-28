@@ -71,7 +71,7 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
                 <div
                   aria-current={isCurrent ? 'step' : undefined}
                   className={[
-                    'w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors',
+                    'w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold motion-safe:transition-colors',
                     isCompleted
                       ? 'bg-brand-green text-black'
                       : isCurrent
@@ -92,7 +92,7 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
               {index < STEPS.length - 1 && (
                 <div
                   aria-hidden="true"
-                  className={`flex-1 h-px mx-3 mb-4 transition-colors ${
+                  className={`flex-1 h-px mx-3 mb-4 motion-safe:transition-colors ${
                     isCompleted ? 'bg-brand-green' : 'bg-gray-700'
                   }`}
                 />
