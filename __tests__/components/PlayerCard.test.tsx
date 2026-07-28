@@ -124,9 +124,14 @@ describe('PlayerCard — rendering', () => {
 
   it('renders position and region in the details text', () => {
     render(<PlayerCard player={mockPlayer} />);
+    // The position is now wrapped in a Tooltip span, so the combined text is
+    // split across sibling nodes. Use a regex to match both parts together.
     expect(
       screen.getByText(
-        `${mockPlayer.vitals.position} · ${mockPlayer.vitals.region}`,
+        (_, element) =>
+          element?.tagName === 'P' &&
+          element.textContent ===
+            `${mockPlayer.vitals.position} · ${mockPlayer.vitals.region}`,
       ),
     ).toBeInTheDocument();
   });
@@ -162,6 +167,62 @@ describe('PlayerCard — rendering', () => {
     expect(
       screen.queryByAltText(mockPlayer.vitals.name),
     ).not.toBeInTheDocument();
+  });
+});
+
+// ── Position tooltip ──────────────────────────────────────────────────────────
+
+describe('PlayerCard — position tooltip', () => {
+  it('shows the full position name tooltip on focus of the position abbreviation', () => {
+    const playerWithKnownPosition: Player = {
+      ...mockPlayer,
+      vitals: { ...mockPlayer.vitals, position: 'ST' },
+    };
+    render(<PlayerCard player={playerWithKnownPosition} />);
+
+    // The abbreviated position text should be in the document
+    expect(screen.getByText('ST')).toBeInTheDocument();
+
+    // Focus the position span to trigger the tooltip
+    fireEvent.focus(screen.getByText('ST'));
+
+    // The full position label should now be visible as a tooltip
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Striker');
+  });
+
+  it('shows the full position name tooltip on mouse enter', () => {
+    const playerWithKnownPosition: Player = {
+      ...mockPlayer,
+      vitals: { ...mockPlayer.vitals, position: 'CAM' },
+    };
+    render(<PlayerCard player={playerWithKnownPosition} />);
+
+    fireEvent.mouseEnter(screen.getByText('CAM'));
+
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      'Attacking Midfielder',
+    );
+  });
+
+  it('hides the tooltip on blur', () => {
+    const playerWithKnownPosition: Player = {
+      ...mockPlayer,
+      vitals: { ...mockPlayer.vitals, position: 'CB' },
+    };
+    render(<PlayerCard player={playerWithKnownPosition} />);
+
+    fireEvent.focus(screen.getByText('CB'));
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+
+    fireEvent.blur(screen.getByText('CB'));
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the raw position value when abbreviation is not in the map', () => {
+    // 'Forward' is not a key in FOOTBALL_POSITIONS — tooltip should still show
+    render(<PlayerCard player={mockPlayer} />);
+    fireEvent.focus(screen.getByText('Forward'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Forward');
   });
 });
 

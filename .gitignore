@@ -25,6 +25,10 @@ public/workbox-*.js.map
 coverage/
 storybook-static/
 
+# Jest / Vitest snapshot files
+**/__snapshots__/
+*.snap
+
 # Playwright E2E output (issue #673)
 /test-results/
 /playwright-report/
@@ -45,3 +49,21 @@ packages/indexer/data/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Editor swap / backup files
+*.swp
+*.swo
+*~
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Temporary files created by test runs (server test DB)
+/tmp/

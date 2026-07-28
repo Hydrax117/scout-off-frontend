@@ -12,6 +12,13 @@ import { getProgressLabel } from '@/lib/progress';
 import { getMediaProxyUrl } from '@/lib/mediaUrl';
 import ProgressBar from './ProgressBar';
 import Badge from '@/components/ui/Badge';
+import Tooltip from '@/components/ui/Tooltip';
+import { FOOTBALL_POSITIONS } from '@/lib/positions';
+
+/** Map position abbreviation (e.g. "ST") → full label (e.g. "Striker"). */
+const POSITION_LABEL: Record<string, string> = Object.fromEntries(
+  FOOTBALL_POSITIONS.map(({ value, label }) => [value, label]),
+);
 
 const LEVEL_VARIANT: Record<
   ProgressLevel,
@@ -154,7 +161,11 @@ function PlayerCard({ player, isWatched, onToggleWatchlist }: PlayerCardProps) {
       <div>
         <h3 className="font-semibold text-white">{vitals.name}</h3>
         <p className="text-sm text-gray-400">
-          {vitals.position} · {vitals.region}
+          <Tooltip content={POSITION_LABEL[vitals.position] ?? vitals.position}>
+            <span>{vitals.position}</span>
+          </Tooltip>
+          {' · '}
+          {vitals.region}
         </p>
 
         <Badge
