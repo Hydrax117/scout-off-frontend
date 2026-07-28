@@ -10,6 +10,7 @@ import ContractPausedBanner from '@/components/ContractPausedBanner';
 import ConfigWarningBanner from '@/components/ConfigWarningBanner';
 import ServiceWorkerUpdateBanner from '@/components/ServiceWorkerUpdateBanner';
 import WebVitalsReporter from '@/components/WebVitalsReporter';
+import A11yDevAudit from '@/components/A11yDevAudit';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { validateConfig } from '@/lib/config';
@@ -105,6 +106,7 @@ export default async function RootLayout({
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
       </head>
       <body>
+        <A11yDevAudit />
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:bg-brand-green focus:text-black focus:px-6 focus:py-3 focus:rounded-lg focus:font-semibold"
