@@ -19,6 +19,7 @@ import PlayerFilterForm from '@/components/scout/PlayerFilterForm';
 import EmptyState from '@/components/ui/EmptyState';
 import Spinner from '@/components/ui/Spinner';
 import ReferralPanel from '@/components/scout/ReferralPanel';
+import SpendingSummary from '@/components/scout/SpendingSummary';
 import OnboardingTour from '@/components/ui/OnboardingTour';
 import { scoutTourSteps, SCOUT_TOUR_ID } from '@/lib/tourSteps';
 import type { Player, PlayerFilter } from '@/types';
@@ -268,6 +269,8 @@ export default function ScoutDashboardContent() {
         })()}
 
       <ReferralPanel />
+
+      <SpendingSummary />
 
       {watchlist.entries.length > 0 && (
         <div className="bg-brand-card border border-gray-800 rounded-xl p-5 flex flex-col gap-3">
