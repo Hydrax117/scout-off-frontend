@@ -280,7 +280,10 @@ ScoutOff follows responsible disclosure practices. If you discover a security vu
 
 ### 1. Install dependencies
 
+If you use [nvm](https://github.com/nvm-sh/nvm), run `nvm use` in the project root first to switch to the pinned Node version (see `.nvmrc`). If you don't have that version installed, run `nvm install` instead. See [DEVELOPMENT.md](DEVELOPMENT.md) for full setup details.
+
 ```bash
+nvm use        # or: nvm install
 npm install
 ```
 

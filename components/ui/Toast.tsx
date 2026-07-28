@@ -169,7 +169,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             return (
               <div
                 key={toast.id}
-                role="status"
+                role={toast.variant === 'error' || toast.variant === 'warning' ? 'alert' : 'status'}
                 aria-live={toast.variant === 'error' ? 'assertive' : 'polite'}
                 aria-atomic="true"
                 aria-label={`${meta.label} notification: ${toast.message}`}
@@ -205,7 +205,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   onClick={() => removeToast(toast.id)}
-                  aria-label="Dismiss notification"
+                  aria-label="Close notification"
                   className="ml-1 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-700 bg-gray-900 text-gray-400 transition hover:bg-gray-800 hover:text-white"
                 >
                   <span aria-hidden="true">×</span>
