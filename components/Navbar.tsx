@@ -202,7 +202,7 @@ export default function Navbar() {
             type="button"
             className="sm:hidden p-2 rounded text-gray-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green"
             aria-expanded={menuOpen}
-            aria-controls="mobile-menu"
+            aria-controls="mobile-nav"
             aria-label={
               menuOpen
                 ? t('common.close') + ' navigation menu'
@@ -241,7 +241,7 @@ export default function Navbar() {
         {menuOpen && (
           <div
             ref={mobileMenuRef}
-            id="mobile-menu"
+            id="mobile-nav"
             role="dialog"
             aria-modal="true"
             aria-label="Navigation menu"
