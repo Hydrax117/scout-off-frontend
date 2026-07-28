@@ -30,6 +30,11 @@ storybook-static/
 /playwright-report/
 /blob-report/
 
+# Jest test snapshots (issues #532, #531, #530, #529)
+__tests__/**/__snapshots__/
+**/__snapshots__/
+*.snap
+
 # Kiro IDE directory
 .kiro/
 
