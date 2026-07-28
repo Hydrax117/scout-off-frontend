@@ -4,7 +4,14 @@
     "verifying": "Inathibitisha hali ya mthibitishaji…",
     "access_only_title": "Mthibitishaji Pekee",
     "access_only_description": "Pochi yako haijasajiliwa kama mthibitishaji aliyekubaliwa. Wasiliana na msimamizi kuomba ufikiaji wa mthibitishaji.",
-    "find_player": "Tafuta Mchezaji"
+    "find_player": "Tafuta Mchezaji",
+    "roster_title": "Wachezaji Wangu Walioidhinishwa",
+    "roster_empty_title": "Bado hakuna wachezaji walioidhinishwa",
+    "roster_empty_description": "Tumia fomu ya uidhinishaji hapo juu kuidhinisha hatua muhimu ya mchezaji.",
+    "roster_error": "Imeshindikana kupakia wachezaji walioidhinishwa. Kiashiria huenda hakipatikani kwa sasa.",
+    "roster_retry": "Jaribu tena",
+    "roster_count_one": "mchezaji 1",
+    "roster_count_other": "wachezaji {count}"
   },
   "admin": {
     "title": "Dashibodi ya Msimamizi",
@@ -91,7 +98,14 @@
     "verifying": "Inathibitisha hali ya mthibitishaji…",
     "access_only_title": "Mthibitishaji Pekee",
     "access_only_description": "Pochi yako haijasajiliwa kama mthibitishaji aliyekubaliwa. Wasiliana na msimamizi kuomba ufikiaji wa mthibitishaji.",
-    "find_player": "Tafuta Mchezaji"
+    "find_player": "Tafuta Mchezaji",
+    "roster_title": "Wachezaji Wangu Walioidhinishwa",
+    "roster_empty_title": "Bado hakuna wachezaji walioidhinishwa",
+    "roster_empty_description": "Tumia fomu ya uidhinishaji hapo juu kuidhinisha hatua muhimu ya mchezaji.",
+    "roster_error": "Imeshindikana kupakia wachezaji walioidhinishwa. Kiashiria huenda hakipatikani kwa sasa.",
+    "roster_retry": "Jaribu tena",
+    "roster_count_one": "mchezaji 1",
+    "roster_count_other": "wachezaji {count}"
   },
   "scout_dashboard": {
     "description": "TODO: Machine-translated - Dhibiti wachezaji na majaribio",

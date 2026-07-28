@@ -155,7 +155,14 @@
     "verifying": "Verifying validator status…",
     "access_only_title": "Validator Access Only",
     "access_only_description": "Your wallet is not registered as an approved validator. Contact an administrator to request validator access.",
-    "find_player": "Find a Player"
+    "find_player": "Find a Player",
+    "roster_title": "My Approved Players",
+    "roster_empty_title": "No approved players yet",
+    "roster_empty_description": "Use the approval form above to approve a player's milestone.",
+    "roster_error": "Could not load approved players. The indexer may be temporarily unavailable.",
+    "roster_retry": "Retry",
+    "roster_count_one": "1 player",
+    "roster_count_other": "{count} players"
   },
   "admin": {
     "title": "Admin Dashboard",
