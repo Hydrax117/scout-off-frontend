@@ -8,6 +8,7 @@ import AccountSwitcher from './AccountSwitcher';
 import { useContractStatus } from '@/hooks/useContractStatus';
 import { useWallet } from '@/hooks/useWallet';
 import { useCurrencyPreference } from '@/hooks/useCurrencyPreference';
+import ThemeToggle from './ThemeToggle';
 
 const NAV_LINKS = [
   { href: '/scout', labelKey: 'nav.scout_dashboard' },
@@ -229,6 +230,8 @@ export default function Navbar() {
               )}
             </div>
 
+            <ThemeToggle />
+
             {/* XLM balance — hidden below md */}
             {isAuthenticated && (
               <span className="hidden md:inline text-sm text-gray-300 whitespace-nowrap">
@@ -351,9 +354,7 @@ export default function Navbar() {
 
             {/* Currency selector in mobile menu */}
             <div className="border-t border-gray-800 mt-1 pt-3 flex flex-col gap-0.5">
-              <p className="text-xs text-gray-500 px-1 mb-1">
-                Currency
-              </p>
+              <p className="text-xs text-gray-500 px-1 mb-1">Currency</p>
               {supported.map((c) => (
                 <button
                   key={c.code}
@@ -372,6 +373,12 @@ export default function Navbar() {
                   {c.label}
                 </button>
               ))}
+            </div>
+
+            {/* Theme toggle in mobile menu */}
+            <div className="border-t border-gray-800 mt-1 pt-3 flex items-center gap-2">
+              <span className="text-xs text-gray-500 px-1">Theme</span>
+              <ThemeToggle />
             </div>
 
             {/* Wallet — balance hidden on mobile to prevent overflow */}

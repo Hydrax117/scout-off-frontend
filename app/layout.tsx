@@ -3,12 +3,14 @@ import { headers } from 'next/headers';
 import './globals.css';
 import { Analytics } from '@vercel/analytics/next';
 import Navbar from '@/components/Navbar';
+import ThemeProvider from '@/components/ThemeProvider';
 import { ToastProvider } from '@/components/ui/Toast';
 import { WalletProvider } from '@/context/WalletContext';
 import ContractIncompatibleBanner from '@/components/ContractIncompatibleBanner';
 import ContractPausedBanner from '@/components/ContractPausedBanner';
 import ConfigWarningBanner from '@/components/ConfigWarningBanner';
 import ServiceWorkerUpdateBanner from '@/components/ServiceWorkerUpdateBanner';
+import SessionExpiryWarning from '@/components/SessionExpiryWarning';
 import WebVitalsReporter from '@/components/WebVitalsReporter';
 import A11yDevAudit from '@/components/A11yDevAudit';
 import { NextIntlClientProvider } from 'next-intl';
@@ -86,7 +88,7 @@ export default async function RootLayout({
   const configWarnings = validateConfig();
 
   return (
-    <html lang={locale}>
+    <html lang={locale} suppressHydrationWarning>
       <head>
         <link
           rel="icon"
@@ -113,21 +115,23 @@ export default async function RootLayout({
         >
           Skip to main content
         </a>
-        <NextIntlClientProvider locale={locale} messages={messages}>
-          <WalletProvider>
-            <ToastProvider>
-              <ConfigWarningBanner warnings={configWarnings} />
-              <ServiceWorkerUpdateBanner />
-              <Navbar />
-              <ContractIncompatibleBanner />
-              <ContractPausedBanner />
-              <SessionExpiryWarning />
-              <main id="main-content" className="max-w-6xl mx-auto px-4 py-8">
-                {children}
-              </main>
-            </ToastProvider>
-          </WalletProvider>
-        </NextIntlClientProvider>
+        <ThemeProvider>
+          <NextIntlClientProvider locale={locale} messages={messages}>
+            <WalletProvider>
+              <ToastProvider>
+                <ConfigWarningBanner warnings={configWarnings} />
+                <ServiceWorkerUpdateBanner />
+                <Navbar />
+                <ContractIncompatibleBanner />
+                <ContractPausedBanner />
+                <SessionExpiryWarning />
+                <main id="main-content" className="max-w-6xl mx-auto px-4 py-8">
+                  {children}
+                </main>
+              </ToastProvider>
+            </WalletProvider>
+          </NextIntlClientProvider>
+        </ThemeProvider>
         {!isTestEnv && (
           <>
             <Analytics />

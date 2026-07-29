@@ -12,6 +12,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useOnboardingTour } from '@/hooks/useOnboardingTour';
 import { useWatchlist } from '@/hooks/useWatchlist';
 import { useSavedSearches } from '@/hooks/useSavedSearches';
+import { useRecentlyViewed } from '@/hooks/useRecentlyViewed';
 import { useToast } from '@/components/ui/Toast';
 import { getPlayer } from '@/lib/contract';
 import PlayerCard from '@/components/PlayerCard';
@@ -54,6 +55,7 @@ export default function ScoutDashboardContent() {
   const { subscription } = useSubscription();
   const watchlist = useWatchlist(publicKey ?? null);
   const savedSearches = useSavedSearches(publicKey ?? null);
+  const recentlyViewed = useRecentlyViewed();
   const { show: showToast } = useToast();
   const [now, setNow] = useState(() => Date.now());
 
@@ -299,9 +301,17 @@ export default function ScoutDashboardContent() {
 
       {watchlist.entries.length > 0 && (
         <div className="bg-brand-card border border-gray-800 rounded-xl p-5 flex flex-col gap-3">
-          <h2 className="text-sm font-medium text-gray-300">My Watchlist</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-medium text-gray-300">My Watchlist</h2>
+            <Link
+              href="/scout/watchlist"
+              className="text-xs text-brand-green hover:underline"
+            >
+              View all
+            </Link>
+          </div>
           <ul className="flex flex-col gap-2">
-            {watchlist.entries.map((entry) => (
+            {watchlist.entries.slice(0, 5).map((entry) => (
               <li
                 key={entry.id}
                 className="flex items-center justify-between gap-3 text-sm text-gray-200"
@@ -319,6 +329,30 @@ export default function ScoutDashboardContent() {
                 >
                   Remove
                 </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {recentlyViewed.entries.length > 0 && (
+        <div className="bg-brand-card border border-gray-800 rounded-xl p-5 flex flex-col gap-3">
+          <h2 className="text-sm font-medium text-gray-300">Recently Viewed</h2>
+          <ul className="flex flex-col gap-2">
+            {recentlyViewed.entries.map((entry) => (
+              <li
+                key={entry.playerId}
+                className="flex items-center justify-between gap-3 text-sm text-gray-200"
+              >
+                <Link
+                  href={`/player/${entry.playerId}`}
+                  className="text-brand-green hover:underline truncate"
+                >
+                  {entry.name}
+                </Link>
+                <span className="text-xs text-gray-500 shrink-0">
+                  {entry.position}
+                </span>
               </li>
             ))}
           </ul>
