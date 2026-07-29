@@ -412,6 +412,7 @@ export default function PlayerOnboardingWizard({
             placeholder="Enter your age (14–45)"
             min="14"
             max="45"
+            autoComplete="off"
           />
 
           <Input
@@ -425,6 +426,7 @@ export default function PlayerOnboardingWizard({
             onBlur={handleBlur}
             error={errors.nationality}
             placeholder="Enter your nationality"
+            autoComplete="country-name"
           />
 
           <Select
