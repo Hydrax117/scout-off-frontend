@@ -20,6 +20,10 @@ const FraudFlagsPanel = dynamic(
   () => import('@/components/admin/FraudFlagsPanel'),
   { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 motion-safe:animate-pulse h-20" /> },
 );
+const DisputedMilestonesPanel = dynamic(
+  () => import('@/components/admin/DisputedMilestonesPanel'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 motion-safe:animate-pulse h-20" /> },
+);
 const AcademyManager = dynamic(
   () => import('@/components/admin/AcademyManager'),
   { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 animate-pulse h-32" /> },
@@ -667,6 +671,8 @@ function AdminDashboardContent() {
       <ValidatorActionLog />
 
       <FraudFlagsPanel />
+
+      <DisputedMilestonesPanel />
 
       {dialog && (
         <ConfirmDialog

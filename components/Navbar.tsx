@@ -9,6 +9,7 @@ import { useContractStatus } from '@/hooks/useContractStatus';
 import { useWallet } from '@/hooks/useWallet';
 import { useCurrencyPreference } from '@/hooks/useCurrencyPreference';
 import ThemeToggle from './ThemeToggle';
+import NotificationBell from './NotificationBell';
 
 const NAV_LINKS = [
   { href: '/scout', labelKey: 'nav.scout_dashboard' },
@@ -232,6 +233,8 @@ export default function Navbar() {
 
             <ThemeToggle />
 
+            <NotificationBell />
+
             {/* XLM balance — hidden below md */}
             {isAuthenticated && (
               <span className="hidden md:inline text-sm text-gray-300 whitespace-nowrap">
@@ -383,6 +386,7 @@ export default function Navbar() {
 
             {/* Wallet — balance hidden on mobile to prevent overflow */}
             <div className="border-t border-gray-800 mt-1 pt-3 flex items-center gap-2">
+              <NotificationBell />
               <AccountSwitcher />
               <WalletButton hideBalance />
             </div>
