@@ -3,10 +3,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { Star } from 'lucide-react';
 import { useWallet } from '@/hooks/useWallet';
 import { usePlayer } from '@/hooks/usePlayer';
 import { usePayToContact } from '@/hooks/usePayToContact';
 import { useSubscription } from '@/hooks/useSubscription';
+import { useWatchlist } from '@/hooks/useWatchlist';
+import { useRecentlyViewed } from '@/hooks/useRecentlyViewed';
 import { PLATFORM_CONTACT_FEE_XLM, getContactFee } from '@/lib/contract';
 import XlmFiatDisplay from '@/components/ui/XlmFiatDisplay';
 import ProgressBar from '@/components/ProgressBar';
@@ -28,6 +31,8 @@ export default function PlayerProfile() {
   const t = useTranslations('player_profile');
   const { player, loading: playerLoading, refetch } = usePlayer(id ?? null);
   const { unlock, loading: contacting } = usePayToContact(id ?? '');
+  const watchlist = useWatchlist(publicKey ?? null);
+  const { record: recordRecentlyViewed } = useRecentlyViewed();
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const {
     subscription,
@@ -67,13 +72,26 @@ export default function PlayerProfile() {
     };
   }, [confirmOpen]);
 
+  // Record this profile visit for the scout's "recently viewed" dashboard
+  // widget. Client-side only (localStorage) — no backend dependency.
+  useEffect(() => {
+    if (!player) return;
+    recordRecentlyViewed({
+      playerId: player.id,
+      name: player.vitals.name,
+      position: player.vitals.position,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [player?.id]);
+
   const feeMismatch =
     feeCheckStatus === 'ok' &&
     liveFee !== null &&
     liveFee !== PLATFORM_CONTACT_FEE_XLM;
-  const displayFee = feeCheckStatus === 'ok' && liveFee !== null
-    ? liveFee
-    : PLATFORM_CONTACT_FEE_XLM;
+  const displayFee =
+    feeCheckStatus === 'ok' && liveFee !== null
+      ? liveFee
+      : PLATFORM_CONTACT_FEE_XLM;
 
   const confirmMessage = (() => {
     if (!player) return '';
@@ -152,13 +170,45 @@ export default function PlayerProfile() {
         <div className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
           <p className="font-semibold">This profile is currently private</p>
           <p className="text-xs text-yellow-300/80 mt-1">
-            The player has archived their profile and it&apos;s not visible in search results.
+            The player has archived their profile and it&apos;s not visible in
+            search results.
           </p>
         </div>
       )}
 
       {/* Header */}
-      <div className="bg-brand-card border border-gray-800 rounded-xl p-6 flex gap-6 items-start">
+      <div className="relative bg-brand-card border border-gray-800 rounded-xl p-6 flex gap-6 items-start">
+        {publicKey && publicKey !== player.wallet && (
+          <button
+            type="button"
+            onClick={() => {
+              const existing = watchlist.entries.find(
+                (e) => e.playerId === player.id,
+              );
+              if (existing) {
+                watchlist.remove(existing);
+              } else {
+                watchlist.add(player.id);
+              }
+            }}
+            aria-pressed={watchlist.isWatched(player.id)}
+            aria-label={
+              watchlist.isWatched(player.id)
+                ? 'Remove from watchlist'
+                : 'Add to watchlist'
+            }
+            className="absolute top-4 right-4 inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 transition hover:text-yellow-400 focus:outline-none focus:ring-2 focus:ring-brand-green"
+          >
+            <Star
+              className={
+                watchlist.isWatched(player.id) ? 'text-yellow-400' : ''
+              }
+              fill={watchlist.isWatched(player.id) ? 'currentColor' : 'none'}
+              size={20}
+              aria-hidden="true"
+            />
+          </button>
+        )}
         <div className="w-20 h-20 rounded-full bg-gray-700 overflow-hidden shrink-0">
           <IPFSMediaGallery cids={player.ipfsHash ? [player.ipfsHash] : []} />
         </div>
@@ -246,7 +296,10 @@ export default function PlayerProfile() {
             ) : (
               <span className="flex flex-col items-center gap-0.5">
                 <span>Pay to Contact</span>
-                <XlmFiatDisplay xlmAmount={displayFee} className="items-center" />
+                <XlmFiatDisplay
+                  xlmAmount={displayFee}
+                  className="items-center"
+                />
               </span>
             )}
           </button>
