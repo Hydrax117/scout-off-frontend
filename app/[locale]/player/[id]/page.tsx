@@ -30,6 +30,7 @@ export default function PlayerProfile() {
   const { id } = useParams<{ id: string }>();
   const { publicKey } = useWallet();
   const t = useTranslations('player_profile');
+  const { show: showToast } = useToast();
   const { player, loading: playerLoading, refetch } = usePlayer(id ?? null);
   const { unlock, loading: contacting } = usePayToContact(id ?? '');
   const watchlist = useWatchlist(publicKey ?? null);
