@@ -138,11 +138,11 @@ export default function PlayerProfile() {
   const isArchived = player.archived ?? false;
 
   return (
-    <div className="max-w-2xl mx-auto flex flex-col gap-8">
+    <div className="print-area max-w-2xl mx-auto flex flex-col gap-8">
       {/* Back to Scout Dashboard */}
       <Link
         href="/scout"
-        className="self-start text-sm text-gray-400 hover:text-white transition flex items-center gap-1"
+        className="print-hidden self-start text-sm text-gray-400 hover:text-white transition flex items-center gap-1"
       >
         {t('back_to_scout_dashboard')}
       </Link>
@@ -210,7 +210,7 @@ export default function PlayerProfile() {
       {player.milestones.length > 0 && (
         <button
           onClick={handleDownload}
-          className="self-start text-sm text-brand-green underline underline-offset-2 hover:opacity-80 transition"
+          className="print-hidden self-start text-sm text-brand-green underline underline-offset-2 hover:opacity-80 transition"
         >
           Download Milestones
         </button>
@@ -220,7 +220,7 @@ export default function PlayerProfile() {
       <button
         ref={shareButtonRef}
         onClick={() => setQrOpen(true)}
-        className="self-start text-sm text-gray-400 border border-gray-700 px-3 py-1.5 rounded-lg hover:border-gray-500 hover:text-white transition"
+        className="print-hidden self-start text-sm text-gray-400 border border-gray-700 px-3 py-1.5 rounded-lg hover:border-gray-500 hover:text-white transition"
       >
         Share via QR
       </button>
@@ -235,7 +235,7 @@ export default function PlayerProfile() {
 
       {/* Pay to contact */}
       {publicKey && !isArchived && (
-        <>
+        <div className="print-hidden contents">
           <button
             onClick={() => setConfirmOpen(true)}
             disabled={contacting}
@@ -273,12 +273,12 @@ export default function PlayerProfile() {
             onClose={() => setContactModalOpen(false)}
             playerId={id ?? ''}
           />
-        </>
+        </div>
       )}
 
       {/* Trial offer */}
       {publicKey && id && !isArchived && (
-        <>
+        <div className="print-hidden contents">
           {canLogTrialOffer ? (
             <div className="bg-brand-card border border-gray-800 rounded-xl p-6">
               <h2 className="font-semibold text-white mb-4">Log Trial Offer</h2>
@@ -304,7 +304,7 @@ export default function PlayerProfile() {
               </p>
             </div>
           ) : null}
-        </>
+        </div>
       )}
     </div>
   );
