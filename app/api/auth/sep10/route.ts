@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  let body: { signedXdr?: string; publicKey?: string };
+  let body: { signedXdr?: string; publicKey?: string; rememberMe?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { signedXdr, publicKey } = body ?? {};
+  const { signedXdr, publicKey, rememberMe } = body ?? {};
   if (!signedXdr || !publicKey) {
     return NextResponse.json(
       { error: 'Missing signedXdr or publicKey' },
@@ -86,12 +86,15 @@ export async function POST(req: NextRequest) {
       homeDomain,
     );
 
-    const response = NextResponse.json({ success: true });
+    const maxAge = rememberMe ? REMEMBER_ME_SESSION_SECS : DEFAULT_SESSION_SECS;
+
+    const response = NextResponse.json({ success: true, maxAge });
     response.cookies.set('session', publicKey, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       path: '/',
+      maxAge,
     });
     return withRequestId(response, log.requestId);
   } catch (error) {

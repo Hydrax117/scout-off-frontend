@@ -127,7 +127,7 @@ export default function ApproveForm({ onSuccess }: ApproveFormProps) {
     return (
       <div className="bg-brand-card border border-gray-800 rounded-xl p-6 text-center">
         <p className="text-gray-400">Not a validator</p>
-        <p className="text-gray-500 text-sm mt-1">
+        <p className="text-gray-400 text-sm mt-1">
           Your wallet is not registered as a validator on this contract.
         </p>
       </div>
@@ -196,14 +196,14 @@ export default function ApproveForm({ onSuccess }: ApproveFormProps) {
       {player && (
         <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm text-gray-300 flex flex-col gap-1">
           <p>
-            <span className="text-gray-500">Name:</span> {player.vitals.name}
+            <span className="text-gray-400">Name:</span> {player.vitals.name}
           </p>
           <p>
-            <span className="text-gray-500">Level:</span>{' '}
+            <span className="text-gray-400">Level:</span>{' '}
             {PROGRESS_LABELS[player.progressLevel]}
           </p>
           <p>
-            <span className="text-gray-500">Last milestone:</span>{' '}
+            <span className="text-gray-400">Last milestone:</span>{' '}
             {player.milestones.length > 0
               ? player.milestones[player.milestones.length - 1].description
               : 'None'}

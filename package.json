@@ -19,6 +19,7 @@
     "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,css,md,mdx}\"",
     "prepare": "node -e \"if (process.env.CI !== 'true') { require('child_process').execSync('husky install', {stdio: 'inherit'}) }\"",
     "postbuild": "next-sitemap",
+    "a11y:audit": "node scripts/a11y-audit.mjs",
     "generate:icons": "node scripts/generate-icons.js",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
@@ -74,6 +75,7 @@
     "@types/react-dom": "18.3.0",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.5.4",
+    "axe-core": "^4.12.1",
     "eslint": "8.57.0",
     "eslint-config-next": "14.2.3",
     "husky": "9.1.7",
@@ -83,6 +85,7 @@
     "lint-staged": "^14.0.0",
     "next-sitemap": "4.2.3",
     "prettier": "^3.8.1",
+    "puppeteer": "^25.4.0",
     "storybook": "^8.6.18",
     "typescript": "^6.0.3",
     "vite": "^6.3.5",

@@ -14,6 +14,23 @@ body {
   font-family: Inter, system-ui, sans-serif;
 }
 
+/*
+ * Shared prefers-reduced-motion handling (Issue: vestibular disorders).
+ * Applies globally so Toast, Modal, ProgressBar and any other animated
+ * component get instant state changes instead of motion when the user
+ * has requested reduced motion at the OS level.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 @layer components {
   .input {
     @apply w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-3 py-2

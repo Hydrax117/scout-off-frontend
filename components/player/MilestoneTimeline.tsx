@@ -61,20 +61,26 @@ export default function MilestoneTimeline({
       aria-label="Level progression timeline"
       className="relative flex flex-col gap-0 sm:flex-row sm:items-start sm:gap-0"
     >
-      {LEVELS.map((level, idx) => {
+      {LEVELS.map((level) => {
         const isCompleted = level <= currentLevel;
         const isCurrent = level === currentLevel;
         const isFuture = level > currentLevel;
         const milestone = milestoneForLevel(milestones, level);
         const isExpanded = expanded === level;
-        const isLast = idx === LEVELS.length - 1;
+        const isLast = level === LEVELS[LEVELS.length - 1];
+        // Prefer milestone.id (stable unique id) when the level has a milestone;
+        // fall back to evidenceHash, then a level-scoped key — never the array index.
+        const itemKey =
+          milestone?.id ??
+          milestone?.evidenceHash ??
+          `level-${level}-${milestone?.timestamp ?? 0}-${milestone?.validator ?? 'none'}`;
 
         return (
           // Each <li> is a timeline entry. aria-label provides the full
           // accessible name so users scanning the list hear a meaningful
           // summary without having to enter the node.
           <li
-            key={level}
+            key={itemKey}
             aria-label={
               isCompleted && milestone
                 ? `${PROGRESS_LABELS[level]}, achieved ${formatDate(milestone.timestamp)}`
@@ -109,7 +115,7 @@ export default function MilestoneTimeline({
               aria-controls={`timeline-detail-${level}`}
               aria-label={`${PROGRESS_LABELS[level]}${milestone ? `, achieved ${formatDate(milestone.timestamp)}` : ''}. ${isExpanded ? 'Collapse' : 'Expand'} details`}
               className={[
-                'relative z-10 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-green',
+                'relative z-10 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center motion-safe:transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-green',
                 isCompleted
                   ? NODE_COLOUR[level]
                   : 'bg-gray-800 border-2 border-gray-600',
@@ -120,7 +126,7 @@ export default function MilestoneTimeline({
                 <span
                   aria-hidden="true"
                   data-testid="pulse-ring"
-                  className="absolute inset-0 rounded-full animate-ping opacity-50 bg-current"
+                  className="absolute inset-0 rounded-full motion-safe:animate-ping opacity-50 bg-current"
                 />
               )}
               {/* Checkmark SVG — decorative; aria-hidden + focusable=false. */}
@@ -156,7 +162,7 @@ export default function MilestoneTimeline({
               {isCompleted && milestone && (
                 <time
                   dateTime={new Date(milestone.timestamp * 1000).toISOString()}
-                  className="text-xs text-gray-500"
+                  className="text-xs text-gray-400"
                 >
                   {formatDate(milestone.timestamp)}
                 </time>
@@ -193,13 +199,13 @@ export default function MilestoneTimeline({
                     >
                       {/* "Verified by" label is decorative in context of the
                           aria-label above — hide to avoid double-reading. */}
-                      <span aria-hidden="true" className="text-gray-500">
+                      <span aria-hidden="true" className="text-gray-400">
                         Verified by
                       </span>
                       <ValidatorChip address={milestone.validator} />
                     </p>
                     <p>
-                      <span className="text-gray-500">Date: </span>
+                      <span className="text-gray-400">Date: </span>
                       <time
                         dateTime={new Date(
                           milestone.timestamp * 1000,
@@ -210,7 +216,7 @@ export default function MilestoneTimeline({
                     </p>
                   </>
                 ) : level > 0 ? (
-                  <p className="text-gray-500">No milestone data yet.</p>
+                  <p className="text-gray-400">No milestone data yet.</p>
                 ) : null}
               </div>
             )}

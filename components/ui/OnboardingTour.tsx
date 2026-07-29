@@ -121,7 +121,7 @@ export default function OnboardingTour({
         </button>
 
         {/* Step counter */}
-        <div className="text-xs text-gray-500 mb-2">
+        <div className="text-xs text-gray-400 mb-2">
           Step {currentStep + 1} of {steps.length}
         </div>
 

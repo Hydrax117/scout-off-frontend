@@ -157,6 +157,11 @@ describe('ScoutDashboardContent — initial render', () => {
     render(<ScoutDashboardContent />);
     expect(screen.getByTestId('player-filter-form')).toBeInTheDocument();
   });
+
+  it('renders the filter form wrapper with data-testid', () => {
+    render(<ScoutDashboardContent />);
+    expect(screen.getByTestId('filter-form')).toBeInTheDocument();
+  });
 });
 
 // ── Loading / skeleton state ──────────────────────────────────────────────────
@@ -204,6 +209,12 @@ describe('ScoutDashboardContent — empty state', () => {
     const { rerender } = render(<ScoutDashboardContent />);
     simulateSearchCycle(rerender, []);
     expect(screen.getByText('No players found')).toBeInTheDocument();
+  });
+
+  it('renders the empty state container with data-testid', () => {
+    const { rerender } = render(<ScoutDashboardContent />);
+    simulateSearchCycle(rerender, []);
+    expect(screen.getByTestId('empty-state')).toBeInTheDocument();
   });
 
   it('renders the descriptive subtext in the empty state', () => {
@@ -330,15 +341,15 @@ describe('ScoutDashboardContent — pagination', () => {
     const manyPlayers = Array.from({ length: 13 }, (_, i) => makePlayer(`p${i}`));
     const { rerender } = render(<ScoutDashboardContent />);
     simulateSearchCycle(rerender, manyPlayers);
-    expect(screen.getByRole('button', { name: /previous/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /next/i })).toBeInTheDocument();
+    expect(screen.getByTestId('pagination-prev')).toBeInTheDocument();
+    expect(screen.getByTestId('pagination-next')).toBeInTheDocument();
   });
 
   it('Previous button is disabled on the first page', () => {
     const manyPlayers = Array.from({ length: 13 }, (_, i) => makePlayer(`p${i}`));
     const { rerender } = render(<ScoutDashboardContent />);
     simulateSearchCycle(rerender, manyPlayers);
-    expect(screen.getByRole('button', { name: /previous/i })).toBeDisabled();
+    expect(screen.getByTestId('pagination-prev')).toBeDisabled();
   });
 });
 
