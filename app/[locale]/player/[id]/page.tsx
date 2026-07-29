@@ -7,6 +7,7 @@ import { useWallet } from '@/hooks/useWallet';
 import { usePlayer } from '@/hooks/usePlayer';
 import { usePayToContact } from '@/hooks/usePayToContact';
 import { useSubscription } from '@/hooks/useSubscription';
+import { useToast } from '@/components/ui/Toast';
 import { PLATFORM_CONTACT_FEE_XLM, getContactFee } from '@/lib/contract';
 import XlmFiatDisplay from '@/components/ui/XlmFiatDisplay';
 import ProgressBar from '@/components/ProgressBar';
@@ -26,6 +27,7 @@ export default function PlayerProfile() {
   const { id } = useParams<{ id: string }>();
   const { publicKey } = useWallet();
   const t = useTranslations('player_profile');
+  const { show: showToast } = useToast();
   const { player, loading: playerLoading, refetch } = usePlayer(id ?? null);
   const { unlock, loading: contacting } = usePayToContact(id ?? '');
   const [contactModalOpen, setContactModalOpen] = useState(false);
@@ -125,6 +127,31 @@ export default function PlayerProfile() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleShare() {
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: player ? `${player.vitals.name} — ScoutOff Player Profile` : 'ScoutOff Player Profile',
+          url: profileUrl,
+        });
+      } catch (e) {
+        // AbortError fires when the user dismisses the native share sheet —
+        // not a failure worth reporting.
+        if ((e as Error)?.name !== 'AbortError') {
+          showToast({ message: 'Could not share this profile', variant: 'error' });
+        }
+      }
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(profileUrl);
+      showToast({ message: 'Profile link copied to clipboard', variant: 'success' });
+    } catch {
+      showToast({ message: 'Could not copy link', variant: 'error' });
+    }
+  }
+
   const isScoutWithActiveSubscription = publicKey && subscription && !isExpired;
   const canLogTrialOffer =
     isScoutWithActiveSubscription && player && player.progressLevel < 3;
@@ -216,14 +243,24 @@ export default function PlayerProfile() {
         </button>
       )}
 
-      {/* Share via QR */}
-      <button
-        ref={shareButtonRef}
-        onClick={() => setQrOpen(true)}
-        className="self-start text-sm text-gray-400 border border-gray-700 px-3 py-1.5 rounded-lg hover:border-gray-500 hover:text-white transition"
-      >
-        Share via QR
-      </button>
+      {/* Share */}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={handleShare}
+          aria-label={`Share ${player.vitals.name}'s profile`}
+          className="self-start text-sm text-gray-400 border border-gray-700 px-3 py-1.5 rounded-lg hover:border-gray-500 hover:text-white transition"
+        >
+          Share
+        </button>
+        <button
+          ref={shareButtonRef}
+          onClick={() => setQrOpen(true)}
+          className="self-start text-sm text-gray-400 border border-gray-700 px-3 py-1.5 rounded-lg hover:border-gray-500 hover:text-white transition"
+        >
+          Share via QR
+        </button>
+      </div>
       <QRModal
         isOpen={qrOpen}
         onClose={() => {
