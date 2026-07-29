@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { Player } from '@/types';
+import { fetchWithRetry } from './fetchWithRetry';
 
 // `API_URL_INTERNAL` (server-only, no NEXT_PUBLIC_ prefix) lets a Server
 // Component's SSR-time fetch reach the backend via a container-internal
@@ -37,7 +38,7 @@ export class SearchRateLimitedError extends Error {
 // external backend directly — that route applies per-IP rate limiting on
 // top of the client-side debouncing in ScoutDashboardContent.
 export const searchPlayersByName = async (name: string): Promise<Player[]> => {
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `/api/players/search?name=${encodeURIComponent(name)}`,
   );
   if (res.status === 429) {
@@ -213,7 +214,7 @@ export const fetchAllReferralCodes = (): Promise<ReferralCode[]> =>
   api.get('/referrals/all').then((r) => r.data);
 
 export const getReferralOverview = async (): Promise<ReferralOverview> => {
-  const res = await fetch('/api/admin/referrals');
+  const res = await fetchWithRetry('/api/admin/referrals');
   if (!res.ok) throw new Error('Failed to fetch referral overview');
   return res.json();
 };
@@ -223,7 +224,7 @@ export const fetchFraudFlags = async (): Promise<{
   flags: FraudFlag[];
   warnings: string[];
 }> => {
-  const res = await fetch('/api/admin/fraud-flags');
+  const res = await fetchWithRetry('/api/admin/fraud-flags');
   if (!res.ok) throw new Error('Failed to fetch fraud flags');
   return res.json();
 };
@@ -248,7 +249,7 @@ async function parseErrorMessage(
 }
 
 export const fetchAcademies = async (): Promise<Academy[]> => {
-  const res = await fetch('/api/admin/academies');
+  const res = await fetchWithRetry('/api/admin/academies');
   if (!res.ok)
     throw new Error(await parseErrorMessage(res, 'Failed to fetch academies'));
   return res.json();
@@ -258,7 +259,7 @@ export const createAcademy = async (
   name: string,
   ownerWallet: string,
 ): Promise<Academy> => {
-  const res = await fetch('/api/admin/academies', {
+  const res = await fetchWithRetry('/api/admin/academies', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, ownerWallet }),
@@ -272,7 +273,7 @@ export const addAcademyMember = async (
   academyId: string,
   wallet: string,
 ): Promise<Academy> => {
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `/api/admin/academies/${encodeURIComponent(academyId)}/members`,
     {
       method: 'POST',
@@ -291,7 +292,7 @@ export const removeAcademyMember = async (
   academyId: string,
   wallet: string,
 ): Promise<void> => {
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `/api/admin/academies/${encodeURIComponent(academyId)}/members/${encodeURIComponent(wallet)}`,
     { method: 'DELETE' },
   );
