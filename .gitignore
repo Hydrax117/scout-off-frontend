@@ -51,6 +51,23 @@ packages/indexer/data/
 *.db-wal
 *.db-shm
 
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Editor swap / backup files
+*.swp
+*.swo
+*~
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Temporary files created by test runs (server test DB)
+/tmp/
 # OS-generated files
 .DS_Store
 Thumbs.db

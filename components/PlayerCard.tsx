@@ -15,6 +15,7 @@ import Badge from '@/components/ui/Badge';
 import Tooltip from '@/components/ui/Tooltip';
 import { FOOTBALL_POSITIONS } from '@/lib/positions';
 
+/** Map position abbreviation (e.g. "ST") → full label (e.g. "Striker"). */
 /** Look up the full label for a position abbreviation, e.g. 'ST' → 'Striker'. */
 const POSITION_LABEL: Record<string, string> = Object.fromEntries(
   FOOTBALL_POSITIONS.map(({ value, label }) => [value, label]),
