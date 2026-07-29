@@ -155,7 +155,14 @@
     "verifying": "Verificando status de validador…",
     "access_only_title": "Acesso Somente para Validadores",
     "access_only_description": "Sua carteira não está registrada como um validador aprovado. Entre em contato com um administrador para solicitar acesso de validador.",
-    "find_player": "Encontrar um Jogador"
+    "find_player": "Encontrar um Jogador",
+    "roster_title": "Meus Jogadores Aprovados",
+    "roster_empty_title": "Nenhum jogador aprovado ainda",
+    "roster_empty_description": "Use o formulário de aprovação acima para aprovar o marco de um jogador.",
+    "roster_error": "Não foi possível carregar os jogadores aprovados. O indexador pode estar temporariamente indisponível.",
+    "roster_retry": "Tentar novamente",
+    "roster_count_one": "1 jogador",
+    "roster_count_other": "{count} jogadores"
   },
   "admin": {
     "title": "Painel de Administração",

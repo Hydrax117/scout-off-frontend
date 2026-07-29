@@ -155,7 +155,14 @@
     "verifying": "Vérification du statut de validateur…",
     "access_only_title": "Accès réservé aux validateurs",
     "access_only_description": "Votre portefeuille n'est pas enregistré comme validateur approuvé. Contactez un administrateur pour demander l'accès.",
-    "find_player": "Trouver un joueur"
+    "find_player": "Trouver un joueur",
+    "roster_title": "Mes joueurs approuvés",
+    "roster_empty_title": "Aucun joueur approuvé pour le moment",
+    "roster_empty_description": "Utilisez le formulaire d'approbation ci-dessus pour approuver le jalon d'un joueur.",
+    "roster_error": "Impossible de charger les joueurs approuvés. L'indexeur est peut-être temporairement indisponible.",
+    "roster_retry": "Réessayer",
+    "roster_count_one": "1 joueur",
+    "roster_count_other": "{count} joueurs"
   },
   "admin": {
     "title": "Tableau de bord admin",

@@ -61,20 +61,26 @@ export default function MilestoneTimeline({
       aria-label="Level progression timeline"
       className="relative flex flex-col gap-0 sm:flex-row sm:items-start sm:gap-0"
     >
-      {LEVELS.map((level, idx) => {
+      {LEVELS.map((level) => {
         const isCompleted = level <= currentLevel;
         const isCurrent = level === currentLevel;
         const isFuture = level > currentLevel;
         const milestone = milestoneForLevel(milestones, level);
         const isExpanded = expanded === level;
-        const isLast = idx === LEVELS.length - 1;
+        const isLast = level === LEVELS[LEVELS.length - 1];
+        // Prefer milestone.id (stable unique id) when the level has a milestone;
+        // fall back to evidenceHash, then a level-scoped key — never the array index.
+        const itemKey =
+          milestone?.id ??
+          milestone?.evidenceHash ??
+          `level-${level}-${milestone?.timestamp ?? 0}-${milestone?.validator ?? 'none'}`;
 
         return (
           // Each <li> is a timeline entry. aria-label provides the full
           // accessible name so users scanning the list hear a meaningful
           // summary without having to enter the node.
           <li
-            key={level}
+            key={itemKey}
             aria-label={
               isCompleted && milestone
                 ? `${PROGRESS_LABELS[level]}, achieved ${formatDate(milestone.timestamp)}`
