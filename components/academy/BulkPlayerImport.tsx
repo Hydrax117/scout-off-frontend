@@ -274,7 +274,7 @@ export default function BulkPlayerImport() {
           >
             Player file (CSV or JSON)
           </label>
-          <p id="bulk-import-hint" className="text-xs text-gray-500 mt-1">
+          <p id="bulk-import-hint" className="text-xs text-gray-400 mt-1">
             Required columns/fields: name, age, nationality, region, position.
             Optional: bio. One row/object per player. No highlight reel
             upload here — add those later per-player.
@@ -354,7 +354,7 @@ export default function BulkPlayerImport() {
                     key={row.row}
                     className="border-b border-gray-800/60 align-top"
                   >
-                    <td className="py-2 pr-4 text-gray-500">{row.row}</td>
+                    <td className="py-2 pr-4 text-gray-400">{row.row}</td>
                     <td className="py-2 pr-4 text-white">
                       {row.data.name || '—'}
                     </td>

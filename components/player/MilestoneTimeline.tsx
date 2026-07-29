@@ -156,7 +156,7 @@ export default function MilestoneTimeline({
               {isCompleted && milestone && (
                 <time
                   dateTime={new Date(milestone.timestamp * 1000).toISOString()}
-                  className="text-xs text-gray-500"
+                  className="text-xs text-gray-400"
                 >
                   {formatDate(milestone.timestamp)}
                 </time>
@@ -193,13 +193,13 @@ export default function MilestoneTimeline({
                     >
                       {/* "Verified by" label is decorative in context of the
                           aria-label above — hide to avoid double-reading. */}
-                      <span aria-hidden="true" className="text-gray-500">
+                      <span aria-hidden="true" className="text-gray-400">
                         Verified by
                       </span>
                       <ValidatorChip address={milestone.validator} />
                     </p>
                     <p>
-                      <span className="text-gray-500">Date: </span>
+                      <span className="text-gray-400">Date: </span>
                       <time
                         dateTime={new Date(
                           milestone.timestamp * 1000,
@@ -210,7 +210,7 @@ export default function MilestoneTimeline({
                     </p>
                   </>
                 ) : level > 0 ? (
-                  <p className="text-gray-500">No milestone data yet.</p>
+                  <p className="text-gray-400">No milestone data yet.</p>
                 ) : null}
               </div>
             )}

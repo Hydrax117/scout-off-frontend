@@ -91,7 +91,7 @@ function ValidatorDashboardContent() {
               {selectedPlayer.vitals.position} · {selectedPlayer.vitals.region}·{' '}
               {selectedPlayer.vitals.nationality}
             </p>
-            <p className="text-gray-500 text-xs mt-2 font-mono">
+            <p className="text-gray-400 text-xs mt-2 font-mono">
               ID: {selectedPlayer.id}
             </p>
           </div>

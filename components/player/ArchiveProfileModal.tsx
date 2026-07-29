@@ -62,7 +62,7 @@ export default function ArchiveProfileModal({
                   Restore your profile to make it visible to scouts again. Scouts will be able to
                   search and view your profile.
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-400">
                   Your data and milestones are preserved — nothing is deleted.
                 </p>
               </>
@@ -72,7 +72,7 @@ export default function ArchiveProfileModal({
                   Archiving your profile will hide it from scout search results and browsing. You
                   can restore it anytime.
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-400">
                   Your data and milestones are preserved — nothing is deleted. Direct links to your
                   profile will show a &apos;currently private&apos; message.
                 </p>

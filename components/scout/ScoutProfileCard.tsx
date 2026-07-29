@@ -80,7 +80,7 @@ function ScoutProfileCard({ scout }: { scout: Scout }) {
             {sub.tier}
           </span>
         ) : (
-          <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-800 text-gray-500">
+          <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">
             No subscription
           </span>
         )}
@@ -96,12 +96,12 @@ function ScoutProfileCard({ scout }: { scout: Scout }) {
 
       {/* Subscription expiry */}
       {sub ? (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-gray-400">
           Expires{' '}
           <span className="text-gray-300">{formatDate(sub.expiry)}</span>
         </p>
       ) : (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-gray-400">
           Subscription inactive or expired
         </p>
       )}
@@ -119,7 +119,7 @@ function ScoutProfileCard({ scout }: { scout: Scout }) {
                 {stats?.[key] ?? 0}
               </span>
             )}
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-xs text-gray-400 mt-0.5">
               {key === 'contactedCount' ? 'Players Contacted' : 'Trial Offers'}
             </p>
           </div>

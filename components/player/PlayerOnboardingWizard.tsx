@@ -76,14 +76,14 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
                       ? 'bg-brand-green text-black'
                       : isCurrent
                         ? 'border-2 border-brand-green text-brand-green'
-                        : 'border-2 border-gray-600 text-gray-500',
+                        : 'border-2 border-gray-600 text-gray-400',
                   ].join(' ')}
                 >
                   {isCompleted ? '✓' : step.id}
                 </div>
                 <span
                   className={`text-xs mt-1 whitespace-nowrap ${
-                    isCurrent ? 'text-white font-medium' : 'text-gray-500'
+                    isCurrent ? 'text-white font-medium' : 'text-gray-400'
                   }`}
                 >
                   {step.label}

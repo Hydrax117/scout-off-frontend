@@ -418,7 +418,7 @@ function AdminDashboardContent() {
           Validators ({validators.length})
         </h2>
         {validators.length === 0 ? (
-          <p className="text-sm text-gray-500">No validators authorized.</p>
+          <p className="text-sm text-gray-400">No validators authorized.</p>
         ) : (
           <ul className="flex flex-col gap-3">
             {validators.map((v) => (
@@ -478,21 +478,21 @@ function AdminDashboardContent() {
                   <span className="text-gray-200 shrink-0">
                     {EVENT_LABELS[event.type]}
                   </span>
-                  <span className="font-mono text-gray-500 truncate">
+                  <span className="font-mono text-gray-400 truncate">
                     <TruncatedAddress
                       address={event.actor}
-                      className="text-gray-500"
+                      className="text-gray-400"
                     />
                   </span>
                   {event.subjectId && (
-                    <span className="font-mono text-gray-500 truncate">
+                    <span className="font-mono text-gray-400 truncate">
                       <TruncatedAddress
                         address={event.subjectId}
-                        className="text-gray-500"
+                        className="text-gray-400"
                       />
                     </span>
                   )}
-                  <span className="text-gray-500 shrink-0 ml-auto">
+                  <span className="text-gray-400 shrink-0 ml-auto">
                     {new Date(event.timestamp * 1000).toLocaleString()}
                   </span>
                 </li>
@@ -539,7 +539,7 @@ function AdminDashboardContent() {
           <>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">
+                <p className="text-xs uppercase tracking-wide text-gray-400">
                   Codes Generated
                 </p>
                 <p className="text-2xl font-semibold text-white">
@@ -547,7 +547,7 @@ function AdminDashboardContent() {
                 </p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">
+                <p className="text-xs uppercase tracking-wide text-gray-400">
                   Successful Referrals
                 </p>
                 <p className="text-2xl font-semibold text-white">

@@ -246,7 +246,7 @@ export default function WalletButton({
                     </span>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium">{wp.label}</p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-gray-400">
                         {wp.provider === 'ledger'
                           ? t('ledgerConnect')
                           : wp.provider === 'albedo'
@@ -273,7 +273,7 @@ export default function WalletButton({
           <button
             type="button"
             onClick={closeWalletModal}
-            className="text-sm text-gray-500 hover:text-gray-300 transition self-center"
+            className="text-sm text-gray-400 hover:text-gray-300 transition self-center"
           >
             {t('cancel')}
           </button>

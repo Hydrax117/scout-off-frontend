@@ -480,7 +480,7 @@ export default function ScoutDashboardContent() {
             <p
               role="status"
               aria-live="polite"
-              className="text-center text-sm text-gray-500 py-2"
+              className="text-center text-sm text-gray-400 py-2"
             >
               No more results
             </p>

@@ -130,7 +130,7 @@ export default function Navbar() {
 
             <Link
               href={`/${currentLocale}${SPONSORSHIP_LINK.href}`}
-              className="flex items-center gap-1.5 text-gray-500 hover:text-gray-300 transition whitespace-nowrap"
+              className="flex items-center gap-1.5 text-gray-400 hover:text-gray-300 transition whitespace-nowrap"
             >
               {t(SPONSORSHIP_LINK.labelKey)}
               <span className="text-[10px] uppercase tracking-wide border border-gray-700 rounded-full px-1.5 py-0.5">
@@ -184,7 +184,7 @@ export default function Navbar() {
             {isAuthenticated && (
               <span className="hidden md:inline text-sm text-gray-300 whitespace-nowrap">
                 {isLoadingBalance ? (
-                  <span className="text-gray-500" aria-hidden="true">
+                  <span className="text-gray-400" aria-hidden="true">
                     ⟳
                   </span>
                 ) : (
@@ -268,7 +268,7 @@ export default function Navbar() {
                   ? 'page'
                   : undefined
               }
-              className="flex items-center gap-1.5 text-gray-500 hover:text-gray-300 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green rounded py-2 px-1"
+              className="flex items-center gap-1.5 text-gray-400 hover:text-gray-300 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green rounded py-2 px-1"
               onClick={closeMenu}
             >
               {t(SPONSORSHIP_LINK.labelKey)}
@@ -279,7 +279,7 @@ export default function Navbar() {
 
             {/* Locale switcher in mobile menu */}
             <div className="border-t border-gray-800 mt-1 pt-3 flex flex-col gap-0.5">
-              <p className="text-xs text-gray-500 px-1 mb-1">
+              <p className="text-xs text-gray-400 px-1 mb-1">
                 {t('language.select_language')}
               </p>
               {locales.map((locale) => (
