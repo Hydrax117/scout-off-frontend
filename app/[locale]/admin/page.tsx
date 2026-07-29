@@ -28,6 +28,18 @@ const AdminAuditLog = dynamic(
   () => import('@/components/admin/AdminAuditLog'),
   { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 animate-pulse h-48" /> },
 );
+const PlatformAnalyticsCharts = dynamic(
+  () => import('@/components/admin/PlatformAnalyticsCharts'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 animate-pulse h-64" /> },
+);
+const FeeRevenueChart = dynamic(
+  () => import('@/components/admin/FeeRevenueChart'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 animate-pulse h-64" /> },
+);
+const ValidatorActionLog = dynamic(
+  () => import('@/components/admin/ValidatorActionLog'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 animate-pulse h-48" /> },
+);
 import type { TxStatus } from '@/components/ui/TransactionStatus';
 import {
   getValidators,
@@ -93,6 +105,14 @@ function AdminDashboardContent() {
     null,
   );
   const [withdrawTxHash, setWithdrawTxHash] = useState<string | null>(null);
+
+  const [addTxStatus, setAddTxStatus] = useState<TxStatus | null>(null);
+  const [addTxHash, setAddTxHash] = useState<string | null>(null);
+  const [addTxError, setAddTxError] = useState<string | null>(null);
+
+  const [removeTxStatus, setRemoveTxStatus] = useState<TxStatus | null>(null);
+  const [removeTxHash, setRemoveTxHash] = useState<string | null>(null);
+  const [removeTxError, setRemoveTxError] = useState<string | null>(null);
 
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [activityTotal, setActivityTotal] = useState(0);
@@ -188,6 +208,9 @@ function AdminDashboardContent() {
     try {
       let xdr: string;
       if (action === 'add') {
+        setAddTxStatus('pending');
+        setAddTxHash(null);
+        setAddTxError(null);
         xdr = await buildAddValidator(publicKey, validatorInput);
         const txHash = await signAndSubmit(xdr);
         recordAuditEntry({
@@ -196,6 +219,8 @@ function AdminDashboardContent() {
           txHash,
           status: 'submitted',
         }).catch(() => {});
+        setAddTxHash(txHash);
+        setAddTxStatus('success');
         setValidators((v) => [
           ...v,
           {
@@ -207,6 +232,9 @@ function AdminDashboardContent() {
         setValidatorInput('');
         show({ message: 'Validator added.', variant: 'success' });
       } else if (action === 'remove') {
+        setRemoveTxStatus('pending');
+        setRemoveTxHash(null);
+        setRemoveTxError(null);
         xdr = await buildRemoveValidator(publicKey, removeTarget);
         const txHash = await signAndSubmit(xdr);
         recordAuditEntry({
@@ -215,6 +243,8 @@ function AdminDashboardContent() {
           txHash,
           status: 'submitted',
         }).catch(() => {});
+        setRemoveTxHash(txHash);
+        setRemoveTxStatus('success');
         setValidators((v) => v.filter((val) => val.address !== removeTarget));
         setRemoveTarget('');
         show({ message: 'Validator removed.', variant: 'success' });
@@ -255,8 +285,17 @@ function AdminDashboardContent() {
         show({ message: 'Contract unpaused.', variant: 'success' });
       }
     } catch (e: any) {
+      const message = parseContractError(e);
       if (action === 'withdraw') setWithdrawTxStatus('error');
-      show({ message: parseContractError(e), variant: 'error' });
+      if (action === 'add') {
+        setAddTxStatus('error');
+        setAddTxError(message);
+      }
+      if (action === 'remove') {
+        setRemoveTxStatus('error');
+        setRemoveTxError(message);
+      }
+      show({ message, variant: 'error' });
     } finally {
       setActionLoading(false);
       setDialog(null);
@@ -396,42 +435,52 @@ function AdminDashboardContent() {
       {/* Runtime Configuration Status */}
       <ConfigStatus />
 
-      {/* Add Validator */}
+      {/* Manage Validators (#571) */}
       <section className="bg-brand-card border border-gray-800 rounded-xl p-6 flex flex-col gap-4">
-        <h2 className="text-lg font-semibold text-white">Add Validator</h2>
-        <div className="flex gap-3">
-          <input
-            className="input flex-1"
-            placeholder="Stellar public key (G...)"
-            value={validatorInput}
-            onChange={(e) => setValidatorInput(e.target.value)}
-          />
-          <button
-            disabled={
-              !validatorInput.startsWith('G') ||
-              validatorInput.length !== 56 ||
-              paused
-            }
-            onClick={() =>
-              setDialog({
-                action: 'add',
-                label: 'Add Validator',
-                message: `Add ${validatorInput} as a validator?`,
-              })
-            }
-            title={paused ? 'Contract is currently paused' : undefined}
-            className="px-5 py-2 rounded-lg bg-brand-green text-black font-semibold hover:opacity-90 transition disabled:opacity-40"
-          >
-            Add
-          </button>
-        </div>
-      </section>
+        <h2 className="text-lg font-semibold text-white">Manage Validators</h2>
 
-      {/* Validators List + Remove */}
-      <section className="bg-brand-card border border-gray-800 rounded-xl p-6 flex flex-col gap-4">
-        <h2 className="text-lg font-semibold text-white">
-          Validators ({validators.length})
-        </h2>
+        <div className="flex flex-col gap-2">
+          <h3 className="text-sm font-medium text-gray-300">Add Validator</h3>
+          <div className="flex gap-3">
+            <input
+              className="input flex-1"
+              placeholder="Stellar public key (G...)"
+              value={validatorInput}
+              onChange={(e) => setValidatorInput(e.target.value)}
+            />
+            <button
+              disabled={
+                !validatorInput.startsWith('G') ||
+                validatorInput.length !== 56 ||
+                paused
+              }
+              onClick={() =>
+                setDialog({
+                  action: 'add',
+                  label: 'Add Validator',
+                  message: `Add ${validatorInput} as a validator?`,
+                })
+              }
+              title={paused ? 'Contract is currently paused' : undefined}
+              className="px-5 py-2 rounded-lg bg-brand-green text-black font-semibold hover:opacity-90 transition disabled:opacity-40"
+            >
+              Add
+            </button>
+          </div>
+          <TransactionStatus
+            status={addTxStatus}
+            txHash={addTxHash}
+            error={addTxError}
+            onHide={() => {
+              setAddTxStatus(null);
+              setAddTxHash(null);
+            }}
+          />
+        </div>
+
+        <h3 className="text-sm font-medium text-gray-300">
+          Authorized Validators ({validators.length})
+        </h3>
         {validators.length === 0 ? (
           <p className="text-sm text-gray-400">No validators authorized.</p>
         ) : (
@@ -466,6 +515,15 @@ function AdminDashboardContent() {
             ))}
           </ul>
         )}
+        <TransactionStatus
+          status={removeTxStatus}
+          txHash={removeTxHash}
+          error={removeTxError}
+          onHide={() => {
+            setRemoveTxStatus(null);
+            setRemoveTxHash(null);
+          }}
+        />
       </section>
 
       {/* Academies (issue #663) — off-chain grouping of validator wallets
@@ -540,6 +598,10 @@ function AdminDashboardContent() {
         )}
       </section>
 
+      <PlatformAnalyticsCharts />
+
+      <FeeRevenueChart />
+
       {/* Referral Program */}
       <section className="bg-brand-card border border-gray-800 rounded-xl p-6 flex flex-col gap-4">
         <h2 className="text-lg font-semibold text-white">Referral Program</h2>
@@ -601,6 +663,8 @@ function AdminDashboardContent() {
       </section>
 
       <AdminAuditLog />
+
+      <ValidatorActionLog />
 
       <FraudFlagsPanel />
 

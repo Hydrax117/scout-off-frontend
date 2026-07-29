@@ -46,6 +46,10 @@ __tests__/**/__snapshots__/
 # Pull request description files
 pr-*.md
 
+# Jest snapshot files
+__snapshots__/
+*.snap
+
 # Local referral-store data (lib/referralStore.ts writes here in dev)
 /data/
 

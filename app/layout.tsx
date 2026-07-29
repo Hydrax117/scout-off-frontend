@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import './globals.css';
-import { Analytics } from '@vercel/analytics/next';
 import Navbar from '@/components/Navbar';
+import ThemeProvider from '@/components/ThemeProvider';
 import { ToastProvider } from '@/components/ui/Toast';
 import { WalletProvider } from '@/context/WalletContext';
 import { ThemeProvider } from '@/context/ThemeContext';
@@ -10,6 +10,7 @@ import ContractIncompatibleBanner from '@/components/ContractIncompatibleBanner'
 import ContractPausedBanner from '@/components/ContractPausedBanner';
 import ConfigWarningBanner from '@/components/ConfigWarningBanner';
 import ServiceWorkerUpdateBanner from '@/components/ServiceWorkerUpdateBanner';
+import SessionExpiryWarning from '@/components/SessionExpiryWarning';
 import WebVitalsReporter from '@/components/WebVitalsReporter';
 import A11yDevAudit from '@/components/A11yDevAudit';
 import { NextIntlClientProvider } from 'next-intl';
@@ -87,7 +88,7 @@ export default async function RootLayout({
   const configWarnings = validateConfig();
 
   return (
-    <html lang={locale}>
+    <html lang={locale} suppressHydrationWarning>
       <head>
         <link
           rel="icon"
@@ -144,10 +145,7 @@ export default async function RootLayout({
           </NextIntlClientProvider>
         </ThemeProvider>
         {!isTestEnv && (
-          <>
-            <Analytics />
-            <WebVitalsReporter />
-          </>
+          <CookieConsentGate />
         )}
       </body>
     </html>

@@ -10,6 +10,7 @@ import {
   Radio,
 } from 'lucide-react';
 import RedirectReasonBanner from '@/components/ui/RedirectReasonBanner';
+import CookieSettingsLink from '@/components/ui/CookieSettingsLink';
 
 // ── Feature card data ─────────────────────────────────────────────────────────
 const features = [
@@ -187,6 +188,19 @@ export default async function HomePage({
               <Radio size={15} />
               {t('status')}
             </Link>
+            <Link
+              href={`/${locale}/privacy`}
+              className="flex items-center gap-1.5 text-gray-400 hover:text-white text-sm transition"
+            >
+              {t('privacy')}
+            </Link>
+            <Link
+              href={`/${locale}/terms`}
+              className="flex items-center gap-1.5 text-gray-400 hover:text-white text-sm transition"
+            >
+              {t('terms')}
+            </Link>
+            <CookieSettingsLink label={t('cookie_settings')} />
           </nav>
         </div>
       </footer>

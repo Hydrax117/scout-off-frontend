@@ -6,17 +6,18 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Driven by the --green/--bg/--card CSS variables (app/globals.css) so
+        // toggling the persisted theme (see components/ThemeToggle.tsx) recolors
+        // every brand-* utility class app-wide. The rgb(... / <alpha-value>)
+        // form is Tailwind's documented pattern for CSS-variable colors that
+        // still support opacity modifiers, e.g. bg-brand-green/20.
         brand: {
-          green: '#00C853',
-          // CSS-variable-backed so these tokens flip automatically between
-          // the light (:root) and dark (.dark) palettes defined in
-          // app/globals.css — components using bg-brand-dark/bg-brand-card
-          // get theme-awareness for free. The dark values are kept in sync
-          // with theme_color/background_color in public/manifest.json and
-          // the theme-color meta tag in app/layout.tsx (both static, since
-          // the PWA manifest can't switch at runtime).
-          dark: 'var(--bg)',
-          card: 'var(--card)',
+          green: 'rgb(var(--green) / <alpha-value>)',
+          // Keep the dark-theme values in sync with the .dark block in
+          // app/globals.css and theme_color/background_color in
+          // public/manifest.json and the theme-color meta tag in app/layout.tsx.
+          dark: 'rgb(var(--bg) / <alpha-value>)',
+          card: 'rgb(var(--card) / <alpha-value>)',
         },
       },
     },

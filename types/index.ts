@@ -70,6 +70,25 @@ export interface ValidatorInfo {
   addedBy: string;
 }
 
+/**
+ * An off-chain milestone claim awaiting a validator's on-chain approval
+ * (issues #567, #568). Distinct from {@link Milestone}, which only exists
+ * once a validator has already approved one.
+ */
+export interface MilestoneSubmission {
+  id: string;
+  playerId: string;
+  playerName: string | null;
+  description: string;
+  evidenceUrl: string | null;
+  validatorWallet: string;
+  submittedBy: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: number;
+  decidedAt: number | null;
+  txHash: string | null;
+}
+
 // ── Academy ──────────────────────────────────────────────────────────────────
 /**
  * An off-chain grouping of validator wallets under one institutional

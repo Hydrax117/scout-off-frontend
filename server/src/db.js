@@ -62,6 +62,28 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_sponsorship_waitlist_email
     ON sponsorship_waitlist (email);
+
+  -- Pending milestone submissions (issues #567, #568): an off-chain queue of
+  -- milestone claims awaiting validator review. Distinct from the on-chain
+  -- Milestone record in types/index.ts, which only exists once a validator
+  -- has already approved one via approve_milestone — this table models the
+  -- "not yet approved" state that the contract has no concept of.
+  CREATE TABLE IF NOT EXISTS milestone_submissions (
+    id TEXT PRIMARY KEY,
+    player_id TEXT NOT NULL,
+    player_name TEXT,
+    description TEXT NOT NULL,
+    evidence_url TEXT,
+    validator_wallet TEXT NOT NULL,
+    submitted_by TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at INTEGER NOT NULL,
+    decided_at INTEGER,
+    tx_hash TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_milestone_submissions_validator_status
+    ON milestone_submissions (validator_wallet, status, created_at);
 `);
 
 module.exports = db;

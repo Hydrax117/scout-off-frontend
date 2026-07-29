@@ -110,13 +110,17 @@
     "badge": "Coming Soon",
     "title": "Fractionalized Player Sponsorship",
     "description": "Fans and investors will soon be able to buy \"Player Tokens\" to fund a player's training and travel — with revenue routed transparently back on-chain.",
+    "metaDescription": "Support talented players from underserved regions through fractionalized XLM sponsorship on the Stellar blockchain. ScoutOff connects fans and backers directly with scouted talent.",
     "howItWorksTitle": "How it will work",
     "howItWorksDescription": "Sponsors will purchase fractional Player Tokens representing a stake in a player's future earnings. Funds raised go directly toward training, travel, and development costs, while a share of the player's future on-chain revenue is routed back to token holders — all enforced by Soroban smart contracts.",
     "notice": "This page is a placeholder. No tokens can be purchased yet and no blockchain interaction is available here."
   },
   "footer": {
     "changelog": "Changelog",
-    "status": "Status"
+    "status": "Status",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "cookie_settings": "Cookie Settings"
   },
   "changelog": {
     "back_to_home": "Back to home",
