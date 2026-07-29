@@ -1,11 +1,4 @@
 {
-  "validator": {
-    "title": "Dashibodi ya Mthibitishaji",
-    "verifying": "Inathibitisha hali ya mthibitishaji…",
-    "access_only_title": "Mthibitishaji Pekee",
-    "access_only_description": "Pochi yako haijasajiliwa kama mthibitishaji aliyekubaliwa. Wasiliana na msimamizi kuomba ufikiaji wa mthibitishaji.",
-    "find_player": "Tafuta Mchezaji"
-  },
   "admin": {
     "title": "Dashibodi ya Msimamizi",
     "contract": "Mkataba",
@@ -94,7 +87,9 @@
     "find_player": "Tafuta Mchezaji"
   },
   "scout_dashboard": {
-    "description": "TODO: Machine-translated - Dhibiti wachezaji na majaribio",
+    "title": "Dashibodi ya Scout",
+    "welcome": "Karibu kwenye Dashibodi ya Scout",
+    "description": "Dhibiti wachezaji na majaribio",
     "recent_activity": "TODO: Machine-translated - Shughuli ya Hivi Karibuni",
     "players": "Wachezaji",
     "trials": "Majaribio",
