@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import WalletButton from './WalletButton';
 import { useContractStatus } from '@/hooks/useContractStatus';
 import { useWallet } from '@/hooks/useWallet';
+import { useCurrencyPreference } from '@/hooks/useCurrencyPreference';
 
 const NAV_LINKS = [
   { href: '/scout', labelKey: 'nav.scout_dashboard' },
@@ -17,11 +18,13 @@ const SPONSORSHIP_LINK = { href: '/sponsorship', labelKey: 'nav.sponsorship' };
 export default function Navbar() {
   const { isPaused } = useContractStatus();
   const { xlmBalance, isLoadingBalance, isAuthenticated } = useWallet();
+  const { currency, setCurrency, supported } = useCurrencyPreference();
   const t = useTranslations();
   const router = useRouter();
   const pathname = usePathname() ?? '/';
   const [localeOpen, setLocaleOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [currencyOpen, setCurrencyOpen] = useState(false);
 
   const hamburgerRef = useRef<HTMLButtonElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -180,6 +183,51 @@ export default function Navbar() {
               )}
             </div>
 
+            {/* Currency selector */}
+            <div className="relative">
+              <button
+                onClick={() => setCurrencyOpen(!currencyOpen)}
+                className="hover:text-white transition flex items-center gap-1 whitespace-nowrap"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded={currencyOpen}
+                aria-label="Select currency"
+                title={`Current currency: ${currency}`}
+              >
+                {currency}
+                <span className="text-xs" aria-hidden="true">
+                  ▼
+                </span>
+              </button>
+              {currencyOpen && (
+                <div
+                  role="listbox"
+                  aria-label="Select currency"
+                  className="absolute right-0 mt-2 w-52 bg-brand-dark border border-gray-800 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto"
+                >
+                  {supported.map((c) => (
+                    <button
+                      key={c.code}
+                      type="button"
+                      role="option"
+                      aria-selected={currency === c.code}
+                      onClick={() => {
+                        setCurrency(c.code);
+                        setCurrencyOpen(false);
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-brand-green hover:text-black transition ${
+                        currency === c.code
+                          ? 'bg-brand-green/20 text-brand-green'
+                          : ''
+                      }`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* XLM balance — hidden below md */}
             {isAuthenticated && (
               <span className="hidden md:inline text-sm text-gray-300 whitespace-nowrap">
@@ -295,6 +343,31 @@ export default function Navbar() {
                   }`}
                 >
                   {locale.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Currency selector in mobile menu */}
+            <div className="border-t border-gray-800 mt-1 pt-3 flex flex-col gap-0.5">
+              <p className="text-xs text-gray-500 px-1 mb-1">
+                Currency
+              </p>
+              {supported.map((c) => (
+                <button
+                  key={c.code}
+                  type="button"
+                  aria-pressed={currency === c.code}
+                  onClick={() => {
+                    setCurrency(c.code);
+                    closeMenu();
+                  }}
+                  className={`w-full text-left px-4 py-2 text-sm rounded hover:bg-brand-green hover:text-black transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green ${
+                    currency === c.code
+                      ? 'bg-brand-green/20 text-brand-green'
+                      : ''
+                  }`}
+                >
+                  {c.label}
                 </button>
               ))}
             </div>

@@ -12,6 +12,7 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { useWallet } from '@/hooks/useWallet';
 import { redeemReferralCode } from '@/lib/api';
 import { formatXlm } from '@/lib/formatXlm';
+import XlmFiatDisplay from '@/components/ui/XlmFiatDisplay';
 import type { SubscriptionTier } from '@/types';
 
 const TIERS: Array<{
@@ -294,9 +295,9 @@ function SubscribeContent() {
                   <p className="text-sm uppercase tracking-[0.2em] text-gray-400">
                     {plan.title}
                   </p>
-                  <p className="text-4xl font-bold text-white mt-3">
-                    {formatXlm(plan.priceXlm)} XLM
-                  </p>
+                  <div className="mt-3">
+                    <XlmFiatDisplay xlmAmount={plan.priceXlm} />
+                  </div>
                 </div>
                 <div className="flex flex-col items-end gap-2">
                   {isActiveTier && (

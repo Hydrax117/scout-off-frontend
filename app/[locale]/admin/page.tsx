@@ -40,6 +40,7 @@ import {
   getContractPaused,
 } from '@/lib/contract';
 import { formatXlm } from '@/lib/formatXlm';
+import XlmFiatDisplay from '@/components/ui/XlmFiatDisplay';
 import {
   fetchActivityEvents,
   getReferralOverview,
@@ -366,9 +367,7 @@ function AdminDashboardContent() {
         <h2 className="text-lg font-semibold text-white">Platform Fees</h2>
         <p className="text-sm text-gray-400">
           Accumulated:{' '}
-          <span className="text-white font-medium">
-            {formatXlm(fees ?? 0)} XLM
-          </span>
+          <XlmFiatDisplay xlmAmount={fees ?? 0} />
         </p>
         <button
           disabled={!fees || fees <= 0 || paused}
