@@ -13,6 +13,7 @@ import { useRecentlyViewed } from '@/hooks/useRecentlyViewed';
 import { PLATFORM_CONTACT_FEE_XLM, getContactFee } from '@/lib/contract';
 import XlmFiatDisplay from '@/components/ui/XlmFiatDisplay';
 import ProgressBar from '@/components/ProgressBar';
+import AchievementBadges from '@/components/player/AchievementBadges';
 import PlayerProfileSkeleton from '@/components/PlayerProfileSkeleton';
 import PlayerStatsCard from '@/components/player/PlayerStatsCard';
 import IPFSMediaGallery from '@/components/player/IPFSMediaGallery';
@@ -42,6 +43,9 @@ export default function PlayerProfile() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [contactTxStatus, setContactTxStatus] = useState<TxStatus | null>(null);
+  const [cvExportStatus, setCvExportStatus] = useState<
+    'idle' | 'generating' | 'error'
+  >('idle');
   const [liveFee, setLiveFee] = useState<number | null>(null);
   const [feeCheckStatus, setFeeCheckStatus] = useState<
     'idle' | 'checking' | 'ok' | 'error'
@@ -143,6 +147,21 @@ export default function PlayerProfile() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleExportCv() {
+    if (!player) return;
+    setCvExportStatus('generating');
+    try {
+      const { generatePlayerCvPdf, downloadPlayerCvPdf } = await import(
+        '@/lib/cvExport'
+      );
+      const bytes = await generatePlayerCvPdf(player, player.milestones);
+      downloadPlayerCvPdf(bytes, player.vitals.name);
+      setCvExportStatus('idle');
+    } catch {
+      setCvExportStatus('error');
+    }
+  }
+
   const isScoutWithActiveSubscription = publicKey && subscription && !isExpired;
   const canLogTrialOffer =
     isScoutWithActiveSubscription && player && player.progressLevel < 3;
@@ -156,11 +175,11 @@ export default function PlayerProfile() {
   const isArchived = player.archived ?? false;
 
   return (
-    <div className="max-w-2xl mx-auto flex flex-col gap-8">
+    <div className="print-area max-w-2xl mx-auto flex flex-col gap-8">
       {/* Back to Scout Dashboard */}
       <Link
         href="/scout"
-        className="self-start text-sm text-gray-400 hover:text-white transition flex items-center gap-1"
+        className="print-hidden self-start text-sm text-gray-400 hover:text-white transition flex items-center gap-1"
       >
         {t('back_to_scout_dashboard')}
       </Link>
@@ -223,6 +242,9 @@ export default function PlayerProfile() {
           <div className="mt-4">
             <ProgressBar level={player.progressLevel} />
           </div>
+          <div className="mt-3">
+            <AchievementBadges player={player} />
+          </div>
         </div>
       </div>
 
@@ -260,7 +282,7 @@ export default function PlayerProfile() {
       {player.milestones.length > 0 && (
         <button
           onClick={handleDownload}
-          className="self-start text-sm text-brand-green underline underline-offset-2 hover:opacity-80 transition"
+          className="print-hidden self-start text-sm text-brand-green underline underline-offset-2 hover:opacity-80 transition"
         >
           Download Milestones
         </button>
@@ -270,10 +292,24 @@ export default function PlayerProfile() {
       <button
         ref={shareButtonRef}
         onClick={() => setQrOpen(true)}
-        className="self-start text-sm text-gray-400 border border-gray-700 px-3 py-1.5 rounded-lg hover:border-gray-500 hover:text-white transition"
+        className="print-hidden self-start text-sm text-gray-400 border border-gray-700 px-3 py-1.5 rounded-lg hover:border-gray-500 hover:text-white transition"
       >
         Share via QR
       </button>
+
+      {/* Export CV */}
+      <button
+        onClick={handleExportCv}
+        disabled={cvExportStatus === 'generating'}
+        className="print-hidden self-start text-sm text-brand-green underline underline-offset-2 hover:opacity-80 transition disabled:opacity-50"
+      >
+        {cvExportStatus === 'generating' ? 'Generating CV…' : 'Export CV'}
+      </button>
+      {cvExportStatus === 'error' && (
+        <p className="print-hidden text-xs text-red-400">
+          Failed to generate CV. Please try again.
+        </p>
+      )}
       <QRModal
         isOpen={qrOpen}
         onClose={() => {
@@ -285,7 +321,7 @@ export default function PlayerProfile() {
 
       {/* Pay to contact */}
       {publicKey && !isArchived && (
-        <>
+        <div className="print-hidden contents">
           <button
             onClick={() => setConfirmOpen(true)}
             disabled={contacting}
@@ -326,12 +362,12 @@ export default function PlayerProfile() {
             onClose={() => setContactModalOpen(false)}
             playerId={id ?? ''}
           />
-        </>
+        </div>
       )}
 
       {/* Trial offer */}
       {publicKey && id && !isArchived && (
-        <>
+        <div className="print-hidden contents">
           {canLogTrialOffer ? (
             <div className="bg-brand-card border border-gray-800 rounded-xl p-6">
               <h2 className="font-semibold text-white mb-4">Log Trial Offer</h2>
@@ -357,7 +393,7 @@ export default function PlayerProfile() {
               </p>
             </div>
           ) : null}
-        </>
+        </div>
       )}
     </div>
   );

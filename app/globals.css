@@ -75,6 +75,64 @@ body {
   }
 }
 
+/*
+ * Print support for the player public profile (app/[locale]/player/[id]/page.tsx).
+ * `.print-area` wraps that page's content; `.print-hidden` marks the
+ * interactive controls (nav links, download/share/contact buttons, trial
+ * offer form) that don't make sense in a printed copy. Dark-theme surface
+ * and text classes are forced to a light/dark-ink pairing here rather than
+ * relying on the app's (currently fixed) dark theme, since the printed page
+ * should stay legible regardless of what theme is active on screen.
+ */
+@media print {
+  nav[aria-label='Main navigation'],
+  footer,
+  .print-hidden {
+    display: none !important;
+  }
+
+  @page {
+    margin: 1.5cm;
+  }
+
+  .print-area {
+    max-width: 100% !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  .print-area .bg-brand-card,
+  .print-area .bg-brand-dark,
+  .print-area .bg-gray-700,
+  .print-area .bg-gray-800,
+  .print-area .bg-gray-900 {
+    background-color: #ffffff !important;
+  }
+
+  .print-area .text-white,
+  .print-area .text-gray-50,
+  .print-area .text-gray-100,
+  .print-area .text-gray-200,
+  .print-area .text-gray-300,
+  .print-area .text-gray-400 {
+    color: #111827 !important;
+  }
+
+  .print-area .border-gray-700,
+  .print-area .border-gray-800 {
+    border-color: #d1d5db !important;
+  }
+
+  .print-area [class*='shadow'] {
+    box-shadow: none !important;
+  }
+
+  .print-area section,
+  .print-area > div > div {
+    break-inside: avoid;
+  }
+}
+
 @layer components {
   .input {
     @apply w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-3 py-2
