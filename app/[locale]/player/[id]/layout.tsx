@@ -101,6 +101,8 @@ export async function generateMetadata({
 
   const baseUrl = getBaseUrl();
   const profileUrl = `${baseUrl}/${params.locale}/player/${params.id}`;
+  // Dynamically generated per-player card — see ./opengraph-image.tsx
+  const ogImageUrl = `${profileUrl}/opengraph-image`;
 
   return {
     title: `${player.vitals.name} — Player Profile — ScoutOff`,
@@ -110,26 +112,20 @@ export async function generateMetadata({
       description: `${player.vitals.position} · ${player.vitals.region} · Level ${player.progressLevel} · Verified on-chain milestones.`,
       url: profileUrl,
       type: 'profile',
-      images: player.ipfsHash
-        ? [
-            {
-              url: `${process.env.NEXT_PUBLIC_IPFS_GATEWAY || 'https://gateway.pinata.cloud/ipfs'}/${player.ipfsHash}`,
-              width: 1200,
-              height: 630,
-              alt: `${player.vitals.name} — ScoutOff Player Profile`,
-            },
-          ]
-        : undefined,
+      images: [
+        {
+          url: ogImageUrl,
+          width: 1200,
+          height: 630,
+          alt: `${player.vitals.name} — ScoutOff Player Profile`,
+        },
+      ],
     },
     twitter: {
       card: 'summary_large_image',
       title: `${player.vitals.name} — ScoutOff Player Profile`,
       description: `${player.vitals.position} · ${player.vitals.region} · Level ${player.progressLevel} · Verified on-chain milestones.`,
-      images: player.ipfsHash
-        ? [
-            `${process.env.NEXT_PUBLIC_IPFS_GATEWAY || 'https://gateway.pinata.cloud/ipfs'}/${player.ipfsHash}`,
-          ]
-        : undefined,
+      images: [ogImageUrl],
     },
   };
 }
