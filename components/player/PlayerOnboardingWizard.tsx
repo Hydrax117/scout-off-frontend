@@ -438,6 +438,7 @@ export default function PlayerOnboardingWizard({
             onChange={handleChange}
             onBlur={handleBlur}
             error={errors.region}
+            autoComplete="address-level1"
           >
             <option value="">Select region</option>
             {AFRICAN_REGIONS.map(({ label, value }) => (
@@ -456,6 +457,7 @@ export default function PlayerOnboardingWizard({
             onChange={handleChange}
             onBlur={handleBlur}
             error={errors.position}
+            autoComplete="off"
           >
             <option value="">Select position</option>
             {FOOTBALL_POSITIONS.map((pos) => (
@@ -480,6 +482,7 @@ export default function PlayerOnboardingWizard({
               className="input resize-none"
               rows={3}
               placeholder="Tell us about yourself (optional)"
+              autoComplete="off"
             />
           </div>
 
