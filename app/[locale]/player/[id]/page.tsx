@@ -38,6 +38,9 @@ export default function PlayerProfile() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [contactTxStatus, setContactTxStatus] = useState<TxStatus | null>(null);
+  const [cvExportStatus, setCvExportStatus] = useState<
+    'idle' | 'generating' | 'error'
+  >('idle');
   const [liveFee, setLiveFee] = useState<number | null>(null);
   const [feeCheckStatus, setFeeCheckStatus] = useState<
     'idle' | 'checking' | 'ok' | 'error'
@@ -124,6 +127,21 @@ export default function PlayerProfile() {
     a.download = `player-${player!.id}-milestones.json`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function handleExportCv() {
+    if (!player) return;
+    setCvExportStatus('generating');
+    try {
+      const { generatePlayerCvPdf, downloadPlayerCvPdf } = await import(
+        '@/lib/cvExport'
+      );
+      const bytes = await generatePlayerCvPdf(player, player.milestones);
+      downloadPlayerCvPdf(bytes, player.vitals.name);
+      setCvExportStatus('idle');
+    } catch {
+      setCvExportStatus('error');
+    }
   }
 
   const isScoutWithActiveSubscription = publicKey && subscription && !isExpired;
@@ -228,6 +246,20 @@ export default function PlayerProfile() {
       >
         Share via QR
       </button>
+
+      {/* Export CV */}
+      <button
+        onClick={handleExportCv}
+        disabled={cvExportStatus === 'generating'}
+        className="print-hidden self-start text-sm text-brand-green underline underline-offset-2 hover:opacity-80 transition disabled:opacity-50"
+      >
+        {cvExportStatus === 'generating' ? 'Generating CV…' : 'Export CV'}
+      </button>
+      {cvExportStatus === 'error' && (
+        <p className="print-hidden text-xs text-red-400">
+          Failed to generate CV. Please try again.
+        </p>
+      )}
       <QRModal
         isOpen={qrOpen}
         onClose={() => {

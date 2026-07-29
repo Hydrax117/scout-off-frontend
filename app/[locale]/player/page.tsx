@@ -57,6 +57,9 @@ function PlayerDashboardContent() {
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showBackupWalletModal, setShowBackupWalletModal] = useState(false);
   const [showDataExportSuccess, setShowDataExportSuccess] = useState(false);
+  const [cvExportStatus, setCvExportStatus] = useState<
+    'idle' | 'generating' | 'error'
+  >('idle');
 
   const isRegistered = !!player;
   const dataExportEnabled = isFeatureEnabled('DATA_EXPORT');
@@ -75,6 +78,23 @@ function PlayerDashboardContent() {
       window.setTimeout(() => setShowDataExportSuccess(false), 3000);
     } catch {
       // Download failed silently — the user can try again
+    }
+  }, [player, milestones]);
+
+  const handleExportCv = useCallback(async () => {
+    if (!player) return;
+
+    setCvExportStatus('generating');
+    try {
+      const { generatePlayerCvPdf, downloadPlayerCvPdf } = await import(
+        '@/lib/cvExport'
+      );
+      const bytes = await generatePlayerCvPdf(player, milestones);
+      downloadPlayerCvPdf(bytes, player.vitals.name);
+      setCvExportStatus('idle');
+    } catch {
+      setCvExportStatus('error');
+      window.setTimeout(() => setCvExportStatus('idle'), 3000);
     }
   }, [player, milestones]);
 
@@ -417,6 +437,30 @@ function PlayerDashboardContent() {
                   Recovery settings
                 </button>
 
+                {/* Export CV */}
+                <button
+                  onClick={handleExportCv}
+                  disabled={cvExportStatus === 'generating'}
+                  className="text-xs text-gray-400 hover:text-brand-green transition px-2 py-1.5 rounded hover:bg-gray-800/50 flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 11l5 5 5-5M12 3v13"
+                    />
+                  </svg>
+                  {cvExportStatus === 'generating' ? 'Generating…' : 'Export CV'}
+                </button>
+
                 {/* Download my data (behind feature flag) */}
                 {dataExportEnabled && (
                   <button
@@ -442,6 +486,13 @@ function PlayerDashboardContent() {
                   </button>
                 )}
               </div>
+
+              {/* CV export error feedback */}
+              {cvExportStatus === 'error' && (
+                <p role="status" aria-live="polite" className="text-xs text-red-400">
+                  Failed to generate CV. Please try again.
+                </p>
+              )}
 
               {/* Download success feedback */}
               {showDataExportSuccess && (
