@@ -20,9 +20,13 @@ import Tooltip from '@/components/ui/Tooltip';
 import { checkIsValidator } from '@/lib/contract';
 import { fetchValidatorMilestoneCount, fetchAcademyForWallet } from '@/lib/api';
 
-interface ValidatorChipProps {
+export interface ValidatorChipProps {
   /** Full Stellar public key of the validator. */
   address: string;
+  /** Optional display name shown on hover if validator is known. */
+  label?: string;
+  /** Additional Tailwind classes for custom sizing or colour. */
+  className?: string;
 }
 
 type Status = 'loading' | 'active' | 'former' | 'unknown';
@@ -31,7 +35,7 @@ function truncateAddress(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-4)}`;
 }
 
-export default function ValidatorChip({ address }: ValidatorChipProps) {
+export default function ValidatorChip({ address, label, className }: ValidatorChipProps) {
   const [status, setStatus] = useState<Status>('loading');
   const [milestoneCount, setMilestoneCount] = useState<number | null>(null);
   const [academyName, setAcademyName] = useState<string | null>(null);
@@ -98,13 +102,22 @@ export default function ValidatorChip({ address }: ValidatorChipProps) {
         ? `${statusLabel[status]} · ${milestoneCount} milestone${milestoneCount !== 1 ? 's' : ''} approved`
         : `${statusLabel[status]} · ${truncateAddress(address)}`;
   const tooltipContent = academyName ? `${academyName} · ${statusAndCount}` : statusAndCount;
+  const displayLabel = label ?? (academyName ?? truncateAddress(address));
+  const displayKind = label
+    ? undefined
+    : academyName
+      ? 'academy'
+      : 'address';
 
   const chip = (
     <span
       className={[
         'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium leading-none select-none',
         chipClasses[status],
-      ].join(' ')}
+        className,
+      ]
+        .filter(Boolean)
+        .join(' ')}
       aria-label={tooltipContent}
     >
       {/* Status dot */}
@@ -118,9 +131,12 @@ export default function ValidatorChip({ address }: ValidatorChipProps) {
 
       {/* Label: academy name when this wallet is a registered signer for
           one, otherwise the raw address — always visible; status text only
-          shown once resolved. */}
-      {academyName ? (
-        <span className="font-medium">{academyName}</span>
+          shown once resolved. The optional label prop lets callers override
+          the display name entirely. */}
+      {displayLabel ? (
+        <span className={displayKind === 'address' ? 'font-mono' : 'font-medium'}>
+          {displayLabel}
+        </span>
       ) : (
         <span className="font-mono">{truncateAddress(address)}</span>
       )}
