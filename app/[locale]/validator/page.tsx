@@ -19,6 +19,10 @@ const ApprovedPlayersRoster = dynamic(
   () => import('@/components/validator/ApprovedPlayersRoster'),
   { ssr: false },
 );
+const PendingMilestoneQueue = dynamic(
+  () => import('@/components/validator/PendingMilestoneQueue'),
+  { ssr: false },
+);
 const ApproveForm = dynamic(
   () => import('@/components/validator/ApproveForm'),
   { ssr: false },
@@ -100,6 +104,9 @@ function ValidatorDashboardContent() {
         </h2>
         <ValidatorPlayerSearch onSelect={handlePlayerSelected} />
       </div>
+
+      {/* Pending milestone queue */}
+      <PendingMilestoneQueue validatorAddress={publicKey} />
 
       {/* Approved players roster */}
       <ApprovedPlayersRoster validatorAddress={publicKey} />
