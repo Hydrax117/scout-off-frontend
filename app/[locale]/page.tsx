@@ -142,7 +142,7 @@ export default async function HomePage({
       {/* ── Footer ────────────────────────────────────────────────────────── */}
       <footer className="border-t border-gray-800 pt-10 px-4">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-6 max-w-4xl mx-auto">
-          <p className="text-gray-500 text-sm">
+          <p className="text-gray-400 text-sm">
             © {new Date().getFullYear()} ScoutOff. Built on Stellar.
           </p>
           <nav

@@ -110,7 +110,7 @@ export default function VideoUpload({
       >
         Highlight Reel
       </label>
-      <p id="video-upload-hint" className="text-xs text-gray-500">
+      <p id="video-upload-hint" className="text-xs text-gray-400">
         Accepted: {ACCEPTED_TYPES_LABEL} · Max {MAX_FILE_SIZE_LABEL}
       </p>
       <div className="relative">

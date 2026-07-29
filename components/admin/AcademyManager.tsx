@@ -162,7 +162,7 @@ export default function AcademyManager() {
     <>
       <section className="bg-brand-card border border-gray-800 rounded-xl p-6 flex flex-col gap-4">
         <h2 className="text-lg font-semibold text-white">Create Academy</h2>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-gray-400">
           Groups several signer wallets (head coach, assistant coaches, academy
           director) under one institutional identity. Each signer must still be
           added as a validator above for its milestone approvals to be
@@ -197,7 +197,7 @@ export default function AcademyManager() {
           Academies ({academies.length})
         </h2>
         {academies.length === 0 ? (
-          <p className="text-sm text-gray-500">No academies created.</p>
+          <p className="text-sm text-gray-400">No academies created.</p>
         ) : (
           <ul className="flex flex-col gap-6">
             {academies.map((academy) => (
@@ -208,7 +208,7 @@ export default function AcademyManager() {
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-white font-semibold">{academy.name}</p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-gray-400">
                       Owner:{' '}
                       <TruncatedAddress
                         address={academy.ownerWallet}
@@ -216,7 +216,7 @@ export default function AcademyManager() {
                       />
                     </p>
                   </div>
-                  <span className="text-xs text-gray-500 shrink-0">
+                  <span className="text-xs text-gray-400 shrink-0">
                     {academy.members.length} signer
                     {academy.members.length !== 1 ? 's' : ''}
                   </span>

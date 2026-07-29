@@ -50,13 +50,15 @@ describe('ChangelogPage', () => {
     );
 
     const headings = screen.getAllByRole('heading', { level: 2 });
-    expect(headings[0]).toHaveTextContent('Accessibility and discovery updates');
-    expect(headings[1]).toHaveTextContent('Player onboarding and search improvements');
-    expect(headings[2]).toHaveTextContent('Scout dashboard and public profile improvements');
+    expect(headings[0]).toHaveTextContent(
+      'Scout ContactModal — unlocked contact details display',
+    );
+    expect(headings[1]).toHaveTextContent('Pull-to-refresh gesture support');
+    expect(headings[2]).toHaveTextContent('Scout referral/invite system');
 
+    expect(screen.getByText('2026-07-28')).toBeInTheDocument();
+    expect(screen.getAllByText('2026-07-17').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('2026-06-30')).toBeInTheDocument();
-    expect(screen.getByText('2026-06-29')).toBeInTheDocument();
-    expect(screen.getByText('2026-06-28')).toBeInTheDocument();
   });
 
   it('renders an EmptyState fallback when the changelog file fails to load', async () => {

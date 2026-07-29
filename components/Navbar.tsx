@@ -7,6 +7,7 @@ import WalletButton from './WalletButton';
 import AccountSwitcher from './AccountSwitcher';
 import { useContractStatus } from '@/hooks/useContractStatus';
 import { useWallet } from '@/hooks/useWallet';
+import { useCurrencyPreference } from '@/hooks/useCurrencyPreference';
 
 const NAV_LINKS = [
   { href: '/scout', labelKey: 'nav.scout_dashboard' },
@@ -18,11 +19,13 @@ const SPONSORSHIP_LINK = { href: '/sponsorship', labelKey: 'nav.sponsorship' };
 export default function Navbar() {
   const { isPaused } = useContractStatus();
   const { xlmBalance, isLoadingBalance, isAuthenticated } = useWallet();
+  const { currency, setCurrency, supported } = useCurrencyPreference();
   const t = useTranslations();
   const router = useRouter();
   const pathname = usePathname() ?? '/';
   const [localeOpen, setLocaleOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [currencyOpen, setCurrencyOpen] = useState(false);
 
   const hamburgerRef = useRef<HTMLButtonElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -131,7 +134,7 @@ export default function Navbar() {
 
             <Link
               href={`/${currentLocale}${SPONSORSHIP_LINK.href}`}
-              className="flex items-center gap-1.5 text-gray-500 hover:text-gray-300 transition whitespace-nowrap"
+              className="flex items-center gap-1.5 text-gray-400 hover:text-gray-300 transition whitespace-nowrap"
             >
               {t(SPONSORSHIP_LINK.labelKey)}
               <span className="text-[10px] uppercase tracking-wide border border-gray-700 rounded-full px-1.5 py-0.5">
@@ -181,11 +184,56 @@ export default function Navbar() {
               )}
             </div>
 
+            {/* Currency selector */}
+            <div className="relative">
+              <button
+                onClick={() => setCurrencyOpen(!currencyOpen)}
+                className="hover:text-white transition flex items-center gap-1 whitespace-nowrap"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded={currencyOpen}
+                aria-label="Select currency"
+                title={`Current currency: ${currency}`}
+              >
+                {currency}
+                <span className="text-xs" aria-hidden="true">
+                  ▼
+                </span>
+              </button>
+              {currencyOpen && (
+                <div
+                  role="listbox"
+                  aria-label="Select currency"
+                  className="absolute right-0 mt-2 w-52 bg-brand-dark border border-gray-800 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto"
+                >
+                  {supported.map((c) => (
+                    <button
+                      key={c.code}
+                      type="button"
+                      role="option"
+                      aria-selected={currency === c.code}
+                      onClick={() => {
+                        setCurrency(c.code);
+                        setCurrencyOpen(false);
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-brand-green hover:text-black transition ${
+                        currency === c.code
+                          ? 'bg-brand-green/20 text-brand-green'
+                          : ''
+                      }`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* XLM balance — hidden below md */}
             {isAuthenticated && (
               <span className="hidden md:inline text-sm text-gray-300 whitespace-nowrap">
                 {isLoadingBalance ? (
-                  <span className="text-gray-500" aria-hidden="true">
+                  <span className="text-gray-400" aria-hidden="true">
                     ⟳
                   </span>
                 ) : (
@@ -204,7 +252,7 @@ export default function Navbar() {
             type="button"
             className="sm:hidden p-2 rounded text-gray-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green"
             aria-expanded={menuOpen}
-            aria-controls="mobile-menu"
+            aria-controls="mobile-nav"
             aria-label={
               menuOpen
                 ? t('common.close') + ' navigation menu'
@@ -243,7 +291,7 @@ export default function Navbar() {
         {menuOpen && (
           <div
             ref={mobileMenuRef}
-            id="mobile-menu"
+            id="mobile-nav"
             role="dialog"
             aria-modal="true"
             aria-label="Navigation menu"
@@ -270,7 +318,7 @@ export default function Navbar() {
                   ? 'page'
                   : undefined
               }
-              className="flex items-center gap-1.5 text-gray-500 hover:text-gray-300 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green rounded py-2 px-1"
+              className="flex items-center gap-1.5 text-gray-400 hover:text-gray-300 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green rounded py-2 px-1"
               onClick={closeMenu}
             >
               {t(SPONSORSHIP_LINK.labelKey)}
@@ -281,7 +329,7 @@ export default function Navbar() {
 
             {/* Locale switcher in mobile menu */}
             <div className="border-t border-gray-800 mt-1 pt-3 flex flex-col gap-0.5">
-              <p className="text-xs text-gray-500 px-1 mb-1">
+              <p className="text-xs text-gray-400 px-1 mb-1">
                 {t('language.select_language')}
               </p>
               {locales.map((locale) => (
@@ -297,6 +345,31 @@ export default function Navbar() {
                   }`}
                 >
                   {locale.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Currency selector in mobile menu */}
+            <div className="border-t border-gray-800 mt-1 pt-3 flex flex-col gap-0.5">
+              <p className="text-xs text-gray-500 px-1 mb-1">
+                Currency
+              </p>
+              {supported.map((c) => (
+                <button
+                  key={c.code}
+                  type="button"
+                  aria-pressed={currency === c.code}
+                  onClick={() => {
+                    setCurrency(c.code);
+                    closeMenu();
+                  }}
+                  className={`w-full text-left px-4 py-2 text-sm rounded hover:bg-brand-green hover:text-black transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green ${
+                    currency === c.code
+                      ? 'bg-brand-green/20 text-brand-green'
+                      : ''
+                  }`}
+                >
+                  {c.label}
                 </button>
               ))}
             </div>

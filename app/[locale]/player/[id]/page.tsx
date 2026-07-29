@@ -8,6 +8,7 @@ import { usePlayer } from '@/hooks/usePlayer';
 import { usePayToContact } from '@/hooks/usePayToContact';
 import { useSubscription } from '@/hooks/useSubscription';
 import { PLATFORM_CONTACT_FEE_XLM, getContactFee } from '@/lib/contract';
+import XlmFiatDisplay from '@/components/ui/XlmFiatDisplay';
 import ProgressBar from '@/components/ProgressBar';
 import PlayerProfileSkeleton from '@/components/PlayerProfileSkeleton';
 import PlayerStatsCard from '@/components/player/PlayerStatsCard';
@@ -182,7 +183,7 @@ export default function PlayerProfile() {
       <div className="bg-brand-card border border-gray-800 rounded-xl p-6">
         <h2 className="font-semibold text-white mb-4">On-Chain Milestones</h2>
         {player.milestones.length === 0 ? (
-          <p className="text-gray-500 text-sm">No milestones recorded yet.</p>
+          <p className="text-gray-400 text-sm">No milestones recorded yet.</p>
         ) : (
           <ul className="flex flex-col gap-3">
             {player.milestones.map((m) => (
@@ -191,11 +192,11 @@ export default function PlayerProfile() {
                 className="text-sm text-gray-300 border-l-2 border-brand-green pl-3"
               >
                 {m.description}
-                <span className="block text-xs text-gray-500 mt-0.5">
+                <span className="block text-xs text-gray-400 mt-0.5">
                   Validator:{' '}
                   <TruncatedAddress
                     address={m.validator}
-                    className="text-gray-500"
+                    className="text-gray-400"
                   />{' '}
                   · {new Date(m.timestamp * 1000).toLocaleDateString()}
                 </span>
@@ -240,9 +241,14 @@ export default function PlayerProfile() {
             disabled={contacting}
             className="bg-brand-green text-black font-semibold py-3 rounded-xl hover:opacity-90 transition disabled:opacity-50"
           >
-            {contacting
-              ? 'Processing…'
-              : `Pay to Contact (~${PLATFORM_CONTACT_FEE_XLM} XLM)`}
+            {contacting ? (
+              'Processing…'
+            ) : (
+              <span className="flex flex-col items-center gap-0.5">
+                <span>Pay to Contact</span>
+                <XlmFiatDisplay xlmAmount={displayFee} className="items-center" />
+              </span>
+            )}
           </button>
           {contactTxStatus && (
             <TransactionStatus
