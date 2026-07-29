@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useRequireWallet } from '@/hooks/useRequireWallet';
 import { usePlayer } from '@/hooks/usePlayer';
 import { useMilestoneHistory } from '@/hooks/useMilestoneHistory';
+import { useMilestoneDisputes } from '@/hooks/useMilestoneDisputes';
 import { useOnboardingTour } from '@/hooks/useOnboardingTour';
 import { isFeatureEnabled } from '@/lib/featureFlags';
 import { buildExportPayload, downloadExportPayload } from '@/lib/dataExport';
@@ -15,6 +16,7 @@ import AchievementBadges from '@/components/player/AchievementBadges';
 import PlayerProfileForm from '@/components/player/PlayerProfileForm';
 import UpdateProfileForm from '@/components/player/UpdateProfileForm';
 import MilestoneTimeline from '@/components/player/MilestoneTimeline';
+import DisputeMilestoneModal from '@/components/player/DisputeMilestoneModal';
 import ArchiveProfileModal from '@/components/player/ArchiveProfileModal';
 import BackupWalletModal from '@/components/player/BackupWalletModal';
 import OfflineQueueBanner from '@/components/player/OfflineQueueBanner';
@@ -22,7 +24,7 @@ import OnboardingTour from '@/components/ui/OnboardingTour';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import { playerTourSteps, PLAYER_TOUR_ID } from '@/lib/tourSteps';
 import { getEarnedBadgeIds, BADGE_DEFINITIONS } from '@/lib/badges';
-import type { Player, PlayerVitals } from '@/types';
+import type { Milestone, Player, PlayerVitals } from '@/types';
 import PullToRefresh from '@/components/ui/PullToRefresh';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
@@ -40,6 +42,8 @@ function PlayerDashboardContent() {
   const { walletAddress: publicKey } = useRequireWallet();
   const { player, loading, isValidating, refetch, optimisticUpdate } = usePlayer(publicKey);
   const { milestones } = useMilestoneHistory(player?.id ?? null);
+  const { disputes, file: fileDispute } = useMilestoneDisputes(publicKey);
+  const [disputeTarget, setDisputeTarget] = useState<Milestone | null>(null);
   const t = useTranslations('player_dashboard');
   const router = useRouter();
   const { show: showToast } = useToast();
@@ -516,6 +520,8 @@ function PlayerDashboardContent() {
               <MilestoneTimeline
                 milestones={player.milestones}
                 currentLevel={player.progressLevel}
+                disputes={disputes}
+                onDisputeMilestone={setDisputeTarget}
               />
             </div>
 
@@ -547,6 +553,21 @@ function PlayerDashboardContent() {
         onSuccess={(updated) => {
           optimisticUpdate(updated);
           refetch();
+        }}
+      />
+
+      <DisputeMilestoneModal
+        isOpen={disputeTarget !== null}
+        onClose={() => setDisputeTarget(null)}
+        milestoneDescription={disputeTarget?.description ?? ''}
+        onSubmit={async (reason) => {
+          if (!disputeTarget) return;
+          await fileDispute({
+            playerId: player.id,
+            milestoneId: disputeTarget.id,
+            milestoneDescription: disputeTarget.description,
+            reason,
+          });
         }}
       />
       </>

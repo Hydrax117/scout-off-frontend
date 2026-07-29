@@ -1,10 +1,22 @@
 'use client';
 
 import { useState } from 'react';
-import type { Milestone, ProgressLevel } from '@/types';
+import type { Milestone, MilestoneDispute, ProgressLevel } from '@/types';
 import { PROGRESS_LABELS } from '@/types';
 import Badge from '@/components/ui/Badge';
 import ValidatorChip from '@/components/player/ValidatorChip';
+
+const DISPUTE_STATUS_LABEL: Record<MilestoneDispute['status'], string> = {
+  pending: 'Dispute pending review',
+  upheld: 'Dispute reviewed — decision upheld',
+  reversed: 'Dispute reviewed — milestone reversed',
+};
+
+const DISPUTE_STATUS_COLOUR: Record<MilestoneDispute['status'], string> = {
+  pending: 'text-amber-400',
+  upheld: 'text-gray-400',
+  reversed: 'text-red-400',
+};
 
 // Map each level to the ProgressBar colour tokens so nodes stay in sync.
 const NODE_COLOUR: Record<ProgressLevel, string> = {
@@ -41,11 +53,17 @@ function milestoneForLevel(
 interface MilestoneTimelineProps {
   milestones: Milestone[];
   currentLevel: ProgressLevel;
+  /** This player's own disputes, matched to milestones by id (issue #562). Omit to hide dispute UI entirely. */
+  disputes?: MilestoneDispute[];
+  /** Called when the player clicks "Dispute" on a completed milestone. */
+  onDisputeMilestone?: (milestone: Milestone) => void;
 }
 
 export default function MilestoneTimeline({
   milestones,
   currentLevel,
+  disputes,
+  onDisputeMilestone,
 }: MilestoneTimelineProps) {
   const [expanded, setExpanded] = useState<ProgressLevel | null>(null);
 
@@ -214,6 +232,35 @@ export default function MilestoneTimeline({
                         {formatDate(milestone.timestamp)}
                       </time>
                     </p>
+                    {disputes && (
+                      <>
+                        {(() => {
+                          const dispute = disputes.find(
+                            (d) => d.milestoneId === milestone.id,
+                          );
+                          if (dispute) {
+                            return (
+                              <p
+                                className={
+                                  DISPUTE_STATUS_COLOUR[dispute.status]
+                                }
+                              >
+                                {DISPUTE_STATUS_LABEL[dispute.status]}
+                              </p>
+                            );
+                          }
+                          return onDisputeMilestone ? (
+                            <button
+                              type="button"
+                              onClick={() => onDisputeMilestone(milestone)}
+                              className="self-start text-red-400 underline hover:text-red-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green"
+                            >
+                              Dispute this milestone
+                            </button>
+                          ) : null;
+                        })()}
+                      </>
+                    )}
                   </>
                 ) : level > 0 ? (
                   <p className="text-gray-400">No milestone data yet.</p>
