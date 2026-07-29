@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { useRequireWallet } from '@/hooks/useRequireWallet';
 import { checkIsValidator } from '@/lib/contract';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
@@ -82,7 +83,15 @@ function ValidatorDashboardContent() {
 
   return (
     <div className="flex flex-col gap-8">
-      <h1 className="text-3xl font-bold text-white">{t('title')}</h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-3xl font-bold text-white">{t('title')}</h1>
+        <Link
+          href="/validator/leaderboard"
+          className="text-sm text-gray-400 hover:text-white transition"
+        >
+          View Leaderboard →
+        </Link>
+      </div>
 
       {/* Player search section */}
       <div className="bg-brand-card border border-gray-800 rounded-xl p-6">
