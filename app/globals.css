@@ -135,7 +135,9 @@ body {
 
 @layer components {
   .input {
-    @apply w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-3 py-2
-           placeholder-gray-500 focus:outline-none focus:border-brand-green transition;
+    @apply w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700
+           text-gray-900 dark:text-white text-sm rounded-lg px-3 py-2
+           placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none
+           focus:border-brand-green transition;
   }
 }

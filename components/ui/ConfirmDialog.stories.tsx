@@ -35,6 +35,7 @@ export const Default: Story = {
  * Pass a `confirmLabel` that reinforces the irreversible nature of the action.
  */
 export const Destructive: Story = {
+  name: 'Destructive action',
   args: {
     isOpen: true,
     title: 'Archive Player Profile',
@@ -55,18 +56,6 @@ export const Loading: Story = {
     title: 'Confirm Withdrawal',
     message: 'Withdraw all accumulated platform fees to the admin wallet?',
     loading: true,
-  },
-};
-
-export const Destructive: Story = {
-  name: 'Destructive action',
-  args: {
-    isOpen: true,
-    title: 'Archive Player Profile',
-    message:
-      'This will permanently archive this player profile and all associated milestones. This action cannot be undone.',
-    confirmLabel: 'Archive Profile',
-    cancelLabel: 'Keep Profile',
   },
 };
 

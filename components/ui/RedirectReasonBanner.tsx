@@ -24,14 +24,14 @@ export default function RedirectReasonBanner({
     <div
       role="status"
       aria-live="polite"
-      className="w-full bg-amber-500/10 border border-amber-500/40 text-amber-200 px-4 py-3 rounded-xl flex items-center justify-between gap-4 mb-6"
+      className="w-full bg-amber-500/10 border border-amber-500/40 text-amber-800 dark:text-amber-200 px-4 py-3 rounded-xl flex items-center justify-between gap-4 mb-6"
     >
       <span className="text-sm">{REDIRECT_REASONS[reason]}</span>
       <button
         type="button"
         onClick={() => setDismissed(true)}
         aria-label="Dismiss"
-        className="shrink-0 text-amber-200/70 hover:text-amber-100 text-sm font-medium"
+        className="shrink-0 text-amber-800/70 dark:text-amber-200/70 hover:text-amber-900 dark:hover:text-amber-100 text-sm font-medium"
       >
         Dismiss
       </button>

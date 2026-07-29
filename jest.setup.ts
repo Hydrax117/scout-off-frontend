@@ -1,5 +1,23 @@
 import '@testing-library/jest-dom';
 
+// jsdom doesn't implement matchMedia. ThemeContext (Issue #545) reads it to
+// detect the OS color-scheme preference, so any component tree that renders
+// ThemeProvider/ThemeToggle needs this stub to avoid "matchMedia is not a
+// function" during render. A plain function (not jest.fn()) so it survives
+// test files that call jest.resetAllMocks() in beforeEach.
+if (typeof window !== 'undefined' && !window.matchMedia) {
+  window.matchMedia = (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  });
+}
+
 /**
  * Clear localStorage before each test so WalletProvider's session-restore
  * useEffect does not trip on a stale session left over from a prior test.

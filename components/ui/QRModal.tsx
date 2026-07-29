@@ -37,7 +37,9 @@ export default function QRModal({
     <Modal isOpen={isOpen} onClose={onClose} title={title}>
       <div className="flex flex-col items-center gap-4">
         <canvas ref={canvasRef} className="rounded-lg" />
-        <p className="text-xs text-gray-400 break-all text-center">{url}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 break-all text-center">
+          {url}
+        </p>
         <button
           onClick={handleDownload}
           className="w-full bg-brand-green text-black font-semibold py-2 rounded-lg hover:opacity-90 transition text-sm"
