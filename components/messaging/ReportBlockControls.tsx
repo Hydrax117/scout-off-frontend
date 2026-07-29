@@ -65,7 +65,7 @@ export default function ReportBlockControls({
         </div>
       )}
 
-      {blocked && <p className="text-gray-500">You have blocked this user.</p>}
+      {blocked && <p className="text-gray-400">You have blocked this user.</p>}
       {status && <p className="text-green-600">{status}</p>}
     </div>
   );

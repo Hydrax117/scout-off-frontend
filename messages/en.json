@@ -62,7 +62,9 @@
     "milestones": "Milestones",
     "achievements": "Achievements",
     "progress": "Progress",
-    "stats": "Statistics"
+    "stats": "Statistics",
+    "download_data": "Download my data",
+    "download_data_success": "Your data has been downloaded."
   },
   "wallet": {
     "connect": "Connect Wallet",
@@ -143,6 +145,14 @@
     "incident_history_note": "Past incidents and their resolutions are listed on the status page above.",
     "empty_title": "Status page not yet configured",
     "empty_description": "A live status page hasn't been linked yet. Please check the ScoutOff Discord for updates in the meantime."
+  },
+  "offline_queue": {
+    "queued": "{count} {count, plural, one {action} other {actions}} queued — will submit when back online",
+    "queued_desc": "Your changes have been saved locally and will be submitted automatically when your connection is restored.",
+    "processing": "Submitting {count} {count, plural, one {action} other {actions}}…",
+    "processing_desc": "Please wait while your queued changes are being submitted.",
+    "retry": "Retry now",
+    "retry_aria": "Retry queued actions"
   },
   "progress_levels": {
     "level0": "Unverified",

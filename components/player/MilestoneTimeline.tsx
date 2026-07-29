@@ -109,7 +109,7 @@ export default function MilestoneTimeline({
               aria-controls={`timeline-detail-${level}`}
               aria-label={`${PROGRESS_LABELS[level]}${milestone ? `, achieved ${formatDate(milestone.timestamp)}` : ''}. ${isExpanded ? 'Collapse' : 'Expand'} details`}
               className={[
-                'relative z-10 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-green',
+                'relative z-10 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center motion-safe:transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-green',
                 isCompleted
                   ? NODE_COLOUR[level]
                   : 'bg-gray-800 border-2 border-gray-600',
@@ -120,7 +120,7 @@ export default function MilestoneTimeline({
                 <span
                   aria-hidden="true"
                   data-testid="pulse-ring"
-                  className="absolute inset-0 rounded-full animate-ping opacity-50 bg-current"
+                  className="absolute inset-0 rounded-full motion-safe:animate-ping opacity-50 bg-current"
                 />
               )}
               {/* Checkmark SVG — decorative; aria-hidden + focusable=false. */}
@@ -156,7 +156,7 @@ export default function MilestoneTimeline({
               {isCompleted && milestone && (
                 <time
                   dateTime={new Date(milestone.timestamp * 1000).toISOString()}
-                  className="text-xs text-gray-500"
+                  className="text-xs text-gray-400"
                 >
                   {formatDate(milestone.timestamp)}
                 </time>
@@ -193,13 +193,13 @@ export default function MilestoneTimeline({
                     >
                       {/* "Verified by" label is decorative in context of the
                           aria-label above — hide to avoid double-reading. */}
-                      <span aria-hidden="true" className="text-gray-500">
+                      <span aria-hidden="true" className="text-gray-400">
                         Verified by
                       </span>
                       <ValidatorChip address={milestone.validator} />
                     </p>
                     <p>
-                      <span className="text-gray-500">Date: </span>
+                      <span className="text-gray-400">Date: </span>
                       <time
                         dateTime={new Date(
                           milestone.timestamp * 1000,
@@ -210,7 +210,7 @@ export default function MilestoneTimeline({
                     </p>
                   </>
                 ) : level > 0 ? (
-                  <p className="text-gray-500">No milestone data yet.</p>
+                  <p className="text-gray-400">No milestone data yet.</p>
                 ) : null}
               </div>
             )}

@@ -18,7 +18,7 @@ export default function Button({
   ...props
 }: ButtonProps) {
   const baseStyles =
-    'px-4 py-2 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2';
+    'px-4 py-2 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-green focus-visible:ring-offset-gray-900';
 
   const variants = {
     default: 'bg-brand-green text-black hover:opacity-90',

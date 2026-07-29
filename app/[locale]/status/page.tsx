@@ -102,7 +102,7 @@ export default async function StatusPage({ params }: StatusPageProps) {
               {t('live_status_cta')}
               <ArrowUpRight size={15} />
             </a>
-            <p className="mt-4 text-xs text-gray-500">
+            <p className="mt-4 text-xs text-gray-400">
               {t('incident_history_note')}
             </p>
           </div>
