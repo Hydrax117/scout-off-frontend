@@ -48,4 +48,14 @@ describe('NotFound', () => {
   it('exposes the expected page title metadata', () => {
     expect(metadata.title).toBe('Page Not Found – ScoutOff');
   });
+
+  it('renders a heading on the 404 page', () => {
+    render(<NotFound />);
+    expect(screen.getByRole('heading', { name: '404' })).toBeInTheDocument();
+  });
+
+  it('renders a back-to-home link pointing to the root path', () => {
+    render(<NotFound />);
+    expect(screen.getByRole('link', { name: 'Go Home' })).toHaveAttribute('href', '/');
+  });
 });
