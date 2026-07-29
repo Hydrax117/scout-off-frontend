@@ -55,6 +55,15 @@ jobs:
       - run: npm run lint
       - run: npm run type-check
       - run: npm run test
+      # Explicit, named accessibility gate: existing *.a11y.test.tsx specs
+      # (jest-axe based) already run as part of `npm run test` above, but
+      # calling them out as their own step makes the a11y gate visible in
+      # the CI UI and fails loudly/separately if a new critical/serious
+      # axe violation is introduced. New page-level a11y coverage (player,
+      # scout, validator dashboards; player public profile) should follow
+      # this same *.a11y.test.tsx convention.
+      - name: Accessibility (axe) checks
+        run: npx jest --ci --testPathPattern='a11y'
       - run: node scripts/validate-env.js
       - run: node scripts/check-locale-keys.js
       # Issue #16: A broken Next.js build can be merged without CI catching it.
