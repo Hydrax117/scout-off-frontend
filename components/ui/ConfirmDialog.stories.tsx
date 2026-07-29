@@ -58,29 +58,30 @@ export const Loading: Story = {
   },
 };
 
-/**
- * Long description — verifies that the dialog handles overflow gracefully
- * when the message prop contains a long paragraph of text.
- */
-export const LongDescription: Story = {
+export const Destructive: Story = {
+  name: 'Destructive action',
   args: {
     isOpen: true,
-    title: 'Revoke Milestone',
+    title: 'Archive Player Profile',
     message:
-      'You are about to revoke the milestone "Scored 5 goals in the Regional Cup Qualifier" that was approved by validator GVALIDAT…WXYZ on 2024-03-14. ' +
-      'Revoking this milestone will recalculate the player's progress level, which may drop them from Level 2 (Performance) back to Level 1 (Verified Identity). ' +
-      'Any scouts who have already contacted this player based on their Level 2 status will not be notified automatically. ' +
-      'If you believe this milestone was approved in error, please also file a report with the platform administrator so the validator's record can be reviewed. ' +
-      'This action is recorded on-chain and cannot be reversed once confirmed.',
-    confirmLabel: 'Revoke Milestone',
-    cancelLabel: 'Keep Milestone',
+      'This will permanently archive this player profile and all associated milestones. This action cannot be undone.',
+    confirmLabel: 'Archive Profile',
+    cancelLabel: 'Keep Profile',
   },
 };
 
-/**
- * Interactive story — demonstrates the open/close lifecycle and the loading
- * state that appears while an async confirmation handler is running.
- */
+export const LongDescription: Story = {
+  name: 'Long description (scroll test)',
+  args: {
+    isOpen: true,
+    title: 'Revoke All Validator Privileges',
+    message:
+      'You are about to revoke validator privileges for this wallet. This means they will no longer be able to approve milestones, manage player profiles, or access the validator dashboard. All pending milestones assigned to this validator will be reassigned to the next available validator. This action is permanent and cannot be reversed without re-adding the validator manually through the admin dashboard. Please double-check the wallet address before proceeding.',
+    confirmLabel: 'Yes, Revoke',
+    cancelLabel: 'Cancel',
+  },
+};
+
 export const Interactive: Story = {
   name: 'Interactive (open/close)',
   render: () => {

@@ -9,7 +9,7 @@ public/build
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
-.husky
+.husky/_
 /.git
 .vscode
 public/sw.js
@@ -25,13 +25,20 @@ public/workbox-*.js.map
 coverage/
 storybook-static/
 
-# Jest test snapshots
+# Jest / Vitest snapshot files
+__snapshots__/
 **/__snapshots__/
+*.snap
 
 # Playwright E2E output (issue #673)
 /test-results/
 /playwright-report/
 /blob-report/
+
+# Jest test snapshots (issues #532, #531, #530, #529)
+__tests__/**/__snapshots__/
+**/__snapshots__/
+*.snap
 
 # Kiro IDE directory
 .kiro/
@@ -49,9 +56,11 @@ packages/indexer/data/
 *.db-wal
 *.db-shm
 
-# OS and editor artefacts
+# OS artefacts
 .DS_Store
 Thumbs.db
+
+# Editor swap / backup files
 *.swp
 *.swo
 *~
@@ -62,7 +71,20 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# Local environment overrides
-.env.development.local
-.env.test.local
-.env.production.local
+# Temporary files created by test runs (server test DB)
+/tmp/
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE swap and temp files
+*.swp
+*.swo
+*~
+.idea/
+
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

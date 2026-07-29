@@ -21,7 +21,7 @@ import { checkIsValidator } from '@/lib/contract';
 import { fetchValidatorMilestoneCount, fetchAcademyForWallet } from '@/lib/api';
 
 export interface ValidatorChipProps {
-  /** Stellar public key of the validator (starting with 'G'). */
+  /** Full Stellar public key of the validator. */
   address: string;
   /** Optional display name shown on hover if validator is known. */
   label?: string;
@@ -102,6 +102,12 @@ export default function ValidatorChip({ address, label, className }: ValidatorCh
         ? `${statusLabel[status]} · ${milestoneCount} milestone${milestoneCount !== 1 ? 's' : ''} approved`
         : `${statusLabel[status]} · ${truncateAddress(address)}`;
   const tooltipContent = academyName ? `${academyName} · ${statusAndCount}` : statusAndCount;
+  const displayLabel = label ?? (academyName ?? truncateAddress(address));
+  const displayKind = label
+    ? undefined
+    : academyName
+      ? 'academy'
+      : 'address';
 
   const chip = (
     <span
@@ -123,10 +129,14 @@ export default function ValidatorChip({ address, label, className }: ValidatorCh
         ].join(' ')}
       />
 
-      {/* Label: prop label overrides academy name, which overrides raw address.
-          Always visible; status text only shown once resolved. */}
-      {label ?? academyName ? (
-        <span className="font-medium">{label ?? academyName}</span>
+      {/* Label: academy name when this wallet is a registered signer for
+          one, otherwise the raw address — always visible; status text only
+          shown once resolved. The optional label prop lets callers override
+          the display name entirely. */}
+      {displayLabel ? (
+        <span className={displayKind === 'address' ? 'font-mono' : 'font-medium'}>
+          {displayLabel}
+        </span>
       ) : (
         <span className="font-mono">{truncateAddress(address)}</span>
       )}

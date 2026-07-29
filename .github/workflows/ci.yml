@@ -55,7 +55,17 @@ jobs:
       - run: npm run lint
       - run: npm run type-check
       - run: npm run test
+      # Explicit, named accessibility gate: existing *.a11y.test.tsx specs
+      # (jest-axe based) already run as part of `npm run test` above, but
+      # calling them out as their own step makes the a11y gate visible in
+      # the CI UI and fails loudly/separately if a new critical/serious
+      # axe violation is introduced. New page-level a11y coverage (player,
+      # scout, validator dashboards; player public profile) should follow
+      # this same *.a11y.test.tsx convention.
+      - name: Accessibility (axe) checks
+        run: npx jest --ci --testPathPattern='a11y'
       - run: node scripts/validate-env.js
+      - run: node scripts/check-locale-keys.js
       # Issue #16: A broken Next.js build can be merged without CI catching it.
       # The .next build cache is keyed on package-lock + this step so subsequent
       # runs reuse it. Build-only env vars are inherited from the workflow-level
@@ -207,3 +217,31 @@ jobs:
           cache: npm
       - run: npm install
       - run: npm run build-storybook
+
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm install
+
+      - uses: actions/cache@v4
+        with:
+          path: .next
+          key: ${{ runner.os }}-next-build-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-next-build-
+
+      - run: npm run build
+
+      - run: npx --no-install lhci autorun
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse-report
+          path: lighthouse-report/

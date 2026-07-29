@@ -133,7 +133,7 @@ export default async function ChangelogPage({ params }: ChangelogPageProps) {
                 {t('page_description')}
               </p>
             </div>
-            <p className="text-sm text-gray-500">{t('english_notice')}</p>
+            <p className="text-sm text-gray-400">{t('english_notice')}</p>
           </div>
           <div className="flex justify-start">
             <Link

@@ -139,7 +139,7 @@ export default function TruncatedAddress({
         role="button"
         aria-label={`Wallet address ${address}`}
         className={[
-          'font-mono cursor-default select-all outline-none',
+          'font-mono cursor-default select-all outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green focus-visible:outline-offset-2',
           className,
         ]
           .filter(Boolean)

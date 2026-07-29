@@ -36,7 +36,7 @@ interface MilestoneListProps {
 export default function MilestoneList({ milestones }: MilestoneListProps) {
   if (milestones.length === 0) {
     return (
-      <p className="text-sm text-gray-500 py-4">No milestones approved yet.</p>
+      <p className="text-sm text-gray-400 py-4">No milestones approved yet.</p>
     );
   }
 
@@ -78,7 +78,7 @@ export default function MilestoneList({ milestones }: MilestoneListProps) {
                 {/* Date */}
                 <time
                   dateTime={new Date(milestone.timestamp * 1000).toISOString()}
-                  className="text-xs text-gray-500"
+                  className="text-xs text-gray-400"
                 >
                   {formatDate(milestone.timestamp)}
                 </time>

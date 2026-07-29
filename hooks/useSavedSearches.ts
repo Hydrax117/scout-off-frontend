@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import {
   fetchSavedSearches,
   removeSavedSearch,
+  renameSavedSearch,
   saveSearch,
 } from '@/lib/savedSearchClient';
 import { useUndoableRemoval } from './useUndoableRemoval';
@@ -41,6 +42,14 @@ export function useSavedSearches(scoutWallet: string | null) {
     [mutate],
   );
 
+  const rename = useCallback(
+    async (id: number, newName: string) => {
+      await renameSavedSearch(id, newName);
+      mutate();
+    },
+    [mutate],
+  );
+
   const remove = useCallback(
     (entry: SavedSearch) => {
       undoableRemove({
@@ -67,6 +76,7 @@ export function useSavedSearches(scoutWallet: string | null) {
     loading: isValidating && !data,
     error: error?.message ?? null,
     save,
+    rename,
     remove,
   };
 }

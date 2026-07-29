@@ -33,7 +33,7 @@ export default function ServiceWorkerUpdateBanner() {
         <button
           type="button"
           onClick={dismiss}
-          aria-label="Dismiss update notification"
+          aria-label="Dismiss update banner"
           className="bg-sky-600 text-white px-3 py-1 rounded-md text-sm font-medium hover:bg-sky-700"
         >
           Dismiss

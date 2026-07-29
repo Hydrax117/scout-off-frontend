@@ -42,7 +42,7 @@ export default function ContactModal({
         <h2 className="text-lg font-semibold">Player Contact Details</h2>
 
         {!contactDetails && (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-400">
             No contact details unlocked for this player yet.
           </p>
         )}
