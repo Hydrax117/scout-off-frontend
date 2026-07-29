@@ -30,6 +30,28 @@ storybook-static/
 /playwright-report/
 /blob-report/
 
+# Playwright visual snapshots / screenshot baselines (issues #526 #527 #528)
+**/__snapshots__/
+e2e/**/*.png
+e2e/**/*.jpg
+e2e/**/*.jpeg
+e2e/**/*.webp
+
+# Playwright trace archives
+trace.zip
+*.trace
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.bak
+
 # Kiro IDE directory
 .kiro/
 
