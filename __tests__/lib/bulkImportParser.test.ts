@@ -40,7 +40,7 @@ describe('parseBulkImportFile — CSV', () => {
       position: 'ST',
       bio: 'Fast striker',
     });
-    expect(result.rows[1].row).toBe(2);
+    expect(result.rows[1].rowNumber).toBe(2);
   });
 
   it('accepts region/position given as their display label, case-insensitively', () => {

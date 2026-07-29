@@ -215,12 +215,12 @@ describe('Navbar', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 
-  test('mobile menu toggle has aria-controls pointing to mobile-menu', () => {
+  test('mobile menu toggle has aria-controls pointing to mobile-nav', () => {
     setup('/');
     const toggle = screen.getByRole('button', {
       name: /open navigation menu/i,
     });
-    expect(toggle).toHaveAttribute('aria-controls', 'mobile-menu');
+    expect(toggle).toHaveAttribute('aria-controls', 'mobile-nav');
   });
 
   test('clicking mobile toggle sets aria-expanded=true and shows menu', async () => {
@@ -233,6 +233,7 @@ describe('Navbar', () => {
     await user.click(toggle);
 
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(document.getElementById('mobile-nav')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: /close navigation menu/i }),
     ).toBeInTheDocument();

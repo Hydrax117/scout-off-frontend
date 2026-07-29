@@ -44,6 +44,30 @@ export const Loading: Story = {
   },
 };
 
+export const Destructive: Story = {
+  name: 'Destructive action',
+  args: {
+    isOpen: true,
+    title: 'Archive Player Profile',
+    message:
+      'This will permanently archive this player profile and all associated milestones. This action cannot be undone.',
+    confirmLabel: 'Archive Profile',
+    cancelLabel: 'Keep Profile',
+  },
+};
+
+export const LongDescription: Story = {
+  name: 'Long description (scroll test)',
+  args: {
+    isOpen: true,
+    title: 'Revoke All Validator Privileges',
+    message:
+      'You are about to revoke validator privileges for this wallet. This means they will no longer be able to approve milestones, manage player profiles, or access the validator dashboard. All pending milestones assigned to this validator will be reassigned to the next available validator. This action is permanent and cannot be reversed without re-adding the validator manually through the admin dashboard. Please double-check the wallet address before proceeding.',
+    confirmLabel: 'Yes, Revoke',
+    cancelLabel: 'Cancel',
+  },
+};
+
 export const Interactive: Story = {
   name: 'Interactive (open/close)',
   render: () => {

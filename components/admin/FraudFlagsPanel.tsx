@@ -31,7 +31,7 @@ function FlagCard({ flag }: { flag: FraudFlag }) {
     <li className="rounded-lg border border-gray-800 bg-gray-900/40 p-4 flex flex-col gap-3">
       <div className="flex items-center gap-2 flex-wrap">
         <SeverityBadge severity={flag.severity} />
-        <span className="text-xs text-gray-500 uppercase tracking-wide">
+        <span className="text-xs text-gray-400 uppercase tracking-wide">
           {CATEGORY_LABELS[flag.category]}
         </span>
         <span className="text-xs text-gray-600 font-mono">
@@ -47,7 +47,7 @@ function FlagCard({ flag }: { flag: FraudFlag }) {
         ))}
       </div>
 
-      <details className="text-xs text-gray-500">
+      <details className="text-xs text-gray-400">
         <summary className="cursor-pointer select-none hover:text-gray-300">
           Evidence
         </summary>
@@ -102,7 +102,7 @@ export default function FraudFlagsPanel() {
     <section className="bg-brand-card border border-gray-800 rounded-xl p-6 flex flex-col gap-4">
       <div>
         <h2 className="text-lg font-semibold text-white">Flagged Activity</h2>
-        <p className="text-sm text-gray-500 mt-1">
+        <p className="text-sm text-gray-400 mt-1">
           Suspicious referral and pay-to-contact patterns detected across all
           wallets. Alert-only — review and investigate manually.
         </p>

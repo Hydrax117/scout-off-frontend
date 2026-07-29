@@ -21,6 +21,19 @@ export async function saveSearch(
   return res.json();
 }
 
+export async function renameSavedSearch(
+  id: number,
+  name: string,
+): Promise<SavedSearch> {
+  const res = await fetch('/api/saved-searches', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, name }),
+  });
+  if (!res.ok) throw new Error('Failed to rename saved search');
+  return res.json();
+}
+
 export async function removeSavedSearch(id: number): Promise<void> {
   const res = await fetch('/api/saved-searches', {
     method: 'DELETE',

@@ -37,9 +37,12 @@ interface PlayerCardProps {
   /** When provided (with onToggleWatchlist), renders a watchlist toggle star. */
   isWatched?: boolean;
   onToggleWatchlist?: () => void;
+  /** When provided, renders a compare-selection checkbox at the top-left. */
+  isCompareSelected?: boolean;
+  onToggleCompare?: () => void;
 }
 
-function PlayerCard({ player, isWatched, onToggleWatchlist }: PlayerCardProps) {
+function PlayerCard({ player, isWatched, onToggleWatchlist, isCompareSelected, onToggleCompare }: PlayerCardProps) {
   const { id, vitals, progressLevel, ipfsHash } = player;
   const {
     data: milestones,
@@ -123,6 +126,33 @@ function PlayerCard({ player, isWatched, onToggleWatchlist }: PlayerCardProps) {
       onTouchStart={triggerPrefetch}
       className="relative bg-brand-card border border-gray-800 rounded-xl p-5 flex flex-col gap-4 hover:border-brand-green transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-green focus:ring-offset-2 focus:ring-offset-black"
     >
+      {onToggleCompare && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleCompare();
+          }}
+          aria-pressed={!!isCompareSelected}
+          aria-label={isCompareSelected ? 'Remove from comparison' : 'Add to comparison'}
+          className="absolute top-3 left-3 inline-flex h-6 w-6 items-center justify-center rounded border transition focus:outline-none focus:ring-2 focus:ring-brand-green"
+          style={
+            isCompareSelected
+              ? { borderColor: 'transparent', backgroundColor: '#22c55e' }
+              : { borderColor: '#4b5563' }
+          }
+        >
+          {isCompareSelected && (
+            <svg className="w-4 h-4 text-black" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+              <path
+                fillRule="evenodd"
+                d="M16.707 5.293a1 1 0 00-1.414 0L8 12.586 4.707 9.293a1 1 0 00-1.414 1.414l4 4a1 1 0 001.414 0l8-8a1 1 0 000-1.414z"
+                clipRule="evenodd"
+              />
+            </svg>
+          )}
+        </button>
+      )}
       {onToggleWatchlist && (
         <button
           type="button"
@@ -211,5 +241,7 @@ export default memo(
     prev.player.id === next.player.id &&
     prev.player.progressLevel === next.player.progressLevel &&
     prev.isWatched === next.isWatched &&
-    prev.onToggleWatchlist === next.onToggleWatchlist,
+    prev.onToggleWatchlist === next.onToggleWatchlist &&
+    prev.isCompareSelected === next.isCompareSelected &&
+    prev.onToggleCompare === next.onToggleCompare,
 );

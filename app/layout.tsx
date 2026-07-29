@@ -119,6 +119,7 @@ export default async function RootLayout({
               <Navbar />
               <ContractIncompatibleBanner />
               <ContractPausedBanner />
+              <SessionExpiryWarning />
               <main id="main-content" className="max-w-6xl mx-auto px-4 py-8">
                 {children}
               </main>
