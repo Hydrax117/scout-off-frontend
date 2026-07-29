@@ -32,6 +32,10 @@ const PlatformAnalyticsCharts = dynamic(
   () => import('@/components/admin/PlatformAnalyticsCharts'),
   { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 animate-pulse h-64" /> },
 );
+const FeeRevenueChart = dynamic(
+  () => import('@/components/admin/FeeRevenueChart'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 animate-pulse h-64" /> },
+);
 import type { TxStatus } from '@/components/ui/TransactionStatus';
 import {
   getValidators,
@@ -545,6 +549,8 @@ function AdminDashboardContent() {
       </section>
 
       <PlatformAnalyticsCharts />
+
+      <FeeRevenueChart />
 
       {/* Referral Program */}
       <section className="bg-brand-card border border-gray-800 rounded-xl p-6 flex flex-col gap-4">
