@@ -211,7 +211,7 @@ export default function BulkPlayerImport() {
     setPhase('submitting');
 
     const initial: Record<number, RowSubmission> = {};
-    for (const r of validRows) initial[r.row] = { status: 'pending' };
+    for (const r of validRows) initial[r.rowNumber] = { status: 'pending' };
     setSubmissions(initial);
 
     for (const r of validRows) {
@@ -219,7 +219,7 @@ export default function BulkPlayerImport() {
 
       setSubmissions((prev) => ({
         ...prev,
-        [r.row]: { status: 'signing' },
+        [r.rowNumber]: { status: 'signing' },
       }));
 
       try {
@@ -241,12 +241,12 @@ export default function BulkPlayerImport() {
 
         setSubmissions((prev) => ({
           ...prev,
-          [r.row]: { status: 'success', txHash: hash },
+          [r.rowNumber]: { status: 'success', txHash: hash },
         }));
       } catch (err) {
         setSubmissions((prev) => ({
           ...prev,
-          [r.row]: { status: 'failed', error: parseContractError(err) },
+          [r.rowNumber]: { status: 'failed', error: parseContractError(err) },
         }));
       }
     }
@@ -351,7 +351,7 @@ export default function BulkPlayerImport() {
               <tbody>
                 {rows.map((row) => (
                   <tr
-                    key={row.row}
+                    key={row.rowNumber}
                     className="border-b border-gray-800/60 align-top"
                   >
                     <td className="py-2 pr-4 text-gray-400">{row.row}</td>
@@ -375,7 +375,7 @@ export default function BulkPlayerImport() {
                         <StatusBadge
                           row={row}
                           phase={phase}
-                          submission={submissions[row.row]}
+                          submission={submissions[row.rowNumber]}
                         />
                         {row.errors.length > 0 && (
                           <ul className="text-xs text-red-400 list-disc list-inside">
@@ -386,10 +386,10 @@ export default function BulkPlayerImport() {
                             ))}
                           </ul>
                         )}
-                        {submissions[row.row]?.status === 'failed' &&
-                          submissions[row.row]?.error && (
+                        {submissions[row.rowNumber]?.status === 'failed' &&
+                          submissions[row.rowNumber]?.error && (
                             <p className="text-xs text-red-400">
-                              {submissions[row.row]?.error}
+                              {submissions[row.rowNumber]?.error}
                             </p>
                           )}
                       </div>

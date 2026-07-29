@@ -54,7 +54,7 @@ export interface RowFieldError {
 
 export interface ParsedRow {
   /** 1-based index of this row among the data rows (header excluded). */
-  row: number;
+  rowNumber: number;
   /** Raw field values as read from the file (sanitized, not yet coerced). */
   data: BulkImportRow;
   /** Coerced/validated values, present when the row is fully valid. */
@@ -344,7 +344,7 @@ function validateRow(raw: Record<string, unknown>, rowNumber: number): ParsedRow
       : null;
 
   return {
-    row: rowNumber,
+    rowNumber,
     data,
     valid,
     errors,
