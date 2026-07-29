@@ -10,6 +10,7 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { PLATFORM_CONTACT_FEE_XLM, getContactFee } from '@/lib/contract';
 import XlmFiatDisplay from '@/components/ui/XlmFiatDisplay';
 import ProgressBar from '@/components/ProgressBar';
+import AchievementBadges from '@/components/player/AchievementBadges';
 import PlayerProfileSkeleton from '@/components/PlayerProfileSkeleton';
 import PlayerStatsCard from '@/components/player/PlayerStatsCard';
 import IPFSMediaGallery from '@/components/player/IPFSMediaGallery';
@@ -172,6 +173,9 @@ export default function PlayerProfile() {
           </p>
           <div className="mt-4">
             <ProgressBar level={player.progressLevel} />
+          </div>
+          <div className="mt-3">
+            <AchievementBadges player={player} />
           </div>
         </div>
       </div>

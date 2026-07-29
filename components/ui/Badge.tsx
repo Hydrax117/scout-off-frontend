@@ -6,7 +6,8 @@ type Variant =
   | 'level2'
   | 'level3'
   | 'position'
-  | 'region';
+  | 'region'
+  | 'achievement';
 type Size = 'sm' | 'md';
 
 const BASE =
@@ -24,6 +25,7 @@ const VARIANT_CLASSES: Record<Variant, string> = {
   level3: 'bg-green-100 text-green-800',
   position: 'bg-indigo-100 text-indigo-800',
   region: 'bg-purple-100 text-purple-800',
+  achievement: 'bg-brand-green/20 text-brand-green',
 };
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {

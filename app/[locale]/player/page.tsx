@@ -11,6 +11,7 @@ import { isFeatureEnabled } from '@/lib/featureFlags';
 import { buildExportPayload, downloadExportPayload } from '@/lib/dataExport';
 import { useOfflineQueue } from '@/hooks/useOfflineQueue';
 import ProgressBar from '@/components/ProgressBar';
+import AchievementBadges from '@/components/player/AchievementBadges';
 import PlayerProfileForm from '@/components/player/PlayerProfileForm';
 import UpdateProfileForm from '@/components/player/UpdateProfileForm';
 import MilestoneTimeline from '@/components/player/MilestoneTimeline';
@@ -20,9 +21,13 @@ import OfflineQueueBanner from '@/components/player/OfflineQueueBanner';
 import OnboardingTour from '@/components/ui/OnboardingTour';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import { playerTourSteps, PLAYER_TOUR_ID } from '@/lib/tourSteps';
+import { getEarnedBadgeIds, BADGE_DEFINITIONS } from '@/lib/badges';
 import type { Player, PlayerVitals } from '@/types';
 import PullToRefresh from '@/components/ui/PullToRefresh';
 import Spinner from '@/components/ui/Spinner';
+import { useToast } from '@/components/ui/Toast';
+
+const SEEN_BADGES_STORAGE_PREFIX = 'scoutoff_seen_badges_';
 
 type TabId = 'register' | 'profile';
 
@@ -37,6 +42,7 @@ function PlayerDashboardContent() {
   const { milestones } = useMilestoneHistory(player?.id ?? null);
   const t = useTranslations('player_dashboard');
   const router = useRouter();
+  const { show: showToast } = useToast();
 
   const offlineQueue = useOfflineQueue();
 
@@ -77,6 +83,51 @@ function PlayerDashboardContent() {
       setActiveTab(isRegistered ? 'profile' : 'register');
     }
   }, [loading, isRegistered]);
+
+  /**
+   * Toasts newly-earned achievement badges on the player's own dashboard.
+   * The first time a wallet is seen, its currently-earned badges are
+   * recorded silently (no toast) so returning players aren't flooded with
+   * toasts for milestones they earned long before this feature shipped —
+   * only badges earned after that baseline trigger a toast.
+   */
+  useEffect(() => {
+    if (!player || !publicKey) return;
+
+    const storageKey = `${SEEN_BADGES_STORAGE_PREFIX}${publicKey}`;
+    const earnedIds = getEarnedBadgeIds(player);
+
+    let seenIds: string[] = [];
+    let hasStoredState = false;
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        hasStoredState = true;
+        seenIds = JSON.parse(stored);
+      }
+    } catch {
+      return; // localStorage unavailable (e.g. private browsing) — skip
+    }
+
+    const newlyEarned = hasStoredState
+      ? earnedIds.filter((id) => !seenIds.includes(id))
+      : [];
+
+    newlyEarned.forEach((id) => {
+      showToast({
+        message: `New badge earned: ${BADGE_DEFINITIONS[id].label}`,
+        variant: 'success',
+      });
+    });
+
+    if (!hasStoredState || newlyEarned.length > 0) {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(earnedIds));
+      } catch {
+        // ignore write failures
+      }
+    }
+  }, [player, publicKey, showToast]);
 
   useEffect(() => {
     if (!successPlayerId) return;
@@ -349,6 +400,7 @@ function PlayerDashboardContent() {
               <div data-tour="progress-section">
                 <ProgressBar level={player.progressLevel} />
               </div>
+              <AchievementBadges player={player} />
 
               {/* Settings actions */}
               <div className="flex flex-wrap items-center gap-2 pt-1">
