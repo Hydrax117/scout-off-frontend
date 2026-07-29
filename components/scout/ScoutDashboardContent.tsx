@@ -1,6 +1,7 @@
 'use client';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
+
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useRequireWallet } from '@/hooks/useRequireWallet';
 import { useRequireSubscription } from '@/hooks/useRequireSubscription';
@@ -75,6 +76,10 @@ export default function ScoutDashboardContent() {
   const loadingEverStarted = useRef(false);
   const [searchHasCompleted, setSearchHasCompleted] = useState(false);
   const [resetKey, setResetKey] = useState(0);
+  const [renamingId, setRenamingId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const showCompareBar = compareIds.length >= 2;
 
   const [walletQuery, setWalletQuery] = useState('');
   const [searchResult, setSearchResult] = useState<
@@ -163,6 +168,26 @@ export default function ScoutDashboardContent() {
     },
     [search],
   );
+
+  const toggleCompare = useCallback(
+    (playerId: string) => {
+      setCompareIds((prev) => {
+        if (prev.includes(playerId)) {
+          return prev.filter((id) => id !== playerId);
+        }
+        if (prev.length >= 4) {
+          showToast({ message: 'Maximum 4 players for comparison', variant: 'info' });
+          return prev;
+        }
+        return [...prev, playerId];
+      });
+    },
+    [showToast],
+  );
+
+  const handleClearCompare = useCallback(() => {
+    setCompareIds([]);
+  }, []);
 
   const handleClearFilters = useCallback(() => {
     setNameQuery('');
@@ -309,23 +334,80 @@ export default function ScoutDashboardContent() {
                 key={s.id}
                 className="flex items-center justify-between gap-3 text-sm text-gray-200"
               >
-                <span className="truncate">{s.name}</span>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => handleSearch(s.filter)}
-                    className="px-3 py-1 rounded-lg border border-brand-green text-xs text-brand-green hover:bg-brand-green hover:text-black transition"
-                  >
-                    Apply
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => savedSearches.remove(s)}
-                    className="px-3 py-1 rounded-lg border border-gray-700 text-xs text-gray-300 hover:border-red-500 hover:text-red-400 transition"
-                  >
-                    Remove
-                  </button>
-                </div>
+                {renamingId === s.id ? (
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <input
+                      className="input flex-1 min-w-0"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const trimmed = renameValue.trim();
+                          if (trimmed) {
+                            savedSearches.rename(s.id, trimmed);
+                          }
+                          setRenamingId(null);
+                        }
+                        if (e.key === 'Escape') {
+                          setRenamingId(null);
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const trimmed = renameValue.trim();
+                        if (trimmed) {
+                          savedSearches.rename(s.id, trimmed);
+                        }
+                        setRenamingId(null);
+                      }}
+                      disabled={!renameValue.trim()}
+                      className="px-3 py-1 rounded-lg border border-brand-green text-xs text-brand-green disabled:opacity-40 hover:bg-brand-green hover:text-black transition"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRenamingId(null)}
+                      className="px-3 py-1 rounded-lg border border-gray-700 text-xs text-gray-300 hover:border-gray-500 transition"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="truncate">{s.name}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleSearch(s.filter)}
+                        className="px-3 py-1 rounded-lg border border-brand-green text-xs text-brand-green hover:bg-brand-green hover:text-black transition"
+                      >
+                        Apply
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRenameValue(s.name);
+                          setRenamingId(s.id);
+                        }}
+                        className="px-3 py-1 rounded-lg border border-gray-700 text-xs text-gray-300 hover:border-yellow-500 hover:text-yellow-400 transition"
+                      >
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => savedSearches.remove(s)}
+                        className="px-3 py-1 rounded-lg border border-gray-700 text-xs text-gray-300 hover:border-red-500 hover:text-red-400 transition"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </>
+                )}
               </li>
             ))}
           </ul>
@@ -377,6 +459,8 @@ export default function ScoutDashboardContent() {
                     player={searchResult}
                     isWatched={watchlist.isWatched(searchResult.id)}
                     onToggleWatchlist={() => handleToggleWatchlist(searchResult)}
+                    isCompareSelected={compareIds.includes(searchResult.id)}
+                    onToggleCompare={() => toggleCompare(searchResult.id)}
                   />
                 </div>
               )}
@@ -421,6 +505,29 @@ export default function ScoutDashboardContent() {
           onSaveSearch={handleSaveSearch}
         />
       </div>
+
+      {showCompareBar && (
+        <div className="flex items-center justify-between bg-brand-card border border-brand-green rounded-xl px-5 py-3">
+          <span className="text-sm text-gray-200">
+            {compareIds.length} player{compareIds.length !== 1 ? 's' : ''} selected for comparison
+          </span>
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/scout/compare?ids=${compareIds.join(',')}`}
+              className="px-4 py-1.5 rounded-lg border border-brand-green text-sm text-brand-green hover:bg-brand-green hover:text-black transition"
+            >
+              Compare
+            </Link>
+            <button
+              type="button"
+              onClick={handleClearCompare}
+              className="px-4 py-1.5 rounded-lg border border-gray-700 text-sm text-gray-300 hover:border-red-500 hover:text-red-400 transition"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
 
       {showSkeletons ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -467,6 +574,8 @@ export default function ScoutDashboardContent() {
                 player={p}
                 isWatched={watchlist.isWatched(p.id)}
                 onToggleWatchlist={() => handleToggleWatchlist(p)}
+                isCompareSelected={compareIds.includes(p.id)}
+                onToggleCompare={() => toggleCompare(p.id)}
               />
             ))}
           </div>
