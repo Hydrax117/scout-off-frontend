@@ -3,14 +3,22 @@
 @tailwind utilities;
 
 :root {
+  --bg: #f9fafb;
+  --card: #ffffff;
+  --text: #0a0f1e;
+  --green: #00c853;
+}
+
+.dark {
   --bg: #0a0f1e;
   --card: #111827;
+  --text: #f9fafb;
   --green: #00c853;
 }
 
 body {
   background-color: var(--bg);
-  color: #f9fafb;
+  color: var(--text);
   font-family: Inter, system-ui, sans-serif;
 }
 
@@ -33,7 +41,9 @@ body {
 
 @layer components {
   .input {
-    @apply w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-3 py-2
-           placeholder-gray-500 focus:outline-none focus:border-brand-green transition;
+    @apply w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700
+           text-gray-900 dark:text-white text-sm rounded-lg px-3 py-2
+           placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none
+           focus:border-brand-green transition;
   }
 }

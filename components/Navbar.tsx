@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import WalletButton from './WalletButton';
 import AccountSwitcher from './AccountSwitcher';
+import ThemeToggle from './ui/ThemeToggle';
 import { useContractStatus } from '@/hooks/useContractStatus';
 import { useWallet } from '@/hooks/useWallet';
 import { useCurrencyPreference } from '@/hooks/useCurrencyPreference';
@@ -109,7 +110,7 @@ export default function Navbar() {
       )}
       <nav
         aria-label="Main navigation"
-        className="border-b border-gray-800 bg-brand-dark"
+        className="border-b border-gray-200 dark:border-gray-800 bg-brand-dark"
       >
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-2">
           {/* Logo */}
@@ -121,12 +122,12 @@ export default function Navbar() {
           </Link>
 
           {/* ── Desktop nav (sm and above) ── */}
-          <div className="hidden sm:flex items-center gap-6 text-sm text-gray-300 min-w-0">
+          <div className="hidden sm:flex items-center gap-6 text-sm text-gray-700 dark:text-gray-300 min-w-0">
             {NAV_LINKS.map(({ href, labelKey }) => (
               <Link
                 key={href}
                 href={`/${currentLocale}${href}`}
-                className="hover:text-white transition whitespace-nowrap"
+                className="hover:text-gray-900 dark:hover:text-white transition whitespace-nowrap"
               >
                 {t(labelKey)}
               </Link>
@@ -134,10 +135,10 @@ export default function Navbar() {
 
             <Link
               href={`/${currentLocale}${SPONSORSHIP_LINK.href}`}
-              className="flex items-center gap-1.5 text-gray-400 hover:text-gray-300 transition whitespace-nowrap"
+              className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition whitespace-nowrap"
             >
               {t(SPONSORSHIP_LINK.labelKey)}
-              <span className="text-[10px] uppercase tracking-wide border border-gray-700 rounded-full px-1.5 py-0.5">
+              <span className="text-[10px] uppercase tracking-wide border border-gray-300 dark:border-gray-700 rounded-full px-1.5 py-0.5">
                 {t('nav.soon')}
               </span>
             </Link>
@@ -146,7 +147,7 @@ export default function Navbar() {
             <div className="relative">
               <button
                 onClick={() => setLocaleOpen(!localeOpen)}
-                className="hover:text-white transition flex items-center gap-1 whitespace-nowrap"
+                className="hover:text-gray-900 dark:hover:text-white transition flex items-center gap-1 whitespace-nowrap"
                 type="button"
                 aria-haspopup="listbox"
                 aria-expanded={localeOpen}
@@ -162,7 +163,7 @@ export default function Navbar() {
                 <div
                   role="listbox"
                   aria-label={t('language.select_language')}
-                  className="absolute right-0 mt-2 w-40 bg-brand-dark border border-gray-800 rounded-lg shadow-lg z-50"
+                  className="absolute right-0 mt-2 w-40 bg-brand-dark border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg z-50"
                 >
                   {locales.map((locale) => (
                     <button
@@ -188,7 +189,7 @@ export default function Navbar() {
             <div className="relative">
               <button
                 onClick={() => setCurrencyOpen(!currencyOpen)}
-                className="hover:text-white transition flex items-center gap-1 whitespace-nowrap"
+                className="hover:text-gray-900 dark:hover:text-white transition flex items-center gap-1 whitespace-nowrap"
                 type="button"
                 aria-haspopup="listbox"
                 aria-expanded={currencyOpen}
@@ -204,7 +205,7 @@ export default function Navbar() {
                 <div
                   role="listbox"
                   aria-label="Select currency"
-                  className="absolute right-0 mt-2 w-52 bg-brand-dark border border-gray-800 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto"
+                  className="absolute right-0 mt-2 w-52 bg-brand-dark border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto"
                 >
                   {supported.map((c) => (
                     <button
@@ -231,9 +232,12 @@ export default function Navbar() {
 
             {/* XLM balance — hidden below md */}
             {isAuthenticated && (
-              <span className="hidden md:inline text-sm text-gray-300 whitespace-nowrap">
+              <span className="hidden md:inline text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
                 {isLoadingBalance ? (
-                  <span className="text-gray-400" aria-hidden="true">
+                  <span
+                    className="text-gray-500 dark:text-gray-400"
+                    aria-hidden="true"
+                  >
                     ⟳
                   </span>
                 ) : (
@@ -242,6 +246,7 @@ export default function Navbar() {
               </span>
             )}
 
+            <ThemeToggle />
             <AccountSwitcher />
             <WalletButton />
           </div>
@@ -250,7 +255,7 @@ export default function Navbar() {
           <button
             ref={hamburgerRef}
             type="button"
-            className="sm:hidden p-2 rounded text-gray-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green"
+            className="sm:hidden p-2 rounded text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green"
             aria-expanded={menuOpen}
             aria-controls="mobile-nav"
             aria-label={
@@ -295,7 +300,7 @@ export default function Navbar() {
             role="dialog"
             aria-modal="true"
             aria-label="Navigation menu"
-            className="sm:hidden border-t border-gray-800 bg-brand-dark px-4 py-3 flex flex-col gap-1 text-sm text-gray-300"
+            className="sm:hidden border-t border-gray-200 dark:border-gray-800 bg-brand-dark px-4 py-3 flex flex-col gap-1 text-sm text-gray-700 dark:text-gray-300"
           >
             {NAV_LINKS.map(({ href, labelKey }) => (
               <Link
@@ -304,7 +309,7 @@ export default function Navbar() {
                 aria-current={
                   pathname === `/${currentLocale}${href}` ? 'page' : undefined
                 }
-                className="hover:text-white transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green rounded py-2 px-1"
+                className="hover:text-gray-900 dark:hover:text-white transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green rounded py-2 px-1"
                 onClick={closeMenu}
               >
                 {t(labelKey)}
@@ -318,18 +323,18 @@ export default function Navbar() {
                   ? 'page'
                   : undefined
               }
-              className="flex items-center gap-1.5 text-gray-400 hover:text-gray-300 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green rounded py-2 px-1"
+              className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green rounded py-2 px-1"
               onClick={closeMenu}
             >
               {t(SPONSORSHIP_LINK.labelKey)}
-              <span className="text-[10px] uppercase tracking-wide border border-gray-700 rounded-full px-1.5 py-0.5">
+              <span className="text-[10px] uppercase tracking-wide border border-gray-300 dark:border-gray-700 rounded-full px-1.5 py-0.5">
                 {t('nav.soon')}
               </span>
             </Link>
 
             {/* Locale switcher in mobile menu */}
-            <div className="border-t border-gray-800 mt-1 pt-3 flex flex-col gap-0.5">
-              <p className="text-xs text-gray-400 px-1 mb-1">
+            <div className="border-t border-gray-200 dark:border-gray-800 mt-1 pt-3 flex flex-col gap-0.5">
+              <p className="text-xs text-gray-500 dark:text-gray-400 px-1 mb-1">
                 {t('language.select_language')}
               </p>
               {locales.map((locale) => (
@@ -350,8 +355,8 @@ export default function Navbar() {
             </div>
 
             {/* Currency selector in mobile menu */}
-            <div className="border-t border-gray-800 mt-1 pt-3 flex flex-col gap-0.5">
-              <p className="text-xs text-gray-500 px-1 mb-1">
+            <div className="border-t border-gray-200 dark:border-gray-800 mt-1 pt-3 flex flex-col gap-0.5">
+              <p className="text-xs text-gray-500 dark:text-gray-500 px-1 mb-1">
                 Currency
               </p>
               {supported.map((c) => (
@@ -374,8 +379,9 @@ export default function Navbar() {
               ))}
             </div>
 
-            {/* Wallet — balance hidden on mobile to prevent overflow */}
-            <div className="border-t border-gray-800 mt-1 pt-3 flex items-center gap-2">
+            {/* Theme toggle + wallet — balance hidden on mobile to prevent overflow */}
+            <div className="border-t border-gray-200 dark:border-gray-800 mt-1 pt-3 flex items-center gap-2">
+              <ThemeToggle />
               <AccountSwitcher />
               <WalletButton hideBalance />
             </div>

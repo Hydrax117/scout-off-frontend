@@ -5,6 +5,7 @@ import { Analytics } from '@vercel/analytics/next';
 import Navbar from '@/components/Navbar';
 import { ToastProvider } from '@/components/ui/Toast';
 import { WalletProvider } from '@/context/WalletContext';
+import { ThemeProvider } from '@/context/ThemeContext';
 import ContractIncompatibleBanner from '@/components/ContractIncompatibleBanner';
 import ContractPausedBanner from '@/components/ContractPausedBanner';
 import ConfigWarningBanner from '@/components/ConfigWarningBanner';
@@ -104,6 +105,18 @@ export default async function RootLayout({
         {/* Keep in sync with brand.dark in tailwind.config.ts, --bg in app/globals.css, and theme_color/background_color in public/manifest.json */}
         <meta name="theme-color" content="#0a0f1e" />
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+        {/*
+          No-flash theme script: resolves stored-preference-or-system-preference
+          and applies the `dark` class to <html> before first paint. Must stay
+          in sync with the STORAGE_KEY and resolution logic in
+          context/ThemeContext.tsx (ThemeProvider re-applies the same result
+          on mount, so this is purely to avoid a flash of the wrong theme).
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var k='scoutoff_theme_preference';var s=localStorage.getItem(k);var d=s==='light'||s==='dark'?s==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;if(d)document.documentElement.classList.add('dark');}catch(e){}})();`,
+          }}
+        />
       </head>
       <body>
         <A11yDevAudit />
@@ -113,21 +126,23 @@ export default async function RootLayout({
         >
           Skip to main content
         </a>
-        <NextIntlClientProvider locale={locale} messages={messages}>
-          <WalletProvider>
-            <ToastProvider>
-              <ConfigWarningBanner warnings={configWarnings} />
-              <ServiceWorkerUpdateBanner />
-              <Navbar />
-              <ContractIncompatibleBanner />
-              <ContractPausedBanner />
-              <SessionExpiryWarning />
-              <main id="main-content" className="max-w-6xl mx-auto px-4 py-8">
-                {children}
-              </main>
-            </ToastProvider>
-          </WalletProvider>
-        </NextIntlClientProvider>
+        <ThemeProvider>
+          <NextIntlClientProvider locale={locale} messages={messages}>
+            <WalletProvider>
+              <ToastProvider>
+                <ConfigWarningBanner warnings={configWarnings} />
+                <ServiceWorkerUpdateBanner />
+                <Navbar />
+                <ContractIncompatibleBanner />
+                <ContractPausedBanner />
+                <SessionExpiryWarning />
+                <main id="main-content" className="max-w-6xl mx-auto px-4 py-8">
+                  {children}
+                </main>
+              </ToastProvider>
+            </WalletProvider>
+          </NextIntlClientProvider>
+        </ThemeProvider>
         {!isTestEnv && (
           <>
             <Analytics />

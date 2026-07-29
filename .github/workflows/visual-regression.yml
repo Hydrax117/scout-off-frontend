@@ -1,0 +1,40 @@
+name: Visual Regression
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  visual-regression:
+    runs-on: ubuntu-latest
+    # Screenshot rendering is sensitive to fonts/GPU drivers, so this runs
+    # inside the same Playwright-maintained image used for local baseline
+    # generation (see docs/visual-regression.md) to keep results reproducible
+    # between contributors' machines and CI. Keep the tag in sync with the
+    # @playwright/test version in package.json.
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm install
+
+      - name: Run Storybook visual regression tests
+        run: npm run test:visual
+
+      - name: Upload diff report on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: visual-regression-report
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 14

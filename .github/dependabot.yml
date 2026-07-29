@@ -26,6 +26,19 @@ updates:
         update-types: ["version-update:semver-major"]
         # Reason: Major Stellar SDK bumps usually include breaking Soroban RPC changes that require smart contract compatibility checks.
 
+  # Workflow `uses:` references are pinned to commit SHAs (supply-chain
+  # security — see .github/workflows/*.yml) so Dependabot needs its own
+  # ecosystem entry to keep those pins current.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+
   # packages/indexer has its own package.json (see its README) — Dependabot
   # scopes updates per-directory, so it needs its own entry or its
   # dependencies (currently just typescript/@types/node) go unmonitored.

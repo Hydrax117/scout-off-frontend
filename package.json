@@ -22,7 +22,9 @@
     "a11y:audit": "node scripts/a11y-audit.mjs",
     "generate:icons": "node scripts/generate-icons.js",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "test:visual": "playwright test --config=playwright.visual.config.ts",
+    "test:visual:update": "playwright test --config=playwright.visual.config.ts --update-snapshots"
   },
   "dependencies": {
     "@albedo-link/intent": "^0.13.0",

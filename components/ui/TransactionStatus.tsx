@@ -54,7 +54,7 @@ export default function TransactionStatus({
       <div
         role="status"
         aria-live="polite"
-        className="flex items-center gap-3 rounded-xl border border-gray-700 bg-brand-card px-4 py-3 text-sm text-gray-300"
+        className="flex items-center gap-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-brand-card px-4 py-3 text-sm text-gray-700 dark:text-gray-300"
       >
         <Spinner size="sm" />
         <span>Submitting transaction…</span>
@@ -72,11 +72,15 @@ export default function TransactionStatus({
         <span className="text-brand-green" aria-hidden="true">
           ✓
         </span>
-        <span className="text-gray-200">Transaction confirmed.</span>
+        <span className="text-gray-700 dark:text-gray-200">
+          Transaction confirmed.
+        </span>
         {feePaid && (
-          <span className="text-gray-400">
+          <span className="text-gray-500 dark:text-gray-400">
             Fee paid:{' '}
-            <span className="text-white font-medium">{feePaid} XLM</span>
+            <span className="text-gray-900 dark:text-white font-medium">
+              {feePaid} XLM
+            </span>
           </span>
         )}
         {txHash && (
@@ -105,7 +109,7 @@ export default function TransactionStatus({
       <span className="text-red-500 mt-0.5" aria-hidden="true">
         ✕
       </span>
-      <span className="text-red-300">
+      <span className="text-red-700 dark:text-red-300">
         {readableError ?? 'Transaction failed.'}
       </span>
     </div>

@@ -55,10 +55,20 @@ import Navbar from '@/components/Navbar';
 import { useWallet } from '@/hooks/useWallet';
 import { usePathname } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
+import { ThemeProvider } from '@/context/ThemeContext';
 
 const mockUseWallet = useWallet as unknown as jest.Mock;
 const mockUsePathname = usePathname as unknown as jest.Mock;
 const mockUseToast = useToast as jest.Mock;
+
+// Navbar renders ThemeToggle (Issue #545), which requires ThemeProvider.
+function renderNavbar() {
+  return render(
+    <ThemeProvider>
+      <Navbar />
+    </ThemeProvider>,
+  );
+}
 
 function setup(pathname: string) {
   mockUseWallet.mockReturnValue({
@@ -69,7 +79,7 @@ function setup(pathname: string) {
     signAndSubmit: jest.fn(),
   });
   mockUsePathname.mockReturnValue(pathname);
-  render(<Navbar />);
+  renderNavbar();
 }
 
 describe('Navbar', () => {
@@ -88,7 +98,7 @@ describe('Navbar', () => {
     });
     mockUsePathname.mockReturnValue('/');
 
-    render(<Navbar />);
+    renderNavbar();
 
     expect(screen.getByRole('link', { name: /ScoutOff/i })).toBeInTheDocument();
   });
@@ -103,7 +113,7 @@ describe('Navbar', () => {
     });
     mockUsePathname.mockReturnValue('/');
 
-    render(<Navbar />);
+    renderNavbar();
 
     expect(
       screen.getByRole('button', { name: /Connect Wallet/i }),
@@ -121,7 +131,7 @@ describe('Navbar', () => {
     });
     mockUsePathname.mockReturnValue('/');
 
-    render(<Navbar />);
+    renderNavbar();
 
     const truncated = `${publicKey.slice(0, 4)}…${publicKey.slice(-4)}`;
     expect(
@@ -140,7 +150,7 @@ describe('Navbar', () => {
     });
     mockUsePathname.mockReturnValue('/');
 
-    render(<Navbar />);
+    renderNavbar();
 
     expect(
       screen.getByRole('button', { name: /Copy wallet address/i }),
@@ -165,7 +175,7 @@ describe('Navbar', () => {
     });
     mockUsePathname.mockReturnValue('/');
 
-    render(<Navbar />);
+    renderNavbar();
 
     const copyBtn = screen.getByRole('button', {
       name: /Copy wallet address/i,
@@ -187,7 +197,7 @@ describe('Navbar', () => {
     // Component prefixes locale, so pathname must also be locale-prefixed
     mockUsePathname.mockReturnValue('/en/player');
 
-    render(<Navbar />);
+    renderNavbar();
 
     const playerLink = screen.getByRole('link', { name: /Player Dashboard/i });
     expect(playerLink).toHaveAttribute('aria-current', 'page');
@@ -300,7 +310,7 @@ describe('Navbar', () => {
     mockUsePathname.mockReturnValue('/');
 
     // The top-level mock returns isPaused:false, so the banner must be absent.
-    render(<Navbar />);
+    renderNavbar();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
@@ -319,7 +329,7 @@ describe('Navbar', () => {
     });
     mockUsePathname.mockReturnValue('/en');
 
-    const { container } = render(<Navbar />);
+    const { container } = renderNavbar();
 
     const results = await axe(container);
     expect(results).toHaveNoViolations();
