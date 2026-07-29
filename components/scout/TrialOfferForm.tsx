@@ -119,7 +119,7 @@ export default function TrialOfferForm({
           htmlFor="tof-message"
           className="text-sm font-medium text-gray-300"
         >
-          Message <span className="text-gray-500 font-normal">(optional)</span>
+          Message <span className="text-gray-400 font-normal">(optional)</span>
         </label>
         <textarea
           id="tof-message"

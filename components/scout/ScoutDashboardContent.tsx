@@ -410,6 +410,7 @@ export default function ScoutDashboardContent() {
       <div
         className={`bg-brand-card border border-gray-800 rounded-xl p-5${nameQuery ? ' opacity-50 pointer-events-none' : ''}`}
         data-tour="filter-section"
+        data-testid="filter-form"
       >
         <PlayerFilterForm
           onSearch={handleSearch}
@@ -425,6 +426,7 @@ export default function ScoutDashboardContent() {
           ))}
         </div>
       ) : showEmptyState ? (
+        <div data-testid="empty-state">
         <EmptyState
           title="No players found"
           description="Try adjusting your filters."
@@ -446,6 +448,7 @@ export default function ScoutDashboardContent() {
           }
           action={{ label: 'Reset Filters', onClick: handleClearFilters }}
         />
+        </div>
       ) : (
         <>
           {players.length > 0 && (
@@ -454,7 +457,7 @@ export default function ScoutDashboardContent() {
             </p>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div data-testid="player-grid" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {visiblePlayers.map((p) => (
               <PlayerCard
                 key={p.id}
@@ -477,7 +480,7 @@ export default function ScoutDashboardContent() {
             <p
               role="status"
               aria-live="polite"
-              className="text-center text-sm text-gray-500 py-2"
+              className="text-center text-sm text-gray-400 py-2"
             >
               No more results
             </p>
@@ -497,6 +500,7 @@ export default function ScoutDashboardContent() {
                   onClick={() => setPage(currentPage - 1)}
                   disabled={currentPage <= 1}
                   aria-label="Previous page"
+                  data-testid="pagination-prev"
                   className="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 disabled:opacity-40 hover:border-brand-green transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green"
                 >
                   Previous
@@ -512,6 +516,7 @@ export default function ScoutDashboardContent() {
                   onClick={() => setPage(currentPage + 1)}
                   disabled={currentPage >= totalPages}
                   aria-label="Next page"
+                  data-testid="pagination-next"
                   className="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 disabled:opacity-40 hover:border-brand-green transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-green"
                 >
                   Next

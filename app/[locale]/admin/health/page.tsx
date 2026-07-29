@@ -215,14 +215,14 @@ function HealthDashboardContent() {
           <p className="text-sm text-red-400">{remoteHealth.backend.error}</p>
         )}
         {backendDetail && Object.keys(backendDetail).length > 0 && (
-          <pre className="text-xs text-gray-500 overflow-x-auto">
+          <pre className="text-xs text-gray-400 overflow-x-auto">
             {JSON.stringify(backendDetail, null, 2)}
           </pre>
         )}
       </HealthSection>
 
       {remoteFetchError && (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-gray-400">
           Note: the indexer and backend checks above are proxied through{' '}
           <code>/api/admin/health</code>, which last failed with:{' '}
           {remoteFetchError}

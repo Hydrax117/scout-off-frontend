@@ -36,6 +36,7 @@ jest.mock('@/lib/stellar', () => ({
 
 jest.mock('@stellar/stellar-sdk', () => ({
   TransactionBuilder: { fromXDR: jest.fn(() => ({})) },
+  Networks: { PUBLIC: 'Public Global Stellar Network ; September 2015', TESTNET: 'Test SDF Network ; September 2015' },
 }));
 
 const PUBLIC_KEY = 'GCFW7QAO3WZQ6X4CZ3OYZFXX3A3DL7XVI5DNVTXA5VJUGE5SU6ZRG5OV';
@@ -258,6 +259,77 @@ describe('WalletContext', () => {
       );
       expect(signed!).toBe('signed-tx-xdr');
       expect(rpc.sendTransaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('tab-refocus reconnect behavior', () => {
+    it('preserves the stored network and warns on mismatch during visibilitychange', async () => {
+      setupSep10();
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+
+      // Connect on testnet (the default for the mock NETWORK).
+      await act(async () => {
+        await result.current.connectWithProvider('freighter');
+      });
+
+      const stored = localStorage.getItem('wallet_session');
+      expect(stored).toContain('testnet');
+      expect(result.current.isAuthenticated).toBe(true);
+
+      // Simulate a session that was created on a different network (public)
+      // to verify the reconnect path detects the drift and warns.
+      const parsed = JSON.parse(stored!);
+      localStorage.setItem(
+        'wallet_session',
+        JSON.stringify({ ...parsed, networkType: 'public' }),
+      );
+
+      // Simulate tab refocus: set visibilityState to 'visible' and fire
+      // the visibilitychange event so the listener re-runs restoreSession.
+      const visibilitySpy = jest.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      await waitFor(() => {
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('Wallet network mismatch'),
+        );
+      });
+
+      // Session should remain authenticated — the reconnect succeeds and
+      // getPublicKey was called both during initial connect and on reconnect.
+      expect(result.current.isAuthenticated).toBe(true);
+      expect(freighter.getPublicKey).toHaveBeenCalledTimes(2);
+
+      visibilitySpy.mockRestore();
+      warnSpy.mockRestore();
+    });
+
+    it('does not warn when the stored network matches the current env', async () => {
+      setupSep10();
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+
+      await act(async () => {
+        await result.current.connectWithProvider('freighter');
+      });
+
+      // Session network matches env (both testnet) — no warning expected.
+      const visibilitySpy = jest.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      // Allow any async restore to settle.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(result.current.isAuthenticated).toBe(true);
+
+      visibilitySpy.mockRestore();
+      warnSpy.mockRestore();
     });
   });
 

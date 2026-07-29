@@ -1,17 +1,33 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { useWallet } from '@/hooks/useWallet';
 import { useToast } from '@/components/ui/Toast';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import EmptyState from '@/components/ui/EmptyState';
 import TransactionStatus from '@/components/ui/TransactionStatus';
-import AdminDashboardSkeleton from '@/components/admin/AdminDashboardSkeleton';
-import FraudFlagsPanel from '@/components/admin/FraudFlagsPanel';
-import AcademyManager from '@/components/admin/AcademyManager';
-import AdminAuditLog from '@/components/admin/AdminAuditLog';
 import { recordAuditEntry } from '@/lib/adminAuditClient';
+
+// Admin-only components lazy-loaded to avoid bundling into shared chunks
+// for the much larger player/scout user base (issue #967).
+const AdminDashboardSkeleton = dynamic(
+  () => import('@/components/admin/AdminDashboardSkeleton'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 h-64 motion-safe:animate-pulse" /> },
+);
+const FraudFlagsPanel = dynamic(
+  () => import('@/components/admin/FraudFlagsPanel'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 motion-safe:animate-pulse h-20" /> },
+);
+const AcademyManager = dynamic(
+  () => import('@/components/admin/AcademyManager'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 animate-pulse h-32" /> },
+);
+const AdminAuditLog = dynamic(
+  () => import('@/components/admin/AdminAuditLog'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 animate-pulse h-48" /> },
+);
 import type { TxStatus } from '@/components/ui/TransactionStatus';
 import {
   getValidators,
@@ -418,7 +434,7 @@ function AdminDashboardContent() {
           Validators ({validators.length})
         </h2>
         {validators.length === 0 ? (
-          <p className="text-sm text-gray-500">No validators authorized.</p>
+          <p className="text-sm text-gray-400">No validators authorized.</p>
         ) : (
           <ul className="flex flex-col gap-3">
             {validators.map((v) => (
@@ -478,21 +494,21 @@ function AdminDashboardContent() {
                   <span className="text-gray-200 shrink-0">
                     {EVENT_LABELS[event.type]}
                   </span>
-                  <span className="font-mono text-gray-500 truncate">
+                  <span className="font-mono text-gray-400 truncate">
                     <TruncatedAddress
                       address={event.actor}
-                      className="text-gray-500"
+                      className="text-gray-400"
                     />
                   </span>
                   {event.subjectId && (
-                    <span className="font-mono text-gray-500 truncate">
+                    <span className="font-mono text-gray-400 truncate">
                       <TruncatedAddress
                         address={event.subjectId}
-                        className="text-gray-500"
+                        className="text-gray-400"
                       />
                     </span>
                   )}
-                  <span className="text-gray-500 shrink-0 ml-auto">
+                  <span className="text-gray-400 shrink-0 ml-auto">
                     {new Date(event.timestamp * 1000).toLocaleString()}
                   </span>
                 </li>
@@ -539,7 +555,7 @@ function AdminDashboardContent() {
           <>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">
+                <p className="text-xs uppercase tracking-wide text-gray-400">
                   Codes Generated
                 </p>
                 <p className="text-2xl font-semibold text-white">
@@ -547,7 +563,7 @@ function AdminDashboardContent() {
                 </p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">
+                <p className="text-xs uppercase tracking-wide text-gray-400">
                   Successful Referrals
                 </p>
                 <p className="text-2xl font-semibold text-white">

@@ -181,7 +181,7 @@ export default function AccountRecoveryPage() {
             </div>
 
             <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-4">
-              <p className="text-xs text-gray-500 mb-2">Primary wallet (to recover):</p>
+              <p className="text-xs text-gray-400 mb-2">Primary wallet (to recover):</p>
               <p className="text-sm font-mono text-gray-300 break-all">{primaryWallet}</p>
             </div>
 
@@ -214,11 +214,11 @@ export default function AccountRecoveryPage() {
 
             <div className="space-y-3">
               <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-4">
-                <p className="text-xs text-gray-500 mb-2">Primary wallet (lost access):</p>
+                <p className="text-xs text-gray-400 mb-2">Primary wallet (lost access):</p>
                 <p className="text-sm font-mono text-gray-300 break-all">{primaryWallet}</p>
               </div>
               <div className="bg-gray-900/50 border border-brand-green rounded-lg p-4">
-                <p className="text-xs text-gray-500 mb-2">Backup wallet (connected):</p>
+                <p className="text-xs text-gray-400 mb-2">Backup wallet (connected):</p>
                 <p className="text-sm font-mono text-gray-300 break-all">{publicKey}</p>
                 <p className="text-xs text-brand-green mt-2">✓ Connected</p>
               </div>

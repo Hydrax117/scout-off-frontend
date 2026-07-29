@@ -76,7 +76,7 @@ export default function AdminAuditLog() {
     <section className="bg-brand-card border border-gray-800 rounded-xl p-6 flex flex-col gap-4">
       <div>
         <h2 className="text-lg font-semibold text-white">Admin Audit Log</h2>
-        <p className="text-sm text-gray-500 mt-1">
+        <p className="text-sm text-gray-400 mt-1">
           Validator add/remove, fee withdrawal, and pause/unpause actions,
           reconciled against on-chain state.
         </p>
@@ -197,7 +197,7 @@ export default function AdminAuditLog() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead>
-              <tr className="text-gray-500 text-xs uppercase tracking-wide border-b border-gray-800">
+              <tr className="text-gray-400 text-xs uppercase tracking-wide border-b border-gray-800">
                 <th className="py-2 pr-4">Time</th>
                 <th className="py-2 pr-4">Action</th>
                 <th className="py-2 pr-4">Admin</th>

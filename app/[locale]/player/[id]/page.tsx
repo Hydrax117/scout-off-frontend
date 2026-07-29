@@ -182,7 +182,7 @@ export default function PlayerProfile() {
       <div className="bg-brand-card border border-gray-800 rounded-xl p-6">
         <h2 className="font-semibold text-white mb-4">On-Chain Milestones</h2>
         {player.milestones.length === 0 ? (
-          <p className="text-gray-500 text-sm">No milestones recorded yet.</p>
+          <p className="text-gray-400 text-sm">No milestones recorded yet.</p>
         ) : (
           <ul className="flex flex-col gap-3">
             {player.milestones.map((m) => (
@@ -191,11 +191,11 @@ export default function PlayerProfile() {
                 className="text-sm text-gray-300 border-l-2 border-brand-green pl-3"
               >
                 {m.description}
-                <span className="block text-xs text-gray-500 mt-0.5">
+                <span className="block text-xs text-gray-400 mt-0.5">
                   Validator:{' '}
                   <TruncatedAddress
                     address={m.validator}
-                    className="text-gray-500"
+                    className="text-gray-400"
                   />{' '}
                   · {new Date(m.timestamp * 1000).toLocaleDateString()}
                 </span>

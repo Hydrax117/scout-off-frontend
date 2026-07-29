@@ -91,7 +91,7 @@ export default function SponsorshipPage() {
         <p className="text-gray-400 text-sm sm:text-base leading-relaxed">
           {t('howItWorksDescription')}
         </p>
-        <p className="text-gray-500 text-xs">{t('notice')}</p>
+        <p className="text-gray-400 text-xs">{t('notice')}</p>
       </section>
 
       {/* ── Email capture form ───────────────────────────────────────────── */}
@@ -103,7 +103,7 @@ export default function SponsorshipPage() {
               Get notified when we launch
             </h2>
           </div>
-          <p className="text-gray-500 text-sm mb-6">
+          <p className="text-gray-400 text-sm mb-6">
             Be the first to know when fractionalized player sponsorship goes
             live. No spam — just a launch announcement.
           </p>
@@ -158,7 +158,7 @@ export default function SponsorshipPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={isDisabled}
                   placeholder="you@example.com"
-                  className="w-full bg-brand-dark border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-gray-500 focus:border-brand-green focus:outline-none transition disabled:opacity-50"
+                  className="w-full bg-brand-dark border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder:text-gray-400 focus:border-brand-green focus:outline-none transition disabled:opacity-50"
                 />
               </div>
 

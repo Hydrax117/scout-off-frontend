@@ -239,6 +239,19 @@ Do not use `--no-verify` for PRs targeting `main`.
 - [ ] Documentation updated where necessary
 - [ ] Code follows project conventions and formatting
 
+### Architecture Decision Records
+
+Significant technical decisions (framework choices, library selection, protocol
+selection, data-model changes) should be documented as an Architecture Decision
+Record (ADR) in [`docs/adr/`](docs/adr/). Each ADR follows the template at
+[`docs/adr/0000-template.md`](docs/adr/0000-template.md) and covers the
+Context, Decision, and Consequences of the choice. ADRs are numbered
+sequentially (e.g. `0001-sep10-wallet-auth.md`).
+
+For PRs that introduce a significant decision, include the ADR in the same PR
+or link to it in the PR description. Reviewers may request an ADR for any
+decision whose rationale is non-obvious from the code alone.
+
 ### Code review assignment
 
 This repository uses a [CODEOWNERS](.github/CODEOWNERS) file to automatically request
