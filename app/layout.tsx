@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import './globals.css';
-import { Analytics } from '@vercel/analytics/next';
 import Navbar from '@/components/Navbar';
 import { ToastProvider } from '@/components/ui/Toast';
 import { WalletProvider } from '@/context/WalletContext';
@@ -9,7 +8,7 @@ import ContractIncompatibleBanner from '@/components/ContractIncompatibleBanner'
 import ContractPausedBanner from '@/components/ContractPausedBanner';
 import ConfigWarningBanner from '@/components/ConfigWarningBanner';
 import ServiceWorkerUpdateBanner from '@/components/ServiceWorkerUpdateBanner';
-import WebVitalsReporter from '@/components/WebVitalsReporter';
+import CookieConsentGate from '@/components/ui/CookieConsentGate';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { validateConfig } from '@/lib/config';
@@ -126,10 +125,7 @@ export default async function RootLayout({
           </WalletProvider>
         </NextIntlClientProvider>
         {!isTestEnv && (
-          <>
-            <Analytics />
-            <WebVitalsReporter />
-          </>
+          <CookieConsentGate />
         )}
       </body>
     </html>
