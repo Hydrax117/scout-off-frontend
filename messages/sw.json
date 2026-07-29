@@ -172,8 +172,11 @@
     "notice": "TODO: Machine-translated - Ukurasa huu ni nafasi ya muda. Hakuna tokeni zinazoweza kununuliwa bado na hakuna mwingiliano wa blockchain unaopatikana hapa."
   },
   "footer": {
-    "changelog": "TODO: Machine-translated - Mabadiliko",
-    "status": "TODO: Machine-translated - Hali"
+    "changelog": "Mabadiliko",
+    "status": "Hali",
+    "privacy": "Sera ya Faragha",
+    "terms": "Masharti ya Huduma",
+    "cookie_settings": "Mipangilio ya Vidakuzi"
   },
   "changelog": {
     "back_to_home": "TODO: Machine-translated - Rudi kwenye mwanzo",

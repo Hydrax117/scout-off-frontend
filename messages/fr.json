@@ -115,7 +115,10 @@
   },
   "footer": {
     "changelog": "Journal des modifications",
-    "status": "Statut"
+    "status": "Statut",
+    "privacy": "Politique de confidentialité",
+    "terms": "Conditions d\u2019utilisation",
+    "cookie_settings": "Paramètres des cookies"
   },
   "changelog": {
     "back_to_home": "Retour à l'accueil",

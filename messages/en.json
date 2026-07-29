@@ -117,7 +117,10 @@
   },
   "footer": {
     "changelog": "Changelog",
-    "status": "Status"
+    "status": "Status",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "cookie_settings": "Cookie Settings"
   },
   "changelog": {
     "back_to_home": "Back to home",

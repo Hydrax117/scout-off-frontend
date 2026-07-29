@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import './globals.css';
-import { Analytics } from '@vercel/analytics/next';
 import Navbar from '@/components/Navbar';
 import ThemeProvider from '@/components/ThemeProvider';
 import { ToastProvider } from '@/components/ui/Toast';
@@ -133,10 +132,7 @@ export default async function RootLayout({
           </NextIntlClientProvider>
         </ThemeProvider>
         {!isTestEnv && (
-          <>
-            <Analytics />
-            <WebVitalsReporter />
-          </>
+          <CookieConsentGate />
         )}
       </body>
     </html>
