@@ -29,6 +29,7 @@ storybook-static/
 /test-results/
 /playwright-report/
 /blob-report/
+/playwright/.cache/
 
 # Kiro IDE directory
 .kiro/
@@ -45,3 +46,19 @@ packages/indexer/data/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Jest snapshot files — snapshots are regenerated on demand and should not
+# be committed unless the project has opted in to snapshot testing.
+**/__snapshots__/
+# OS / editor artefacts
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+# TypeScript incremental build info
+*.tsbuildinfo
+# Next.js trace files
+.next/trace
+# Turbo cache
+.turbo/
