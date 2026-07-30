@@ -1,11 +1,4 @@
 {
-  "validator": {
-    "title": "Dashibodi ya Mthibitishaji",
-    "verifying": "Inathibitisha hali ya mthibitishaji…",
-    "access_only_title": "Mthibitishaji Pekee",
-    "access_only_description": "Pochi yako haijasajiliwa kama mthibitishaji aliyekubaliwa. Wasiliana na msimamizi kuomba ufikiaji wa mthibitishaji.",
-    "find_player": "Tafuta Mchezaji"
-  },
   "admin": {
     "title": "Dashibodi ya Msimamizi",
     "contract": "Mkataba",
@@ -91,10 +84,19 @@
     "verifying": "Inathibitisha hali ya mthibitishaji…",
     "access_only_title": "Mthibitishaji Pekee",
     "access_only_description": "Pochi yako haijasajiliwa kama mthibitishaji aliyekubaliwa. Wasiliana na msimamizi kuomba ufikiaji wa mthibitishaji.",
-    "find_player": "Tafuta Mchezaji"
+    "find_player": "Tafuta Mchezaji",
+    "roster_title": "Wachezaji Wangu Walioidhinishwa",
+    "roster_empty_title": "Bado hakuna wachezaji walioidhinishwa",
+    "roster_empty_description": "Tumia fomu ya uidhinishaji hapo juu kuidhinisha hatua muhimu ya mchezaji.",
+    "roster_error": "Imeshindikana kupakia wachezaji walioidhinishwa. Kiashiria huenda hakipatikani kwa sasa.",
+    "roster_retry": "Jaribu tena",
+    "roster_count_one": "mchezaji 1",
+    "roster_count_other": "wachezaji {count}"
   },
   "scout_dashboard": {
-    "description": "TODO: Machine-translated - Dhibiti wachezaji na majaribio",
+    "title": "Dashibodi ya Scout",
+    "welcome": "Karibu kwenye Dashibodi ya Scout",
+    "description": "Dhibiti wachezaji na majaribio",
     "recent_activity": "TODO: Machine-translated - Shughuli ya Hivi Karibuni",
     "players": "Wachezaji",
     "trials": "Majaribio",
@@ -164,13 +166,17 @@
     "badge": "TODO: Machine-translated - Inakuja Hivi Karibuni",
     "title": "TODO: Machine-translated - Ufadhili wa Tokeni za Wachezaji",
     "description": "TODO: Machine-translated - Mashabiki na wawekezaji hivi karibuni wataweza kununua \"Tokeni za Mchezaji\" kufadhili mafunzo na usafiri wa mchezaji — huku mapato yakirejeshwa kwa uwazi kwenye blockchain.",
+    "metaDescription": "TODO: Machine-translated - Saidia wachezaji wenye vipawa kutoka mikoa iliyonyimwa rasilimali kupitia ufadhili wa XLM uliochanganywa kwenye blockchain ya Stellar. ScoutOff inaunganisha mashabiki na wanahisa moja kwa moja na vipawa vilivyogunduliwa.",
     "howItWorksTitle": "TODO: Machine-translated - Jinsi itakavyofanya kazi",
     "howItWorksDescription": "TODO: Machine-translated - Wafadhili watanunua Tokeni za Mchezaji zinazowakilisha hisa katika mapato ya baadaye ya mchezaji. Fedha zilizokusanywa zinaelekezwa moja kwa moja kwenye mafunzo, usafiri, na maendeleo, huku sehemu ya mapato ya baadaye ya mchezaji kwenye blockchain ikirejeshwa kwa wamiliki wa tokeni — yote yakisimamiwa na mikataba mahiri ya Soroban.",
     "notice": "TODO: Machine-translated - Ukurasa huu ni nafasi ya muda. Hakuna tokeni zinazoweza kununuliwa bado na hakuna mwingiliano wa blockchain unaopatikana hapa."
   },
   "footer": {
-    "changelog": "TODO: Machine-translated - Mabadiliko",
-    "status": "TODO: Machine-translated - Hali"
+    "changelog": "Mabadiliko",
+    "status": "Hali",
+    "privacy": "Sera ya Faragha",
+    "terms": "Masharti ya Huduma",
+    "cookie_settings": "Mipangilio ya Vidakuzi"
   },
   "changelog": {
     "back_to_home": "TODO: Machine-translated - Rudi kwenye mwanzo",
@@ -205,6 +211,48 @@
     "level1": "Imethibitishwa",
     "level2": "Utendaji",
     "level3": "Bora"
+  },
+  "recovery": {
+    "title": "Urejeshaji wa Akaunti",
+    "subtitle": "Pata tena ufikiaji wa akaunti yako kwa kutumia pochi yako ya akiba",
+    "howItWorks": "Jinsi inavyofanya kazi",
+    "step1": "Weka anwani ya pochi yako kuu ambayo umepoteza ufikiaji wake",
+    "step2": "Unganisha na pochi yako ya akiba uliyounganisha kama anwani ya urejeshaji",
+    "step3": "Akaunti yako itarejeshwa na utaweza kufikia wasifu wako",
+    "noteLabel": "Kumbuka:",
+    "noteText": "Urejeshaji hufanya kazi tu ikiwa uliwahi kuunganisha pochi hii kama anwani yako ya akiba ya urejeshaji.",
+    "primaryWalletLabel": "Anwani ya Pochi Kuu",
+    "primaryWalletPlaceholder": "G... (ufunguo wa umma wa Stellar wa herufi 56)",
+    "backToHome": "Rudi Mwanzo",
+    "next": "Inayofuata",
+    "connectBackupTitle": "Unganisha Pochi ya Akiba",
+    "connectBackupDesc": "Sasa unganisha pochi ya akiba uliyounganisha kwenye akaunti yako.",
+    "primaryWalletToRecover": "Pochi kuu (ya kurejesha):",
+    "connecting": "Inaunganisha...",
+    "connectBackupButton": "Unganisha Pochi ya Akiba",
+    "back": "Nyuma",
+    "verifyTitle": "Thibitisha Pochi ya Akiba",
+    "verifyDesc": "Thibitisha anwani zote mbili za pochi na ubofye thibitisha kukamilisha urejeshaji.",
+    "primaryWalletLost": "Pochi kuu (ufikiaji umepotea):",
+    "backupWalletConnected": "Pochi ya akiba (imeunganishwa):",
+    "connected": "✓ Imeunganishwa",
+    "recoverButton": "Rejesha Akaunti",
+    "verifying": "Inathibitisha...",
+    "cancel": "Ghairi",
+    "successTitle": "Akaunti Imerejeshwa!",
+    "successRedirect": "Inaelekeza kwenye dashibodi yako...",
+    "errorTitle": "Urejeshaji Imeshindwa",
+    "troubleshooting": "Utatuzi:",
+    "troubleshootingTip1": "Thibitisha unatumia anwani sahihi ya pochi kuu",
+    "troubleshootingTip2": "Thibitisha kuwa uliwahi kuunganisha pochi hii ya akiba",
+    "troubleshootingTip3": "Hakikisha umeunganishwa na pochi ya akiba",
+    "tryAgain": "Jaribu Tena",
+    "errorEmptyAddress": "Tafadhali weka anwani ya pochi yako kuu",
+    "errorInvalidAddress": "Anwani ya Stellar si sahihi. Lazima iwe na herufi 56 na ianze na G.",
+    "errorConnectFailed": "Imeshindwa kuunganisha pochi",
+    "errorNotConnected": "Pochi ya akiba haijaunganishwa",
+    "errorNoAccountFound": "Hakuna akaunti iliyopatikana na pochi hii ya akiba. Hakikisha umeingiza anwani sahihi ya pochi kuu.",
+    "errorRecoverFailed": "Imeshindwa kurejesha akaunti. Tafadhali angalia anwani zako za pochi na ujaribu tena."
   },
   "contractErrors": {
     "AlreadyInitialized": "Mchezaji huyu ameshasajiliwa.",

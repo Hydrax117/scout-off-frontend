@@ -36,5 +36,13 @@ export default function LocaleLayout({
 }: LocaleLayoutProps) {
   setRequestLocale(locale);
 
-  return <>{children}</>;
+  // `display: contents` avoids introducing a layout box while still exposing
+  // the active locale via the lang attribute for assistive tech / WCAG 3.1.1.
+  // The root <html lang> is set separately from the pathname in app/layout.tsx
+  // and must not hard-code a single locale over this value.
+  return (
+    <div lang={locale} className="contents" data-testid="locale-lang">
+      {children}
+    </div>
+  );
 }

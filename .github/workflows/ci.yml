@@ -44,9 +44,9 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -55,7 +55,17 @@ jobs:
       - run: npm run lint
       - run: npm run type-check
       - run: npm run test
+      # Explicit, named accessibility gate: existing *.a11y.test.tsx specs
+      # (jest-axe based) already run as part of `npm run test` above, but
+      # calling them out as their own step makes the a11y gate visible in
+      # the CI UI and fails loudly/separately if a new critical/serious
+      # axe violation is introduced. New page-level a11y coverage (player,
+      # scout, validator dashboards; player public profile) should follow
+      # this same *.a11y.test.tsx convention.
+      - name: Accessibility (axe) checks
+        run: npx jest --ci --testPathPattern='a11y'
       - run: node scripts/validate-env.js
+      - run: node scripts/check-locale-keys.js
       # Issue #16: A broken Next.js build can be merged without CI catching it.
       # The .next build cache is keyed on package-lock + this step so subsequent
       # runs reuse it. Build-only env vars are inherited from the workflow-level
@@ -63,7 +73,7 @@ jobs:
       - run: npm run build
       # Restore the .next cache to the post-test step (no-op for this job, but
       # documents intent for the dedicated build job below).
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .next
           key: ${{ runner.os }}-next-build-${{ hashFiles('package-lock.json') }}
@@ -105,9 +115,9 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -122,7 +132,7 @@ jobs:
 
       # Upload the lcov report to Codecov for per-file drill-down and PR annotations.
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4.6.0
         with:
           files: ./coverage/lcov.info
           flags: frontend
@@ -152,9 +162,9 @@ jobs:
   indexer:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -177,16 +187,16 @@ jobs:
     # lint signals. Issue #16.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
 
       - run: npm install
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .next
           key: ${{ runner.os }}-next-build-${{ hashFiles('package-lock.json') }}
@@ -199,11 +209,118 @@ jobs:
   build-storybook:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install
+      - run: npm run build-storybook
+
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm install
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .next
+          key: ${{ runner.os }}-next-build-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-next-build-
+
+      - run: npm run build
+
+      - run: npx --no-install lhci autorun
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: lighthouse-report
+          path: lighthouse-report/
+
+  bundle-size:
+    # Runs after the standalone build job so we can reuse its .next cache
+    # instead of building twice.
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+
       - run: npm install
-      - run: npm run build-storybook
+
+      # Restore the .next output produced by the `build` job.
+      - uses: actions/cache@v4
+        with:
+          path: .next
+          key: ${{ runner.os }}-next-build-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-next-build-
+
+      # Re-run build only if the cache was not restored (e.g. first run on a
+      # new branch). The `build` job's cache key is identical so this is
+      # almost always a no-op.
+      - name: Build (cache miss fallback)
+        run: npm run build
+
+      # Run size-limit against the committed .size-limit.json budgets.
+      # Exit code is non-zero if any entry exceeds its limit — CI fails fast.
+      - name: Check bundle sizes against budget
+        id: size_check
+        run: npx size-limit --json > size-limit-report.json
+        continue-on-error: true
+
+      # Always publish the raw JSON as a downloadable artifact for historical
+      # tracking and debugging, regardless of pass/fail.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bundle-size-report
+          path: size-limit-report.json
+
+      # Write a human-readable markdown table to the GitHub Actions job
+      # summary so bundle sizes are visible on every PR without downloading
+      # the artifact.
+      - name: Post bundle-size summary
+        if: always()
+        run: |
+          echo "## Bundle Size Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Chunk | Size (gzip) | Limit | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|------------|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          node -e "
+            const fs = require('fs');
+            let report;
+            try {
+              report = JSON.parse(fs.readFileSync('size-limit-report.json', 'utf8'));
+            } catch (e) {
+              console.log('| _Report unavailable_ | – | – | ❓ |');
+              process.exit(0);
+            }
+            for (const entry of report) {
+              const sizeKb = (entry.size / 1024).toFixed(1);
+              const limitKb = entry.limit || 'none';
+              const passed = entry.passed !== false;
+              const icon = passed ? '✅' : '❌';
+              console.log(\`| \${entry.name} | \${sizeKb} kB | \${limitKb} | \${icon} |\`);
+            }
+          " >> $GITHUB_STEP_SUMMARY
+
+      # Fail the job now (after posting the summary) if size-limit found
+      # any chunk over budget.
+      - name: Enforce budget (fail if over limit)
+        if: steps.size_check.outcome == 'failure'
+        run: |
+          echo "One or more bundle chunks exceed their size budget. See the summary above."
+          exit 1

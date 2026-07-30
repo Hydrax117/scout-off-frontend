@@ -62,7 +62,10 @@ export default function VideoUpload({
   const displayError = error ?? localError;
   const errorId = displayError ? 'video-upload-error' : undefined;
 
-  const handleUploadResult = (cid: string | null, uploadError: string | null) => {
+  const handleUploadResult = (
+    cid: string | null,
+    uploadError: string | null,
+  ) => {
     if (cid) {
       setLocalError(null);
       onValidationError?.(null);
@@ -106,11 +109,14 @@ export default function VideoUpload({
     <div className="space-y-1">
       <label
         htmlFor="video-upload-input"
-        className="block text-sm font-medium text-gray-300"
+        className="block text-sm font-medium text-gray-700 dark:text-gray-300"
       >
         Highlight Reel
       </label>
-      <p id="video-upload-hint" className="text-xs text-gray-500">
+      <p
+        id="video-upload-hint"
+        className="text-xs text-gray-500 dark:text-gray-400"
+      >
         Accepted: {ACCEPTED_TYPES_LABEL} · Max {MAX_FILE_SIZE_LABEL}
       </p>
       <div className="relative">
@@ -125,12 +131,12 @@ export default function VideoUpload({
             undefined
           }
           aria-invalid={displayError ? true : undefined}
-          className={`w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-brand-green transition file:mr-4 file:py-1 file:px-4 file:rounded-lg file:border-0 file:bg-brand-green file:text-black file:font-medium hover:file:opacity-90 disabled:opacity-50 ${
+          className={`w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-brand-green transition file:mr-4 file:py-1 file:px-4 file:rounded-lg file:border-0 file:bg-brand-green file:text-black file:font-medium hover:file:opacity-90 disabled:opacity-50 ${
             displayError ? 'border-red-500' : ''
           }`}
         />
         {isUploading && (
-          <div className="absolute inset-0 bg-gray-900/80 flex items-center justify-center rounded-lg">
+          <div className="absolute inset-0 bg-white/80 dark:bg-gray-900/80 flex items-center justify-center rounded-lg">
             <div className="flex items-center gap-2 text-brand-green">
               <Spinner size="sm" />
               <span className="text-sm">
@@ -146,10 +152,8 @@ export default function VideoUpload({
           aria-valuenow={isProcessing ? undefined : progress}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-label={
-            isProcessing ? 'Processing upload' : 'Upload progress'
-          }
-          className="h-1.5 w-full rounded-full bg-gray-800 overflow-hidden"
+          aria-label={isProcessing ? 'Processing upload' : 'Upload progress'}
+          className="h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden"
         >
           <div
             className={`h-full bg-brand-green transition-[width] duration-200 ${
@@ -174,7 +178,9 @@ export default function VideoUpload({
         </button>
       )}
       {fileName && !isUploading && !displayError && (
-        <p className="text-sm text-gray-400">Uploaded: {fileName}</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Uploaded: {fileName}
+        </p>
       )}
     </div>
   );

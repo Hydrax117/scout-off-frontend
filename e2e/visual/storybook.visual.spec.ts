@@ -1,0 +1,53 @@
+import { test, expect } from '@playwright/test';
+
+interface StoryIndexEntry {
+  id: string;
+  type: 'story' | 'docs';
+  tags?: string[];
+}
+
+interface StoryIndex {
+  entries: Record<string, StoryIndexEntry>;
+}
+
+/**
+ * Screenshots every Storybook story and diffs it against the committed
+ * baseline (`storybook.visual.spec.ts-snapshots/`). New stories get a new
+ * baseline the first time this runs with `--update-snapshots`; existing
+ * stories fail the run if their rendered output drifts beyond the
+ * `maxDiffPixelRatio` tolerance configured in playwright.visual.config.ts.
+ *
+ * Reading the live `/index.json` (rather than hardcoding story IDs) means
+ * new stories get visual coverage automatically without touching this file.
+ */
+test('storybook stories render consistently', async ({ page, baseURL }) => {
+  const res = await page.request.get(`${baseURL}/index.json`);
+  const { entries }: StoryIndex = await res.json();
+
+  const storyIds = Object.values(entries)
+    .filter((entry) => entry.type === 'story')
+    .map((entry) => entry.id)
+    .sort();
+
+  expect(
+    storyIds.length,
+    'expected at least one Storybook story',
+  ).toBeGreaterThan(0);
+
+  // This single test loops over every story, so its timeout has to scale with
+  // the story count rather than use the file-level default — otherwise runs
+  // fail partway through as more stories are added.
+  test.setTimeout(storyIds.length * 5_000 + 30_000);
+
+  for (const id of storyIds) {
+    await test.step(id, async () => {
+      await page.goto(`/iframe.html?id=${id}&viewMode=story`);
+      // Not 'networkidle': Storybook's dev server keeps an HMR socket open,
+      // so the network never truly goes idle and that wait can hang until
+      // the test timeout. 'load' is sufficient since stories render
+      // synchronously once the iframe document has loaded.
+      await page.waitForLoadState('load');
+      await expect(page).toHaveScreenshot(`${id}.png`, { fullPage: true });
+    });
+  }
+});

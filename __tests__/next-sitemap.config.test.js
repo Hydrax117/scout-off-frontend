@@ -1,77 +1,125 @@
 /**
- * #532 — Config-correctness test for next-sitemap.config.js
+ * Unit tests for next-sitemap.config.js
  *
- * Verifies that the exclude array always contains the required admin and api
- * path patterns. Loaded via plain Node `require` so the test stays fast and
- * dependency-free — no Next.js or Babel transform needed.
+ * Ensures the sitemap config correctly excludes /admin and /api routes for all
+ * configured locale prefixes. This test guards against regressions where a
+ * future edit accidentally removes a critical exclusion pattern.
  *
- * Uses pattern matching (substring / regex) rather than exact string equality
- * so minor syntax tweaks to the config (e.g. trailing slashes, query params)
- * don't create false failures. The only thing that matters is that the
- * critical paths are present.
+ * Issue #532
  */
 
-'use strict';
+const config = require('../next-sitemap.config');
 
-const path = require('path');
-
-const config = require(path.resolve(__dirname, '../next-sitemap.config.js'));
-
-describe('next-sitemap.config.js — exclude array', () => {
-  const { exclude } = config;
-
-  it('exports an exclude array', () => {
-    expect(Array.isArray(exclude)).toBe(true);
-    expect(exclude.length).toBeGreaterThan(0);
+describe('next-sitemap.config.js', () => {
+  it('exports a valid config object', () => {
+    expect(config).toBeDefined();
+    expect(typeof config).toBe('object');
+    expect(config.siteUrl).toBeDefined();
+    expect(Array.isArray(config.exclude)).toBe(true);
   });
 
-  // ── /admin paths ────────────────────────────────────────────────────────────
-
-  it('excludes the bare /admin path', () => {
-    expect(exclude.some((p) => p === '/admin' || p.includes('/admin'))).toBe(
-      true,
-    );
+  it('contains siteUrl', () => {
+    expect(config.siteUrl).toBeTruthy();
+    expect(typeof config.siteUrl).toBe('string');
   });
 
-  it('excludes /en/admin', () => {
-    expect(exclude.some((p) => p.includes('/en/admin'))).toBe(true);
+  describe('exclude array', () => {
+    it('is defined and is an array', () => {
+      expect(config.exclude).toBeDefined();
+      expect(Array.isArray(config.exclude)).toBe(true);
+    });
+
+    it('excludes /admin route', () => {
+      const adminExclusions = config.exclude.filter((pattern) =>
+        pattern.includes('admin'),
+      );
+      expect(adminExclusions.length).toBeGreaterThan(0);
+    });
+
+    it('excludes /api routes', () => {
+      const apiExclusions = config.exclude.filter((pattern) =>
+        pattern.includes('api'),
+      );
+      expect(apiExclusions.length).toBeGreaterThan(0);
+    });
+
+    it('excludes admin route for all locales (en, fr, sw)', () => {
+      const locales = ['en', 'fr', 'sw'];
+      locales.forEach((locale) => {
+        const localeAdminPattern = `/${locale}/admin`;
+        const hasLocaleAdmin = config.exclude.some(
+          (pattern) => pattern === localeAdminPattern,
+        );
+        expect(hasLocaleAdmin).toBe(true);
+      });
+    });
+
+    it('includes wildcard pattern for any locale admin route', () => {
+      const wildcardAdminPattern = config.exclude.find(
+        (pattern) => pattern === '/*/admin',
+      );
+      expect(wildcardAdminPattern).toBeDefined();
+    });
+
+    it('excludes bare /admin route', () => {
+      expect(config.exclude).toContain('/admin');
+    });
+
+    it('excludes /api base route', () => {
+      expect(config.exclude).toContain('/api');
+    });
+
+    it('excludes /api/* wildcard routes', () => {
+      expect(config.exclude).toContain('/api/*');
+    });
   });
 
-  it('excludes /fr/admin', () => {
-    expect(exclude.some((p) => p.includes('/fr/admin'))).toBe(true);
+  describe('other config properties', () => {
+    it('has generateRobotsTxt set to false', () => {
+      expect(config.generateRobotsTxt).toBe(false);
+    });
+
+    it('has sitemapSize configured', () => {
+      expect(config.sitemapSize).toBeDefined();
+      expect(typeof config.sitemapSize).toBe('number');
+      expect(config.sitemapSize).toBeGreaterThan(0);
+    });
+
+    it('has additionalPaths defined', () => {
+      expect(config.additionalPaths).toBeDefined();
+      expect(typeof config.additionalPaths).toBe('function');
+    });
   });
 
-  it('excludes /sw/admin', () => {
-    expect(exclude.some((p) => p.includes('/sw/admin'))).toBe(true);
-  });
+  describe('regression protection', () => {
+    it('fails if admin exclusions are removed', () => {
+      const adminPatterns = [
+        '/admin',
+        '/en/admin',
+        '/fr/admin',
+        '/sw/admin',
+        '/*/admin',
+      ];
 
-  it('excludes a wildcard pattern that covers all locale-prefixed admin routes', () => {
-    // Accepts either /*/admin (glob) or a pattern that functionally covers it
-    const hasWildcardAdmin = exclude.some(
-      (p) => p === '/*/admin' || /\/\*\/admin/.test(p),
-    );
-    expect(hasWildcardAdmin).toBe(true);
-  });
+      adminPatterns.forEach((pattern) => {
+        const exists = config.exclude.includes(pattern);
+        expect(exists).toBe(true);
+      });
+    });
 
-  // ── /api paths ───────────────────────────────────────────────────────────────
+    it('fails if API exclusions are removed', () => {
+      const apiPatterns = ['/api', '/api/*'];
 
-  it('excludes the bare /api path', () => {
-    expect(exclude.some((p) => p === '/api' || p.startsWith('/api'))).toBe(
-      true,
-    );
-  });
+      apiPatterns.forEach((pattern) => {
+        const exists = config.exclude.includes(pattern);
+        expect(exists).toBe(true);
+      });
+    });
 
-  it('excludes /api/* (all API sub-routes)', () => {
-    const hasApiWildcard = exclude.some(
-      (p) => p === '/api/*' || /^\/api\//.test(p) || p === '/api/*',
-    );
-    expect(hasApiWildcard).toBe(true);
-  });
-
-  // ── Regression guard ────────────────────────────────────────────────────────
-
-  it('contains at least 7 exclusion entries (regression guard)', () => {
-    // If someone accidentally truncates the list this will catch it.
-    expect(exclude.length).toBeGreaterThanOrEqual(7);
+    it('has minimum expected exclusion count', () => {
+      // At minimum: /admin, /en/admin, /fr/admin, /sw/admin, /*/admin, /api, /api/*
+      // Plus any additional exclusions like /player, /validator, /scout/subscribe
+      expect(config.exclude.length).toBeGreaterThanOrEqual(7);
+    });
   });
 });

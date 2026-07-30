@@ -15,6 +15,10 @@ const meta: Meta<typeof ConfirmDialog> = {
 export default meta;
 type Story = StoryObj<typeof ConfirmDialog>;
 
+/**
+ * Default confirmation dialog — non-destructive, used for neutral confirmations
+ * such as pausing a contract or confirming a settings change.
+ */
 export const Default: Story = {
   args: {
     isOpen: true,
@@ -24,23 +28,46 @@ export const Default: Story = {
   },
 };
 
-export const WithCustomLabels: Story = {
+/**
+ * Destructive action dialog — confirm button signals danger.
+ * The component always renders its confirm button with `variant="danger"`,
+ * so this story documents that the default appearance is already destructive.
+ * Pass a `confirmLabel` that reinforces the irreversible nature of the action.
+ */
+export const Destructive: Story = {
+  name: 'Destructive action',
   args: {
     isOpen: true,
-    title: 'Pause Contract',
+    title: 'Archive Player Profile',
     message:
-      'Pausing the contract will disable all write operations for all users. Continue?',
-    confirmLabel: 'Yes, Pause',
-    cancelLabel: 'Keep Active',
+      'Archiving this profile will hide it from scouts and remove it from search results. This cannot be reversed without contacting support.',
+    confirmLabel: 'Archive Profile',
+    cancelLabel: 'Keep Profile',
   },
 };
 
+/**
+ * Loading / pending state — the confirm button shows a spinner and is disabled
+ * while an async operation (e.g. an on-chain transaction) is in progress.
+ */
 export const Loading: Story = {
   args: {
     isOpen: true,
     title: 'Confirm Withdrawal',
     message: 'Withdraw all accumulated platform fees to the admin wallet?',
     loading: true,
+  },
+};
+
+export const LongDescription: Story = {
+  name: 'Long description (scroll test)',
+  args: {
+    isOpen: true,
+    title: 'Revoke All Validator Privileges',
+    message:
+      'You are about to revoke validator privileges for this wallet. This means they will no longer be able to approve milestones, manage player profiles, or access the validator dashboard. All pending milestones assigned to this validator will be reassigned to the next available validator. This action is permanent and cannot be reversed without re-adding the validator manually through the admin dashboard. Please double-check the wallet address before proceeding.',
+    confirmLabel: 'Yes, Revoke',
+    cancelLabel: 'Cancel',
   },
 };
 

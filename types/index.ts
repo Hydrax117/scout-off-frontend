@@ -70,6 +70,25 @@ export interface ValidatorInfo {
   addedBy: string;
 }
 
+/**
+ * An off-chain milestone claim awaiting a validator's on-chain approval
+ * (issues #567, #568). Distinct from {@link Milestone}, which only exists
+ * once a validator has already approved one.
+ */
+export interface MilestoneSubmission {
+  id: string;
+  playerId: string;
+  playerName: string | null;
+  description: string;
+  evidenceUrl: string | null;
+  validatorWallet: string;
+  submittedBy: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: number;
+  decidedAt: number | null;
+  txHash: string | null;
+}
+
 // ── Academy ──────────────────────────────────────────────────────────────────
 /**
  * An off-chain grouping of validator wallets under one institutional
@@ -214,4 +233,62 @@ export interface SavedSearch {
   name: string;
   filter: PlayerFilter;
   createdAt: number; // Unix ms
+}
+
+// ── Notifications ────────────────────────────────────────────────────────────
+/**
+ * Wallet-relevant event categories surfaced in the notification center
+ * (issue #557): milestone approvals for players, contact unlocks for
+ * scouts. Mirrors a subset of `IndexedEventType` (lib/indexerClient.ts) —
+ * only the two event types that map to something a player or scout would
+ * actually want to be notified about.
+ */
+export type NotificationCategory = 'milestone_approval' | 'contact_unlock';
+
+export interface Notification {
+  /** The underlying indexer event's id — globally unique, used as the read-state key. */
+  id: number;
+  category: NotificationCategory;
+  title: string;
+  message: string;
+  createdAt: number; // Unix seconds, from the source event's ledger close time
+  read: boolean;
+  playerId: string | null;
+}
+
+/**
+ * Per-wallet toggles for which notification categories generate in-app
+ * notifications (issue #560). Keys match {@link NotificationCategory}.
+ */
+export interface NotificationPreferences {
+  milestoneApprovals: boolean;
+  contactUnlocks: boolean;
+}
+
+// ── Milestone Disputes ────────────────────────────────────────────────────────
+/**
+ * Off-chain moderation record for a player-raised dispute over a milestone
+ * decision (issue #562). `status` starts at 'pending' and is set by an
+ * admin: 'upheld' closes the dispute with no on-chain effect; 'reversed'
+ * closes it after the milestone was actually revoked on-chain via the
+ * existing validator `revoke_milestone` flow (lib/contract.ts,
+ * useValidator().revokeMilestone) — this record never triggers a contract
+ * call by itself, it only tracks the outcome.
+ */
+export type MilestoneDisputeStatus = 'pending' | 'upheld' | 'reversed';
+
+export interface MilestoneDispute {
+  id: number;
+  playerId: string;
+  playerWallet: string;
+  milestoneId: string;
+  milestoneDescription: string;
+  reason: string;
+  status: MilestoneDisputeStatus;
+  createdAt: number; // Unix ms
+  decidedAt: number | null; // Unix ms
+  decidedBy: string | null; // admin wallet
+  resolutionNote: string | null;
+  /** Set only when status is 'reversed' — the on-chain revoke_milestone tx hash. */
+  revokeTxHash: string | null;
 }

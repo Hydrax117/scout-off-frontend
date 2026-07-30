@@ -5,19 +5,31 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useRequireWallet } from '@/hooks/useRequireWallet';
 import { usePlayer } from '@/hooks/usePlayer';
+import { useMilestoneHistory } from '@/hooks/useMilestoneHistory';
+import { useMilestoneDisputes } from '@/hooks/useMilestoneDisputes';
 import { useOnboardingTour } from '@/hooks/useOnboardingTour';
+import { isFeatureEnabled } from '@/lib/featureFlags';
+import { buildExportPayload, downloadExportPayload } from '@/lib/dataExport';
+import { useOfflineQueue } from '@/hooks/useOfflineQueue';
 import ProgressBar from '@/components/ProgressBar';
+import AchievementBadges from '@/components/player/AchievementBadges';
 import PlayerProfileForm from '@/components/player/PlayerProfileForm';
 import UpdateProfileForm from '@/components/player/UpdateProfileForm';
 import MilestoneTimeline from '@/components/player/MilestoneTimeline';
+import DisputeMilestoneModal from '@/components/player/DisputeMilestoneModal';
 import ArchiveProfileModal from '@/components/player/ArchiveProfileModal';
 import BackupWalletModal from '@/components/player/BackupWalletModal';
+import OfflineQueueBanner from '@/components/player/OfflineQueueBanner';
 import OnboardingTour from '@/components/ui/OnboardingTour';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import { playerTourSteps, PLAYER_TOUR_ID } from '@/lib/tourSteps';
-import type { Player, PlayerVitals } from '@/types';
+import { getEarnedBadgeIds, BADGE_DEFINITIONS } from '@/lib/badges';
+import type { Milestone, Player, PlayerVitals } from '@/types';
 import PullToRefresh from '@/components/ui/PullToRefresh';
 import Spinner from '@/components/ui/Spinner';
+import { useToast } from '@/components/ui/Toast';
+
+const SEEN_BADGES_STORAGE_PREFIX = 'scoutoff_seen_badges_';
 
 type TabId = 'register' | 'profile';
 
@@ -29,8 +41,14 @@ const TABS: { id: TabId; labelKey: string }[] = [
 function PlayerDashboardContent() {
   const { walletAddress: publicKey } = useRequireWallet();
   const { player, loading, isValidating, refetch, optimisticUpdate } = usePlayer(publicKey);
+  const { milestones } = useMilestoneHistory(player?.id ?? null);
+  const { disputes, file: fileDispute } = useMilestoneDisputes(publicKey);
+  const [disputeTarget, setDisputeTarget] = useState<Milestone | null>(null);
   const t = useTranslations('player_dashboard');
   const router = useRouter();
+  const { show: showToast } = useToast();
+
+  const offlineQueue = useOfflineQueue();
 
   const tour = useOnboardingTour(PLAYER_TOUR_ID, playerTourSteps, publicKey ?? undefined);
 
@@ -42,18 +60,98 @@ function PlayerDashboardContent() {
   const [isPendingConfirmation, setIsPendingConfirmation] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showBackupWalletModal, setShowBackupWalletModal] = useState(false);
+  const [showDataExportSuccess, setShowDataExportSuccess] = useState(false);
+  const [cvExportStatus, setCvExportStatus] = useState<
+    'idle' | 'generating' | 'error'
+  >('idle');
 
   const isRegistered = !!player;
+  const dataExportEnabled = isFeatureEnabled('DATA_EXPORT');
 
   const [activeTab, setActiveTab] = useState<TabId>(
     isRegistered ? 'profile' : 'register',
   );
+
+  const handleDownloadData = useCallback(async () => {
+    if (!player) return;
+
+    try {
+      const payload = buildExportPayload(player, milestones);
+      downloadExportPayload(payload);
+      setShowDataExportSuccess(true);
+      window.setTimeout(() => setShowDataExportSuccess(false), 3000);
+    } catch {
+      // Download failed silently — the user can try again
+    }
+  }, [player, milestones]);
+
+  const handleExportCv = useCallback(async () => {
+    if (!player) return;
+
+    setCvExportStatus('generating');
+    try {
+      const { generatePlayerCvPdf, downloadPlayerCvPdf } = await import(
+        '@/lib/cvExport'
+      );
+      const bytes = await generatePlayerCvPdf(player, milestones);
+      downloadPlayerCvPdf(bytes, player.vitals.name);
+      setCvExportStatus('idle');
+    } catch {
+      setCvExportStatus('error');
+      window.setTimeout(() => setCvExportStatus('idle'), 3000);
+    }
+  }, [player, milestones]);
 
   useEffect(() => {
     if (!loading) {
       setActiveTab(isRegistered ? 'profile' : 'register');
     }
   }, [loading, isRegistered]);
+
+  /**
+   * Toasts newly-earned achievement badges on the player's own dashboard.
+   * The first time a wallet is seen, its currently-earned badges are
+   * recorded silently (no toast) so returning players aren't flooded with
+   * toasts for milestones they earned long before this feature shipped —
+   * only badges earned after that baseline trigger a toast.
+   */
+  useEffect(() => {
+    if (!player || !publicKey) return;
+
+    const storageKey = `${SEEN_BADGES_STORAGE_PREFIX}${publicKey}`;
+    const earnedIds = getEarnedBadgeIds(player);
+
+    let seenIds: string[] = [];
+    let hasStoredState = false;
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        hasStoredState = true;
+        seenIds = JSON.parse(stored);
+      }
+    } catch {
+      return; // localStorage unavailable (e.g. private browsing) — skip
+    }
+
+    const newlyEarned = hasStoredState
+      ? earnedIds.filter((id) => !seenIds.includes(id))
+      : [];
+
+    newlyEarned.forEach((id) => {
+      showToast({
+        message: `New badge earned: ${BADGE_DEFINITIONS[id].label}`,
+        variant: 'success',
+      });
+    });
+
+    if (!hasStoredState || newlyEarned.length > 0) {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(earnedIds));
+      } catch {
+        // ignore write failures
+      }
+    }
+  }, [player, publicKey, showToast]);
 
   useEffect(() => {
     if (!successPlayerId) return;
@@ -242,6 +340,13 @@ function PlayerDashboardContent() {
         {activeTab === 'profile' && isRegistered ? (
           <>
             {/* Pending-confirmation banner */}
+            {/* Offline queue banner */}
+            <OfflineQueueBanner
+              pendingCount={offlineQueue.pendingCount}
+              isProcessing={offlineQueue.status === 'processing'}
+              onRetry={offlineQueue.processAll}
+            />
+
             {isPendingConfirmation && (
               <div
                 role="status"
@@ -319,18 +424,90 @@ function PlayerDashboardContent() {
               <div data-tour="progress-section">
                 <ProgressBar level={player.progressLevel} />
               </div>
-              <button
-                onClick={() => setShowArchiveModal(true)}
-                className="text-xs text-gray-400 hover:text-gray-300 transition self-start px-2 py-1.5 rounded hover:bg-gray-800/50"
-              >
-                {player.archived ? 'Restore profile' : 'Archive profile'}
-              </button>
-              <button
-                onClick={() => setShowBackupWalletModal(true)}
-                className="text-xs text-gray-400 hover:text-gray-300 transition self-start px-2 py-1.5 rounded hover:bg-gray-800/50"
-              >
-                Recovery settings
-              </button>
+              <AchievementBadges player={player} />
+
+              {/* Settings actions */}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  onClick={() => setShowArchiveModal(true)}
+                  className="text-xs text-gray-400 hover:text-gray-300 transition px-2 py-1.5 rounded hover:bg-gray-800/50"
+                >
+                  {player.archived ? 'Restore profile' : 'Archive profile'}
+                </button>
+                <button
+                  onClick={() => setShowBackupWalletModal(true)}
+                  className="text-xs text-gray-400 hover:text-gray-300 transition px-2 py-1.5 rounded hover:bg-gray-800/50"
+                >
+                  Recovery settings
+                </button>
+
+                {/* Export CV */}
+                <button
+                  onClick={handleExportCv}
+                  disabled={cvExportStatus === 'generating'}
+                  className="text-xs text-gray-400 hover:text-brand-green transition px-2 py-1.5 rounded hover:bg-gray-800/50 flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 11l5 5 5-5M12 3v13"
+                    />
+                  </svg>
+                  {cvExportStatus === 'generating' ? 'Generating…' : 'Export CV'}
+                </button>
+
+                {/* Download my data (behind feature flag) */}
+                {dataExportEnabled && (
+                  <button
+                    onClick={handleDownloadData}
+                    className="text-xs text-gray-400 hover:text-brand-green transition px-2 py-1.5 rounded hover:bg-gray-800/50 flex items-center gap-1.5"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-3.5 w-3.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 11l5 5 5-5M12 3v13"
+                      />
+                    </svg>
+                    {t('download_data')}
+                  </button>
+                )}
+              </div>
+
+              {/* CV export error feedback */}
+              {cvExportStatus === 'error' && (
+                <p role="status" aria-live="polite" className="text-xs text-red-400">
+                  Failed to generate CV. Please try again.
+                </p>
+              )}
+
+              {/* Download success feedback */}
+              {showDataExportSuccess && (
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className="text-xs text-emerald-400"
+                >
+                  {t('download_data_success')}
+                </p>
+              )}
             </div>
 
             <div
@@ -343,6 +520,8 @@ function PlayerDashboardContent() {
               <MilestoneTimeline
                 milestones={player.milestones}
                 currentLevel={player.progressLevel}
+                disputes={disputes}
+                onDisputeMilestone={setDisputeTarget}
               />
             </div>
 
@@ -374,6 +553,21 @@ function PlayerDashboardContent() {
         onSuccess={(updated) => {
           optimisticUpdate(updated);
           refetch();
+        }}
+      />
+
+      <DisputeMilestoneModal
+        isOpen={disputeTarget !== null}
+        onClose={() => setDisputeTarget(null)}
+        milestoneDescription={disputeTarget?.description ?? ''}
+        onSubmit={async (reason) => {
+          if (!disputeTarget) return;
+          await fileDispute({
+            playerId: player.id,
+            milestoneId: disputeTarget.id,
+            milestoneDescription: disputeTarget.description,
+            reason,
+          });
         }}
       />
       </>

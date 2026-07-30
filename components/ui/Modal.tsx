@@ -157,19 +157,22 @@ export default function Modal({
         // tabIndex="-1" lets the container receive programmatic focus when
         // no focusable children are present.
         tabIndex={-1}
-        className="relative bg-brand-card border border-gray-700 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl focus:outline-none"
+        className="relative bg-brand-card border border-gray-300 dark:border-gray-700 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
           aria-label="Close modal"
-          className="absolute top-3 right-3 text-gray-400 hover:text-white transition"
+          className="absolute top-3 right-3 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
           onClick={onClose}
         >
           ✕
         </button>
         {title && (
-          <h2 id={titleId} className="text-lg font-semibold text-white mb-4">
+          <h2
+            id={titleId}
+            className="text-lg font-semibold text-gray-900 dark:text-white mb-4"
+          >
             {title}
           </h2>
         )}

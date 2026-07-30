@@ -87,10 +87,12 @@ projects/
 
 ### 2. Install frontend dependencies
 
+The project pins its Node.js version in `.nvmrc` (currently `24`). If you use [nvm](https://github.com/nvm-sh/nvm), run `nvm use` in the project root to switch to the pinned version automatically. If you don't have that version installed yet, run `nvm install` instead — it will read `.nvmrc` and install the correct version for you.
+
 ```bash
 cd scout-off-frontend
-# If you use nvm, switch to the project's Node version first:
-nvm use
+# Switch to (or install) the pinned Node version from .nvmrc:
+nvm use        # or: nvm install
 npm install
 ```
 

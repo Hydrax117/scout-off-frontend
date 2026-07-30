@@ -196,9 +196,9 @@ export default function ReferralPanel({ scoutId }: { scoutId?: string } = {}) {
       </div>
 
       {codesLoading && codes.length === 0 ? (
-        <p className="text-sm text-gray-500">Loading your invite links…</p>
+        <p className="text-sm text-gray-400">Loading your invite links…</p>
       ) : codes.length === 0 ? (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-400">
           Your generated invite links will appear here.
         </p>
       ) : (

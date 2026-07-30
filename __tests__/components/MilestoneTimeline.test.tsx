@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import MilestoneTimeline from '@/components/player/MilestoneTimeline';
-import type { Milestone } from '@/types';
+import type { Milestone, MilestoneDispute } from '@/types';
 
 const MS: Milestone[] = [
   {
@@ -81,7 +81,9 @@ describe('MilestoneTimeline — current level node', () => {
 
   it('pulse-ring has animate-ping class', () => {
     render(<MilestoneTimeline milestones={MS} currentLevel={1} />);
-    expect(screen.getByTestId('pulse-ring')).toHaveClass('animate-ping');
+    expect(screen.getByTestId('pulse-ring')).toHaveClass(
+      'motion-safe:animate-ping',
+    );
   });
 });
 
@@ -167,5 +169,127 @@ describe('MilestoneTimeline — milestone information accuracy', () => {
     const original = [...MS];
     render(<MilestoneTimeline milestones={MS} currentLevel={3} />);
     expect(MS).toEqual(original);
+  });
+});
+
+describe('MilestoneTimeline — dispute flow (issue #562)', () => {
+  function makeDispute(overrides: Partial<MilestoneDispute>): MilestoneDispute {
+    return {
+      id: 1,
+      playerId: 'player-1',
+      playerWallet: 'GPLAYERWALLET1234567890',
+      milestoneId: 'm1',
+      milestoneDescription: 'KYC verified',
+      reason: 'This was rejected in error.',
+      status: 'pending',
+      createdAt: 1_700_000_000_000,
+      decidedAt: null,
+      decidedBy: null,
+      resolutionNote: null,
+      revokeTxHash: null,
+      ...overrides,
+    };
+  }
+
+  it('hides all dispute UI when the disputes prop is omitted', () => {
+    render(<MilestoneTimeline milestones={MS} currentLevel={2} />);
+    fireEvent.click(screen.getByRole('button', { name: /Verified Identity/i }));
+    expect(
+      screen.queryByRole('button', { name: /Dispute this milestone/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows a "Dispute this milestone" action for a completed milestone with no existing dispute', () => {
+    const onDisputeMilestone = jest.fn();
+    render(
+      <MilestoneTimeline
+        milestones={MS}
+        currentLevel={2}
+        disputes={[]}
+        onDisputeMilestone={onDisputeMilestone}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Verified Identity/i }));
+
+    const disputeBtn = screen.getByRole('button', {
+      name: /Dispute this milestone/i,
+    });
+    fireEvent.click(disputeBtn);
+    expect(onDisputeMilestone).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'm1' }),
+    );
+  });
+
+  it('does not show the dispute action when disputes is set but onDisputeMilestone is omitted', () => {
+    render(
+      <MilestoneTimeline milestones={MS} currentLevel={2} disputes={[]} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Verified Identity/i }));
+    expect(
+      screen.queryByRole('button', { name: /Dispute this milestone/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows "pending" dispute status instead of the dispute action once filed', () => {
+    render(
+      <MilestoneTimeline
+        milestones={MS}
+        currentLevel={2}
+        disputes={[makeDispute({ status: 'pending' })]}
+        onDisputeMilestone={jest.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Verified Identity/i }));
+
+    expect(screen.getByText('Dispute pending review')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Dispute this milestone/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the "upheld" resolution once an admin decides against the dispute', () => {
+    render(
+      <MilestoneTimeline
+        milestones={MS}
+        currentLevel={2}
+        disputes={[makeDispute({ status: 'upheld' })]}
+        onDisputeMilestone={jest.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Verified Identity/i }));
+    expect(
+      screen.getByText('Dispute reviewed — decision upheld'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the "reversed" resolution once an admin reverses the milestone', () => {
+    render(
+      <MilestoneTimeline
+        milestones={MS}
+        currentLevel={2}
+        disputes={[makeDispute({ status: 'reversed' })]}
+        onDisputeMilestone={jest.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Verified Identity/i }));
+    expect(
+      screen.getByText('Dispute reviewed — milestone reversed'),
+    ).toBeInTheDocument();
+  });
+
+  it('matches a dispute to its milestone by milestoneId, not by level', () => {
+    render(
+      <MilestoneTimeline
+        milestones={MS}
+        currentLevel={2}
+        disputes={[makeDispute({ milestoneId: 'm2', status: 'upheld' })]}
+        onDisputeMilestone={jest.fn()}
+      />,
+    );
+    // Level for m1 (Unverified) has no matching dispute — action still shown.
+    fireEvent.click(screen.getByRole('button', { name: /Verified Identity/i }));
+    expect(
+      screen.getByRole('button', { name: /Dispute this milestone/i }),
+    ).toBeInTheDocument();
   });
 });

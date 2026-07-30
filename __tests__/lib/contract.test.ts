@@ -73,9 +73,10 @@ describe('contract configuration', () => {
 
     const { getPlayer } = require('../../lib/contract');
 
-    await expect(getPlayer('player_1')).rejects.toThrow(
-      /NEXT_PUBLIC_CONTRACT_ID/,
-    );
+    const error = await getPlayer('player_1').catch((e: Error) => e);
+    expect(error.message).toMatch(/NEXT_PUBLIC_CONTRACT_ID/);
+    expect(error.message).toMatch(/\.env\.local/);
+    expect(error.message).toMatch(/validate-env\.js/);
 
     process.env.NEXT_PUBLIC_CONTRACT_ID = previousContractId;
   });

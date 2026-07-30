@@ -82,6 +82,61 @@ export async function POST(req: NextRequest) {
 }
 
 /**
+ * PATCH /api/saved-searches
+ *
+ * Renames a saved search for the authenticated scout. Body: { id, name }.
+ */
+export async function PATCH(req: NextRequest) {
+  const scoutWallet = getSessionWallet(req);
+  if (!scoutWallet) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const log = createRequestLogger(req);
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== 'object') {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const { id, name } = body as Record<string, unknown>;
+  if (typeof id !== 'number') {
+    return NextResponse.json(
+      { error: 'id must be a number' },
+      { status: 400 },
+    );
+  }
+  if (typeof name !== 'string' || name.trim().length === 0) {
+    return NextResponse.json(
+      { error: 'name must be a non-empty string' },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const updated = SavedSearchStore.getInstance().rename(
+      scoutWallet,
+      id,
+      name.trim(),
+    );
+    if (!updated) {
+      return NextResponse.json(
+        { error: 'Saved search not found' },
+        { status: 404 },
+      );
+    }
+    return NextResponse.json(updated);
+  } catch (err) {
+    log.error('Failed to rename saved search', {
+      reason: err instanceof Error ? err.message : String(err),
+    });
+    return NextResponse.json(
+      { error: 'Failed to rename saved search' },
+      { status: 500 },
+    );
+  }
+}
+
+/**
  * DELETE /api/saved-searches
  *
  * Removes a saved search for the authenticated scout. Body: { id }.

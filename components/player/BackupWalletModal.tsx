@@ -144,12 +144,12 @@ export default function BackupWalletModal({
             {hasBackupWallet ? (
               <>
                 <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-4">
-                  <p className="text-xs text-gray-500 mb-2">Current backup wallet:</p>
+                  <p className="text-xs text-gray-400 mb-2">Current backup wallet:</p>
                   <p className="text-sm font-mono text-gray-300 break-all">
                     {player.backupWallet}
                   </p>
                   {player.backupWalletVerifiedAt && (
-                    <p className="text-xs text-gray-500 mt-2">
+                    <p className="text-xs text-gray-400 mt-2">
                       Verified on{' '}
                       {new Date(player.backupWalletVerifiedAt * 1000).toLocaleDateString()}
                     </p>
@@ -255,11 +255,11 @@ export default function BackupWalletModal({
 
             <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-4 space-y-3">
               <div>
-                <p className="text-xs text-gray-500">Primary wallet:</p>
+                <p className="text-xs text-gray-400">Primary wallet:</p>
                 <p className="text-sm font-mono text-gray-300 break-all">{player.wallet}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Backup wallet:</p>
+                <p className="text-xs text-gray-400">Backup wallet:</p>
                 <p className="text-sm font-mono text-gray-300 break-all">
                   {backupWalletInput}
                 </p>
@@ -305,7 +305,7 @@ export default function BackupWalletModal({
             </div>
 
             <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-4">
-              <p className="text-xs text-gray-500 mb-2">Current backup wallet:</p>
+              <p className="text-xs text-gray-400 mb-2">Current backup wallet:</p>
               <p className="text-sm font-mono text-gray-300 break-all">{player.backupWallet}</p>
             </div>
 

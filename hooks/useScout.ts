@@ -3,6 +3,7 @@ import { useState, useCallback } from 'react';
 import useSWR, { mutate as globalMutate } from 'swr';
 import { filterPlayers } from '@/lib/contract';
 import { searchPlayersByName, SearchRateLimitedError } from '@/lib/api';
+import { rankByFuzzyMatch } from '@/lib/fuzzyMatch';
 import type { Player, PlayerFilter } from '@/types';
 
 /**
@@ -34,8 +35,14 @@ export function useScout() {
       if (key.startsWith('scout:name:')) {
         const name = key.slice('scout:name:'.length);
         const results = await searchPlayersByName(name);
+        // Typo-tolerant ranking: exact/substring matches lead and close
+        // misspellings still float to the top. Threshold 0 means we only
+        // reorder — the backend already decided what's a match (it may use
+        // signals a client-side edit-distance check can't see, e.g.
+        // aliases), so we never hide a result it chose to return.
+        const ranked = rankByFuzzyMatch(results, name, (p) => p.vitals.name, 0);
         // Filter out archived profiles
-        return results.filter((p) => !p.archived);
+        return ranked.filter((p) => !p.archived);
       }
       // contract filter key: "scout:contract:{region}:{position}:{minLevel}"
       const parts = key.split(':');

@@ -71,19 +71,19 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
                 <div
                   aria-current={isCurrent ? 'step' : undefined}
                   className={[
-                    'w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors',
+                    'w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold motion-safe:transition-colors',
                     isCompleted
                       ? 'bg-brand-green text-black'
                       : isCurrent
                         ? 'border-2 border-brand-green text-brand-green'
-                        : 'border-2 border-gray-600 text-gray-500',
+                        : 'border-2 border-gray-600 text-gray-400',
                   ].join(' ')}
                 >
                   {isCompleted ? '✓' : step.id}
                 </div>
                 <span
                   className={`text-xs mt-1 whitespace-nowrap ${
-                    isCurrent ? 'text-white font-medium' : 'text-gray-500'
+                    isCurrent ? 'text-white font-medium' : 'text-gray-400'
                   }`}
                 >
                   {step.label}
@@ -92,7 +92,7 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
               {index < STEPS.length - 1 && (
                 <div
                   aria-hidden="true"
-                  className={`flex-1 h-px mx-3 mb-4 transition-colors ${
+                  className={`flex-1 h-px mx-3 mb-4 motion-safe:transition-colors ${
                     isCompleted ? 'bg-brand-green' : 'bg-gray-700'
                   }`}
                 />
@@ -412,6 +412,7 @@ export default function PlayerOnboardingWizard({
             placeholder="Enter your age (14–45)"
             min="14"
             max="45"
+            autoComplete="off"
           />
 
           <Input
@@ -425,6 +426,7 @@ export default function PlayerOnboardingWizard({
             onBlur={handleBlur}
             error={errors.nationality}
             placeholder="Enter your nationality"
+            autoComplete="country-name"
           />
 
           <Select
@@ -436,6 +438,7 @@ export default function PlayerOnboardingWizard({
             onChange={handleChange}
             onBlur={handleBlur}
             error={errors.region}
+            autoComplete="address-level1"
           >
             <option value="">Select region</option>
             {AFRICAN_REGIONS.map(({ label, value }) => (
@@ -454,6 +457,7 @@ export default function PlayerOnboardingWizard({
             onChange={handleChange}
             onBlur={handleBlur}
             error={errors.position}
+            autoComplete="off"
           >
             <option value="">Select position</option>
             {FOOTBALL_POSITIONS.map((pos) => (
@@ -478,6 +482,7 @@ export default function PlayerOnboardingWizard({
               className="input resize-none"
               rows={3}
               placeholder="Tell us about yourself (optional)"
+              autoComplete="off"
             />
           </div>
 

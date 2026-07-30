@@ -109,7 +109,7 @@ export default function ValidatorPlayerSearch({
                 {PROGRESS_LABELS[player.progressLevel]}
               </span>
               {lastMilestoneDate && (
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="text-xs text-gray-400 mt-0.5">
                   Last milestone: {lastMilestoneDate}
                 </p>
               )}

@@ -1,17 +1,49 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { useWallet } from '@/hooks/useWallet';
 import { useToast } from '@/components/ui/Toast';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import EmptyState from '@/components/ui/EmptyState';
 import TransactionStatus from '@/components/ui/TransactionStatus';
-import AdminDashboardSkeleton from '@/components/admin/AdminDashboardSkeleton';
-import FraudFlagsPanel from '@/components/admin/FraudFlagsPanel';
-import AcademyManager from '@/components/admin/AcademyManager';
-import AdminAuditLog from '@/components/admin/AdminAuditLog';
 import { recordAuditEntry } from '@/lib/adminAuditClient';
+
+// Admin-only components lazy-loaded to avoid bundling into shared chunks
+// for the much larger player/scout user base (issue #967).
+const AdminDashboardSkeleton = dynamic(
+  () => import('@/components/admin/AdminDashboardSkeleton'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 h-64 motion-safe:animate-pulse" /> },
+);
+const FraudFlagsPanel = dynamic(
+  () => import('@/components/admin/FraudFlagsPanel'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 motion-safe:animate-pulse h-20" /> },
+);
+const DisputedMilestonesPanel = dynamic(
+  () => import('@/components/admin/DisputedMilestonesPanel'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 motion-safe:animate-pulse h-20" /> },
+);
+const AcademyManager = dynamic(
+  () => import('@/components/admin/AcademyManager'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 animate-pulse h-32" /> },
+);
+const AdminAuditLog = dynamic(
+  () => import('@/components/admin/AdminAuditLog'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 animate-pulse h-48" /> },
+);
+const PlatformAnalyticsCharts = dynamic(
+  () => import('@/components/admin/PlatformAnalyticsCharts'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 animate-pulse h-64" /> },
+);
+const FeeRevenueChart = dynamic(
+  () => import('@/components/admin/FeeRevenueChart'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 animate-pulse h-64" /> },
+);
+const ValidatorActionLog = dynamic(
+  () => import('@/components/admin/ValidatorActionLog'),
+  { ssr: false, loading: () => <div className="bg-brand-card border border-gray-800 rounded-xl p-6 animate-pulse h-48" /> },
+);
 import type { TxStatus } from '@/components/ui/TransactionStatus';
 import {
   getValidators,
@@ -24,6 +56,7 @@ import {
   getContractPaused,
 } from '@/lib/contract';
 import { formatXlm } from '@/lib/formatXlm';
+import XlmFiatDisplay from '@/components/ui/XlmFiatDisplay';
 import {
   fetchActivityEvents,
   getReferralOverview,
@@ -76,6 +109,14 @@ function AdminDashboardContent() {
     null,
   );
   const [withdrawTxHash, setWithdrawTxHash] = useState<string | null>(null);
+
+  const [addTxStatus, setAddTxStatus] = useState<TxStatus | null>(null);
+  const [addTxHash, setAddTxHash] = useState<string | null>(null);
+  const [addTxError, setAddTxError] = useState<string | null>(null);
+
+  const [removeTxStatus, setRemoveTxStatus] = useState<TxStatus | null>(null);
+  const [removeTxHash, setRemoveTxHash] = useState<string | null>(null);
+  const [removeTxError, setRemoveTxError] = useState<string | null>(null);
 
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [activityTotal, setActivityTotal] = useState(0);
@@ -171,6 +212,9 @@ function AdminDashboardContent() {
     try {
       let xdr: string;
       if (action === 'add') {
+        setAddTxStatus('pending');
+        setAddTxHash(null);
+        setAddTxError(null);
         xdr = await buildAddValidator(publicKey, validatorInput);
         const txHash = await signAndSubmit(xdr);
         recordAuditEntry({
@@ -179,6 +223,8 @@ function AdminDashboardContent() {
           txHash,
           status: 'submitted',
         }).catch(() => {});
+        setAddTxHash(txHash);
+        setAddTxStatus('success');
         setValidators((v) => [
           ...v,
           {
@@ -190,6 +236,9 @@ function AdminDashboardContent() {
         setValidatorInput('');
         show({ message: 'Validator added.', variant: 'success' });
       } else if (action === 'remove') {
+        setRemoveTxStatus('pending');
+        setRemoveTxHash(null);
+        setRemoveTxError(null);
         xdr = await buildRemoveValidator(publicKey, removeTarget);
         const txHash = await signAndSubmit(xdr);
         recordAuditEntry({
@@ -198,6 +247,8 @@ function AdminDashboardContent() {
           txHash,
           status: 'submitted',
         }).catch(() => {});
+        setRemoveTxHash(txHash);
+        setRemoveTxStatus('success');
         setValidators((v) => v.filter((val) => val.address !== removeTarget));
         setRemoveTarget('');
         show({ message: 'Validator removed.', variant: 'success' });
@@ -238,8 +289,17 @@ function AdminDashboardContent() {
         show({ message: 'Contract unpaused.', variant: 'success' });
       }
     } catch (e: any) {
+      const message = parseContractError(e);
       if (action === 'withdraw') setWithdrawTxStatus('error');
-      show({ message: parseContractError(e), variant: 'error' });
+      if (action === 'add') {
+        setAddTxStatus('error');
+        setAddTxError(message);
+      }
+      if (action === 'remove') {
+        setRemoveTxStatus('error');
+        setRemoveTxError(message);
+      }
+      show({ message, variant: 'error' });
     } finally {
       setActionLoading(false);
       setDialog(null);
@@ -350,9 +410,7 @@ function AdminDashboardContent() {
         <h2 className="text-lg font-semibold text-white">Platform Fees</h2>
         <p className="text-sm text-gray-400">
           Accumulated:{' '}
-          <span className="text-white font-medium">
-            {formatXlm(fees ?? 0)} XLM
-          </span>
+          <XlmFiatDisplay xlmAmount={fees ?? 0} />
         </p>
         <button
           disabled={!fees || fees <= 0 || paused}
@@ -381,44 +439,54 @@ function AdminDashboardContent() {
       {/* Runtime Configuration Status */}
       <ConfigStatus />
 
-      {/* Add Validator */}
+      {/* Manage Validators (#571) */}
       <section className="bg-brand-card border border-gray-800 rounded-xl p-6 flex flex-col gap-4">
-        <h2 className="text-lg font-semibold text-white">Add Validator</h2>
-        <div className="flex gap-3">
-          <input
-            className="input flex-1"
-            placeholder="Stellar public key (G...)"
-            value={validatorInput}
-            onChange={(e) => setValidatorInput(e.target.value)}
-          />
-          <button
-            disabled={
-              !validatorInput.startsWith('G') ||
-              validatorInput.length !== 56 ||
-              paused
-            }
-            onClick={() =>
-              setDialog({
-                action: 'add',
-                label: 'Add Validator',
-                message: `Add ${validatorInput} as a validator?`,
-              })
-            }
-            title={paused ? 'Contract is currently paused' : undefined}
-            className="px-5 py-2 rounded-lg bg-brand-green text-black font-semibold hover:opacity-90 transition disabled:opacity-40"
-          >
-            Add
-          </button>
-        </div>
-      </section>
+        <h2 className="text-lg font-semibold text-white">Manage Validators</h2>
 
-      {/* Validators List + Remove */}
-      <section className="bg-brand-card border border-gray-800 rounded-xl p-6 flex flex-col gap-4">
-        <h2 className="text-lg font-semibold text-white">
-          Validators ({validators.length})
-        </h2>
+        <div className="flex flex-col gap-2">
+          <h3 className="text-sm font-medium text-gray-300">Add Validator</h3>
+          <div className="flex gap-3">
+            <input
+              className="input flex-1"
+              placeholder="Stellar public key (G...)"
+              value={validatorInput}
+              onChange={(e) => setValidatorInput(e.target.value)}
+            />
+            <button
+              disabled={
+                !validatorInput.startsWith('G') ||
+                validatorInput.length !== 56 ||
+                paused
+              }
+              onClick={() =>
+                setDialog({
+                  action: 'add',
+                  label: 'Add Validator',
+                  message: `Add ${validatorInput} as a validator?`,
+                })
+              }
+              title={paused ? 'Contract is currently paused' : undefined}
+              className="px-5 py-2 rounded-lg bg-brand-green text-black font-semibold hover:opacity-90 transition disabled:opacity-40"
+            >
+              Add
+            </button>
+          </div>
+          <TransactionStatus
+            status={addTxStatus}
+            txHash={addTxHash}
+            error={addTxError}
+            onHide={() => {
+              setAddTxStatus(null);
+              setAddTxHash(null);
+            }}
+          />
+        </div>
+
+        <h3 className="text-sm font-medium text-gray-300">
+          Authorized Validators ({validators.length})
+        </h3>
         {validators.length === 0 ? (
-          <p className="text-sm text-gray-500">No validators authorized.</p>
+          <p className="text-sm text-gray-400">No validators authorized.</p>
         ) : (
           <ul className="flex flex-col gap-3">
             {validators.map((v) => (
@@ -451,6 +519,15 @@ function AdminDashboardContent() {
             ))}
           </ul>
         )}
+        <TransactionStatus
+          status={removeTxStatus}
+          txHash={removeTxHash}
+          error={removeTxError}
+          onHide={() => {
+            setRemoveTxStatus(null);
+            setRemoveTxHash(null);
+          }}
+        />
       </section>
 
       {/* Academies (issue #663) — off-chain grouping of validator wallets
@@ -478,21 +555,21 @@ function AdminDashboardContent() {
                   <span className="text-gray-200 shrink-0">
                     {EVENT_LABELS[event.type]}
                   </span>
-                  <span className="font-mono text-gray-500 truncate">
+                  <span className="font-mono text-gray-400 truncate">
                     <TruncatedAddress
                       address={event.actor}
-                      className="text-gray-500"
+                      className="text-gray-400"
                     />
                   </span>
                   {event.subjectId && (
-                    <span className="font-mono text-gray-500 truncate">
+                    <span className="font-mono text-gray-400 truncate">
                       <TruncatedAddress
                         address={event.subjectId}
-                        className="text-gray-500"
+                        className="text-gray-400"
                       />
                     </span>
                   )}
-                  <span className="text-gray-500 shrink-0 ml-auto">
+                  <span className="text-gray-400 shrink-0 ml-auto">
                     {new Date(event.timestamp * 1000).toLocaleString()}
                   </span>
                 </li>
@@ -525,6 +602,10 @@ function AdminDashboardContent() {
         )}
       </section>
 
+      <PlatformAnalyticsCharts />
+
+      <FeeRevenueChart />
+
       {/* Referral Program */}
       <section className="bg-brand-card border border-gray-800 rounded-xl p-6 flex flex-col gap-4">
         <h2 className="text-lg font-semibold text-white">Referral Program</h2>
@@ -539,7 +620,7 @@ function AdminDashboardContent() {
           <>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">
+                <p className="text-xs uppercase tracking-wide text-gray-400">
                   Codes Generated
                 </p>
                 <p className="text-2xl font-semibold text-white">
@@ -547,7 +628,7 @@ function AdminDashboardContent() {
                 </p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">
+                <p className="text-xs uppercase tracking-wide text-gray-400">
                   Successful Referrals
                 </p>
                 <p className="text-2xl font-semibold text-white">
@@ -587,7 +668,11 @@ function AdminDashboardContent() {
 
       <AdminAuditLog />
 
+      <ValidatorActionLog />
+
       <FraudFlagsPanel />
+
+      <DisputedMilestonesPanel />
 
       {dialog && (
         <ConfirmDialog

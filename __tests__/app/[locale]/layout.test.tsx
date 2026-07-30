@@ -36,6 +36,26 @@ describe('LocaleLayout', () => {
     expect(screen.getByText('Locale-scoped content')).toBeInTheDocument();
   });
 
+  it('sets lang="fr" on the locale root for French', () => {
+    render(
+      <LocaleLayout params={{ locale: 'fr' }}>
+        <p>Bonjour</p>
+      </LocaleLayout>,
+    );
+
+    expect(screen.getByTestId('locale-lang')).toHaveAttribute('lang', 'fr');
+  });
+
+  it('sets lang="sw" on the locale root for Swahili', () => {
+    render(
+      <LocaleLayout params={{ locale: 'sw' }}>
+        <p>Habari</p>
+      </LocaleLayout>,
+    );
+
+    expect(screen.getByTestId('locale-lang')).toHaveAttribute('lang', 'sw');
+  });
+
   it('sets the request locale from params', () => {
     render(
       <LocaleLayout params={{ locale: 'sw' }}>
