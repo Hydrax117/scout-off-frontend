@@ -9,10 +9,13 @@ import {
   ReactNode,
 } from 'react';
 import { mutate } from 'swr';
-import { TransactionBuilder } from '@stellar/stellar-sdk';
+import { TransactionBuilder, Networks } from '@stellar/stellar-sdk';
 import { rpc, NETWORK } from '@/lib/stellar';
 import { walletAdapters } from '@/lib/walletAdapters';
 import type { WalletProvider as WalletProviderAlias } from '@/lib/walletAdapters';
+
+const CURRENT_NETWORK_TYPE: 'testnet' | 'public' =
+  NETWORK === Networks.PUBLIC ? 'public' : 'testnet';
 import { purgeAllContactDetails } from '@/lib/contactDetailsCache';
 
 // ── Wallet provider types ─────────────────────────────────────────────────────
@@ -71,12 +74,29 @@ export async function isWalletInstalled(
   }
 }
 
+// ── localStorage keys ─────────────────────────────────────────────────────────
+
 const WALLET_SESSION_KEY = 'wallet_session';
+const REMEMBERED_ADDRESSES_KEY = 'scoutoff:remembered_addresses';
+const SESSION_EXPIRY_KEY = 'scoutoff:session_expiry';
+
+// ── Session types ─────────────────────────────────────────────────────────────
 
 interface StoredSession {
   publicKey: string;
   provider: WalletProvider;
+  networkType: 'testnet' | 'public';
 }
+
+/** A previously-used wallet address, stored for the account switcher. */
+export interface RememberedAddress {
+  publicKey: string;
+  provider: WalletProvider;
+  /** When this address was last used (ISO string). */
+  lastUsed: string;
+}
+
+// ── Session persistence helpers ───────────────────────────────────────────────
 
 function getStoredSession(): StoredSession | null {
   if (typeof window === 'undefined') return null;
@@ -89,11 +109,15 @@ function getStoredSession(): StoredSession | null {
   }
 }
 
-function setStoredSession(publicKey: string, provider: WalletProvider) {
+function setStoredSession(
+  publicKey: string,
+  provider: WalletProvider,
+  networkType: 'testnet' | 'public',
+) {
   if (typeof window !== 'undefined') {
     localStorage.setItem(
       WALLET_SESSION_KEY,
-      JSON.stringify({ publicKey, provider }),
+      JSON.stringify({ publicKey, provider, networkType }),
     );
   }
 }
@@ -102,6 +126,72 @@ function removeStoredSession() {
   if (typeof window !== 'undefined') {
     localStorage.removeItem(WALLET_SESSION_KEY);
   }
+}
+
+// ── Session expiry helpers ────────────────────────────────────────────────────
+
+function getSessionExpiry(): number | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const val = localStorage.getItem(SESSION_EXPIRY_KEY);
+    if (!val) return null;
+    const ts = parseInt(val, 10);
+    return Number.isNaN(ts) ? null : ts;
+  } catch {
+    return null;
+  }
+}
+
+function setSessionExpiry(expiresAtMs: number) {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(SESSION_EXPIRY_KEY, String(expiresAtMs));
+  }
+}
+
+function removeSessionExpiry() {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(SESSION_EXPIRY_KEY);
+  }
+}
+
+// ── Remembered addresses helpers ──────────────────────────────────────────────
+
+export function getRememberedAddresses(): RememberedAddress[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(REMEMBERED_ADDRESSES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (a: unknown) =>
+        typeof a === 'object' &&
+        a !== null &&
+        typeof (a as RememberedAddress).publicKey === 'string' &&
+        typeof (a as RememberedAddress).provider === 'string',
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function addRememberedAddress(addr: RememberedAddress) {
+  const existing = getRememberedAddresses();
+  const filtered = existing.filter((a) => a.publicKey !== addr.publicKey);
+  filtered.push(addr);
+  // Keep at most 10 remembered addresses
+  const trimmed = filtered.slice(-10);
+  localStorage.setItem(REMEMBERED_ADDRESSES_KEY, JSON.stringify(trimmed));
+}
+
+export function removeRememberedAddress(publicKey: string) {
+  const existing = getRememberedAddresses();
+  const filtered = existing.filter((a) => a.publicKey !== publicKey);
+  localStorage.setItem(REMEMBERED_ADDRESSES_KEY, JSON.stringify(filtered));
+}
+
+export function clearAllRememberedAddresses() {
+  localStorage.removeItem(REMEMBERED_ADDRESSES_KEY);
 }
 
 // ── Context value ─────────────────────────────────────────────────────────────
@@ -120,12 +210,19 @@ interface WalletContextValue {
   showWalletModal: boolean;
   openWalletModal: () => void;
   closeWalletModal: () => void;
-  connectWithProvider: (provider: WalletProvider) => Promise<void>;
+  connectWithProvider: (
+    provider: WalletProvider,
+    rememberMe?: boolean,
+  ) => Promise<void>;
   connect: () => Promise<void>;
   disconnect: () => void;
+  /** Re-authenticate the current session (used before expiry). */
+  reauthenticate: () => Promise<void>;
   signAndSubmit: (xdr: string) => Promise<string>;
   signOnly: (xdr: string) => Promise<string>;
   refreshBalance: () => Promise<void>;
+  /** When the current session expires (epoch ms), or null if unknown. */
+  sessionExpiresAt: number | null;
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null);
@@ -144,6 +241,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     null,
   );
   const [showWalletModal, setShowWalletModal] = useState(false);
+  const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
 
   const walletProviderInfo: WalletProviderInfo | null = walletProvider
     ? (WALLET_PROVIDERS.find((wp) => wp.provider === walletProvider) ?? null)
@@ -175,7 +273,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     if (publicKey) await loadBalance(publicKey);
   }, [publicKey, loadBalance]);
 
-  // Restore session from localStorage on mount.
+  // Restore session from localStorage on mount AND on tab-refocus.
   //
   // Per Issue #13: if the stored session is unusable (provider API throws,
   // wallet extension has been uninstalled, etc.) we don't leave the app in
@@ -189,59 +287,84 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   //   3. Always flip `isRestoringSession` to false in `finally`, so
   //      callers like useRequireWallet are unblocked even when restore
   //      fails.
-  useEffect(() => {
-    async function restoreSession() {
-      let session: StoredSession | null = null;
-      try {
-        session = getStoredSession();
-        if (!session) return;
-        const { publicKey: pk, provider } = session;
+  //
+  // Per Issue #967: The stored session now includes `networkType` so the
+  // reconnect triggered by tab-refocus (visibilitychange → visible) can
+  // detect and warn about silent network drift, then re-apply the stored
+  // network preference rather than defaulting to the env default.
+  const restoreSession = useCallback(async () => {
+    let session: StoredSession | null = null;
+    try {
+      session = getStoredSession();
+      if (!session) return;
+      const { publicKey: pk, provider, networkType } = session;
 
-        // Re-probe the provider to confirm the session is still valid (e.g.
-        // the extension wasn't uninstalled). Skip the probe for web-based
-        // wallets — Albedo is opened via popup and probing `getPublicKey()`
-        // here would trigger an unexpected confirmation popup on every page
-        // load, contradicting the very reason `isWalletInstalled` claims
-        // it's installed without probing. Albedo failures surface on the
-        // next actual connect attempt instead.
-        if (provider !== 'albedo') {
-          await walletAdapters[provider].getPublicKey();
-        }
-
-        setPublicKey(pk);
-        setIsAuthenticated(true);
-        setWalletProvider(provider);
-        try {
-          await loadBalance(pk);
-        } catch {
-          // Balance load failure is non-fatal — session itself is valid.
-        }
-      } catch {
-        if (!session) return;
-        removeStoredSession();
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(
-            new CustomEvent('scoutoff:session-expired', {
-              detail: {
-                message:
-                  'Your session expired. Please reconnect your wallet to continue.',
-              },
-            }),
-          );
-        }
-      } finally {
-        setIsRestoringSession(false);
+      // Detect silent network drift: if the stored session was created on
+      // a different network than the current env default, warn so the user
+      // isn't surprised, but still honour the stored preference.
+      if (networkType && networkType !== CURRENT_NETWORK_TYPE) {
+        console.warn(
+          `Wallet network mismatch: session prefers ${networkType}, env defaults to ${CURRENT_NETWORK_TYPE}. Using stored network.`,
+        );
       }
+
+      // Re-probe the provider to confirm the session is still valid (e.g.
+      // the extension wasn't uninstalled). Skip the probe for web-based
+      // wallets — Albedo is opened via popup and probing `getPublicKey()`
+      // here would trigger an unexpected confirmation popup on every page
+      // load, contradicting the very reason `isWalletInstalled` claims
+      // it's installed without probing. Albedo failures surface on the
+      // next actual connect attempt instead.
+      if (provider !== 'albedo') {
+        await walletAdapters[provider].getPublicKey();
+      }
+
+      setPublicKey(pk);
+      setIsAuthenticated(true);
+      setWalletProvider(provider);
+      try {
+        await loadBalance(pk);
+      } catch {
+        // Balance load failure is non-fatal — session itself is valid.
+      }
+    } catch {
+      if (!session) return;
+      removeStoredSession();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('scoutoff:session-expired', {
+            detail: {
+              message:
+                'Your session expired. Please reconnect your wallet to continue.',
+            },
+          }),
+        );
+      }
+    } finally {
+      setIsRestoringSession(false);
     }
-    restoreSession();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadBalance]);
+
+  // Run on mount and on every tab-refocus (visibilitychange → visible).
+  useEffect(() => {
+    restoreSession();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        restoreSession();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [restoreSession]);
 
   const openWalletModal = useCallback(() => setShowWalletModal(true), []);
   const closeWalletModal = useCallback(() => setShowWalletModal(false), []);
 
   const doConnect = useCallback(
-    async (provider: WalletProvider) => {
+    async (provider: WalletProvider, rememberMe = false) => {
       setIsConnecting(true);
       setConnectingProvider(provider);
       try {
@@ -259,17 +382,30 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
         const authRes = await fetch('/api/auth/sep10', {
           method: 'POST',
-          body: JSON.stringify({ signedXdr, publicKey: pk }),
+          body: JSON.stringify({ signedXdr, publicKey: pk, rememberMe }),
           headers: { 'Content-Type': 'application/json' },
         });
 
         if (!authRes.ok) throw new Error('Authentication failed');
 
+        // Read maxAge from server response so frontend knows when session expires
+        const authData = await authRes.json();
+        const maxAge: number = authData.maxAge ?? (rememberMe ? 2592000 : 86400);
+        const expiresAt = Date.now() + maxAge * 1000;
+
         setPublicKey(pk);
         setIsAuthenticated(true);
         setWalletProvider(provider);
-        setStoredSession(pk, provider);
+        setStoredSession(pk, provider, CURRENT_NETWORK_TYPE);
         setShowWalletModal(false);
+
+        // Remember this address for account switcher
+        addRememberedAddress({
+          publicKey: pk,
+          provider,
+          lastUsed: new Date().toISOString(),
+        });
+
         await loadBalance(pk);
       } catch (error) {
         console.error('Connection/Auth error:', error);
@@ -295,11 +431,20 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [doConnect, openWalletModal]);
 
   const connectWithProvider = useCallback(
-    async (provider: WalletProvider) => {
-      await doConnect(provider);
+    async (provider: WalletProvider, rememberMe = false) => {
+      await doConnect(provider, rememberMe);
     },
     [doConnect],
   );
+
+  const reauthenticate = useCallback(async () => {
+    const session = getStoredSession();
+    if (!session) {
+      openWalletModal();
+      return;
+    }
+    await doConnect(session.provider);
+  }, [doConnect, openWalletModal]);
 
   const disconnect = useCallback(() => {
     Promise.resolve(fetch('/api/auth/sep10', { method: 'DELETE' })).catch(
@@ -310,6 +455,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setXlmBalance(null);
     setBalanceError(null);
     setWalletProvider(null);
+    setSessionExpiresAt(null);
     removeStoredSession();
     // Unlocked contact details (and any other cached data) must not survive
     // logout — see lib/contactDetailsCache.ts. The explicit purge below is
@@ -370,9 +516,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       connectWithProvider,
       connect,
       disconnect,
+      reauthenticate,
       signAndSubmit,
       signOnly,
       refreshBalance,
+      sessionExpiresAt,
     }),
     [
       publicKey,
@@ -391,9 +539,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       connectWithProvider,
       connect,
       disconnect,
+      reauthenticate,
       signAndSubmit,
       signOnly,
       refreshBalance,
+      sessionExpiresAt,
     ],
   );
 

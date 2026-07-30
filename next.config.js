@@ -1,5 +1,12 @@
 const createNextIntlPlugin = require('next-intl/plugin');
 const { withSentryConfig } = require('@sentry/nextjs');
+const withBundleAnalyzer = require('@next/bundle-analyzer')({
+  // Run `ANALYZE=true npm run build` to open the treemap reports in the browser.
+  enabled: process.env.ANALYZE === 'true',
+  // Write the HTML reports into .next/analyze/ so they aren't confused with
+  // app source files and are covered by the existing .gitignore for .next/.
+  openAnalyzer: false,
+});
 
 const withNextIntl = createNextIntlPlugin('./i18n/request.ts');
 
@@ -203,6 +210,6 @@ const sentryBuildOptions = {
 };
 
 module.exports = withSentryConfig(
-  withNextIntl(withPWA(nextConfig)),
+  withBundleAnalyzer(withNextIntl(withPWA(nextConfig))),
   sentryBuildOptions,
 );

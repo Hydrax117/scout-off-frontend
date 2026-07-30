@@ -169,13 +169,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             return (
               <div
                 key={toast.id}
-                role="status"
+                role={
+                  toast.variant === 'error' || toast.variant === 'warning'
+                    ? 'alert'
+                    : 'status'
+                }
                 aria-live={toast.variant === 'error' ? 'assertive' : 'polite'}
                 aria-atomic="true"
                 aria-label={`${meta.label} notification: ${toast.message}`}
-                className={`pointer-events-auto flex items-start gap-3 rounded-xl border border-gray-800 border-l-4 bg-brand-card p-4 shadow-2xl ${meta.border}`}
+                className={`pointer-events-auto flex items-start gap-3 rounded-xl border border-gray-200 dark:border-gray-800 border-l-4 bg-brand-card p-4 shadow-2xl ${meta.border}`}
               >
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-black/5 dark:bg-white/5">
                   <span
                     className={`${meta.iconClass} text-lg`}
                     aria-hidden="true"
@@ -186,8 +190,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                     {toast.variant === 'warning' && '⚠'}
                   </span>
                 </div>
-                <div className="flex-1 text-sm leading-6 text-gray-200">
-                  <p className="font-semibold text-white">{meta.label}</p>
+                <div className="flex-1 text-sm leading-6 text-gray-700 dark:text-gray-200">
+                  <p className="font-semibold text-gray-900 dark:text-white">
+                    {meta.label}
+                  </p>
                   <p>{toast.message}</p>
                 </div>
                 {toast.action && (
@@ -197,7 +203,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                       toast.action?.onClick();
                       removeToast(toast.id);
                     }}
-                    className="ml-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-1.5 text-sm font-medium text-brand-green transition hover:bg-gray-800"
+                    className="ml-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-900 px-3 py-1.5 text-sm font-medium text-brand-green transition hover:bg-gray-200 dark:hover:bg-gray-800"
                   >
                     {toast.action.label}
                   </button>
@@ -205,8 +211,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   onClick={() => removeToast(toast.id)}
-                  aria-label="Dismiss notification"
-                  className="ml-1 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-700 bg-gray-900 text-gray-400 transition hover:bg-gray-800 hover:text-white"
+                  aria-label="Close notification"
+                  className="ml-1 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-900 text-gray-500 dark:text-gray-400 transition hover:bg-gray-200 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white"
                 >
                   <span aria-hidden="true">×</span>
                 </button>

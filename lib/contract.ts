@@ -42,7 +42,7 @@ function getContract() {
 
   if (!contractId) {
     throw new Error(
-      'Missing NEXT_PUBLIC_CONTRACT_ID. Set the deployed Soroban contract ID in your environment before making contract calls.',
+      'Missing NEXT_PUBLIC_CONTRACT_ID. Add it to .env.local (copy from .env.example). Example: NEXT_PUBLIC_CONTRACT_ID=CABC... Run node scripts/validate-env.js to verify your environment.',
     );
   }
 

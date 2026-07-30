@@ -3,13 +3,21 @@
 @tailwind utilities;
 
 :root {
+  --bg: #f9fafb;
+  --card: #ffffff;
+  --text: #0a0f1e;
+  --green: #00c853;
+}
+
+.dark {
   --bg: #0a0f1e;
   --card: #111827;
+  --text: #f9fafb;
   --green: #00c853;
 }
 
 body {
   background-color: var(--bg);
-  color: #f9fafb;
+  color: var(--text);
   font-family: Inter, system-ui, sans-serif;
 }

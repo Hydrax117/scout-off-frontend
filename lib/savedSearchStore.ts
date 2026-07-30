@@ -57,6 +57,20 @@ export class SavedSearchStore {
     return SavedSearchStore._instance;
   }
 
+  rename(scoutWallet: string, id: number, newName: string): SavedSearch | null {
+    const result = this.db
+      .prepare(
+        'UPDATE saved_search SET name = ? WHERE id = ? AND scout_wallet = ?',
+      )
+      .run(newName, id, scoutWallet);
+    if (result.changes === 0) return null;
+
+    const row = this.db
+      .prepare('SELECT * FROM saved_search WHERE id = ?')
+      .get(id) as SavedSearchRow;
+    return rowToEntry(row);
+  }
+
   /** Closes the DB connection and clears the singleton. Use ONLY in tests. */
   static resetInstance(): void {
     if (SavedSearchStore._instance) {

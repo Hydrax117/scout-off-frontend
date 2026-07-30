@@ -8,6 +8,10 @@ import {
 } from '@/lib/contract';
 import type { Subscription, SubscriptionTier } from '@/types';
 
+const MILLISECONDS_PER_SECOND = 1000; // Convert Date.now() timestamps to Unix seconds.
+const SUBSCRIPTION_DEDUPING_INTERVAL_MS = 5_000; // Deduplicate concurrent read calls within 5 seconds.
+const SUBSCRIPTION_READ_ERROR_RETRY_COUNT = 2; // Retry failed subscription reads twice.
+
 /**
  * Cache key scheme for useSubscription:
  *   "subscription:{publicKey}"
@@ -46,9 +50,9 @@ export function useSubscription() {
       return (data as Subscription) ?? null;
     },
     {
-      dedupingInterval: 5_000, // deduplicate concurrent reads within 5 s
+      dedupingInterval: SUBSCRIPTION_DEDUPING_INTERVAL_MS,
       revalidateOnFocus: false,
-      errorRetryCount: 2,
+      errorRetryCount: SUBSCRIPTION_READ_ERROR_RETRY_COUNT,
     },
   );
 
@@ -72,7 +76,7 @@ export function useSubscription() {
   );
 
   const isExpired = subscription
-    ? subscription.expiresAt < Date.now() / 1000
+    ? subscription.expiresAt < Date.now() / MILLISECONDS_PER_SECOND
     : false;
 
   return {
