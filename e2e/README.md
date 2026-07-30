@@ -6,12 +6,24 @@ player registration, validator approve/revoke, pay-to-contact, admin actions)
 don't have to skip the auth layer or hand-roll their own wallet stub per test
 file.
 
+## Specs
+
+| Spec | What it covers |
+| ---- | -------------- |
+| `landing-page.spec.ts` | Smoke test for the home page: hero heading visible, Player/Scout Dashboard nav links present, Scout Dashboard navigates to `/en/scout`. No wallet mock required. |
+| `wallet-connect-registration.spec.ts` | Freighter connect + optional real testnet player registration (see below). |
+| `player-registration.spec.ts` | Player registration with mocked Soroban RPC. |
+| `scout-pay-to-contact.spec.ts` | Scout pay-to-contact flow. |
+| `validator-milestones.spec.ts` | Validator milestone approve/revoke. |
+| `admin-access.spec.ts` / `admin-fee-withdrawal.spec.ts` | Admin gated flows. |
+
 ## Running
 
 ```bash
 npx playwright install --with-deps chromium   # once, to fetch the browser
-npm run test:e2e            # headless
-npm run test:e2e:ui         # Playwright's UI mode, for debugging
+npx playwright test                           # headless (all specs)
+npx playwright test e2e/landing-page.spec.ts  # landing smoke only
+npx playwright test --ui                      # Playwright's UI mode, for debugging
 ```
 
 `playwright.config.ts` boots the Next.js dev server itself (`webServer`) on

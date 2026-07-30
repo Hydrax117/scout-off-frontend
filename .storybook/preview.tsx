@@ -41,6 +41,11 @@ const preview: Preview = {
     },
   },
   parameters: {
+    options: {
+      storySort: {
+        order: ['Foundations', 'UI', 'Components', '*'],
+      },
+    },
     // Superseded by the Theme toolbar toggle above.
     backgrounds: { disable: true },
     controls: {
