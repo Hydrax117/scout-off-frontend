@@ -18,12 +18,13 @@ export default function Button({
   ...props
 }: ButtonProps) {
   const baseStyles =
-    'px-4 py-2 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-green focus-visible:ring-offset-gray-900';
+    'px-4 py-2 rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-brand-green focus-visible:ring-offset-white dark:focus-visible:ring-offset-gray-900';
 
   const variants = {
     default: 'bg-brand-green text-black hover:opacity-90',
     danger: 'bg-red-600 text-white hover:bg-red-700',
-    secondary: 'bg-gray-700 text-white hover:bg-gray-600',
+    secondary:
+      'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600',
   };
 
   return (

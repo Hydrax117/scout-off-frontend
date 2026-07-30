@@ -1,6 +1,10 @@
 'use client';
 
-import { useXlmUsdRate, convertXlmToFiat, formatFiat } from '@/hooks/useXlmUsdRate';
+import {
+  useXlmUsdRate,
+  convertXlmToFiat,
+  formatFiat,
+} from '@/hooks/useXlmUsdRate';
 import { useCurrencyPreference } from '@/hooks/useCurrencyPreference';
 import { formatXlm } from '@/lib/formatXlm';
 
@@ -30,9 +34,11 @@ export default function XlmFiatDisplay({
 
   return (
     <span className={`inline-flex flex-col ${className}`}>
-      <span className="text-white font-medium">{formatXlm(xlmAmount)} XLM</span>
+      <span className="text-gray-900 dark:text-white font-medium">
+        {formatXlm(xlmAmount)} XLM
+      </span>
       {!loading && fiatAmount !== null && (
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-gray-500 dark:text-gray-400">
           ≈ {formatFiat(fiatAmount, currency)}
         </span>
       )}

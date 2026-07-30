@@ -17,14 +17,17 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
   return (
     <div className="space-y-1">
       {label && (
-        <label htmlFor={id} className="block text-sm font-medium text-gray-300">
+        <label
+          htmlFor={id}
+          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+        >
           {label}
         </label>
       )}
       <select
         ref={ref}
         id={id}
-        className={`w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-brand-green focus-visible:ring-2 focus-visible:ring-brand-green transition ${
+        className={`w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-brand-green focus-visible:ring-2 focus-visible:ring-brand-green transition ${
           error ? 'border-red-500' : ''
         } ${className}`}
         aria-invalid={error ? true : undefined}

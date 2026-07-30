@@ -104,7 +104,7 @@ export default function OnboardingTour({
       {/* Tooltip */}
       <div
         ref={tooltipRef}
-        className="fixed z-50 bg-brand-card border border-gray-700 rounded-lg shadow-2xl max-w-xs p-4 pointer-events-auto"
+        className="fixed z-50 bg-brand-card border border-gray-300 dark:border-gray-700 rounded-lg shadow-2xl max-w-xs p-4 pointer-events-auto"
         style={{
           top: `${tooltipPosition.top}px`,
           left: `${tooltipPosition.left}px`,
@@ -114,22 +114,22 @@ export default function OnboardingTour({
         {/* Close button */}
         <button
           onClick={onDismiss}
-          className="absolute top-3 right-3 p-1 text-gray-400 hover:text-white transition"
+          className="absolute top-3 right-3 p-1 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
           aria-label="Close tour"
         >
           <X size={16} />
         </button>
 
         {/* Step counter */}
-        <div className="text-xs text-gray-400 mb-2">
+        <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
           Step {currentStep + 1} of {steps.length}
         </div>
 
         {/* Content */}
-        <h3 className="text-sm font-semibold text-white mb-2">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
           {currentStepData.title}
         </h3>
-        <p className="text-xs text-gray-300 mb-4 leading-relaxed">
+        <p className="text-xs text-gray-700 dark:text-gray-300 mb-4 leading-relaxed">
           {currentStepData.description}
         </p>
 
@@ -138,7 +138,7 @@ export default function OnboardingTour({
           <button
             onClick={onPrev}
             disabled={isFirstStep}
-            className="p-1 text-gray-400 hover:text-white disabled:opacity-30 transition"
+            className="p-1 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 transition"
             aria-label="Previous step"
           >
             <ChevronLeft size={16} />
@@ -146,7 +146,7 @@ export default function OnboardingTour({
 
           <button
             onClick={onSkip}
-            className="text-xs text-gray-400 hover:text-gray-300 transition px-2 py-1 rounded hover:bg-gray-700/50"
+            className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition px-2 py-1 rounded hover:bg-gray-200/50 dark:hover:bg-gray-700/50"
           >
             Skip tour
           </button>
@@ -162,7 +162,7 @@ export default function OnboardingTour({
             ) : (
               <button
                 onClick={onNext}
-                className="p-1 text-gray-400 hover:text-white transition"
+                className="p-1 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
                 aria-label="Next step"
               >
                 <ChevronRight size={16} />

@@ -8,6 +8,10 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 // it rejects requests whose Origin header doesn't match exactly.
 export default defineConfig({
   testDir: './e2e',
+  // Storybook visual-regression specs (Issue #539) run under their own
+  // config (playwright.visual.config.ts, `npm run test:visual`) against a
+  // Storybook server instead of the Next.js dev server this config boots.
+  testIgnore: '**/visual/**',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
