@@ -16,6 +16,11 @@ const withDarkBackground: Decorator = (Story) => (
 const preview: Preview = {
   decorators: [withDarkBackground],
   parameters: {
+    options: {
+      storySort: {
+        order: ['Foundations', 'UI', 'Components', '*'],
+      },
+    },
     backgrounds: {
       default: 'brand-dark',
       values: [
