@@ -9,7 +9,6 @@ import ThemeToggle from './ui/ThemeToggle';
 import { useContractStatus } from '@/hooks/useContractStatus';
 import { useWallet } from '@/hooks/useWallet';
 import { useCurrencyPreference } from '@/hooks/useCurrencyPreference';
-import ThemeToggle from './ThemeToggle';
 import NotificationBell from './NotificationBell';
 
 const NAV_LINKS = [
@@ -231,8 +230,6 @@ export default function Navbar() {
                 </div>
               )}
             </div>
-
-            <ThemeToggle />
 
             <NotificationBell />
 
