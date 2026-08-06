@@ -20,25 +20,25 @@
   },
   {
     "name": "Player dashboard JS",
-    "path": ".next/static/chunks/app/**/*player*page*.js",
+    "path": ".next/static/chunks/app/**/player/page-*.js",
     "limit": "120 kB",
     "gzip": true
   },
   {
     "name": "Scout dashboard JS",
-    "path": ".next/static/chunks/app/**/*scout*page*.js",
+    "path": ".next/static/chunks/app/**/scout/page-*.js",
     "limit": "120 kB",
     "gzip": true
   },
   {
     "name": "Validator dashboard JS",
-    "path": ".next/static/chunks/app/**/*validator*page*.js",
+    "path": ".next/static/chunks/app/**/validator/page-*.js",
     "limit": "120 kB",
     "gzip": true
   },
   {
     "name": "Admin panel JS",
-    "path": ".next/static/chunks/app/**/*admin*page*.js",
+    "path": ".next/static/chunks/app/**/admin/page-*.js",
     "limit": "120 kB",
     "gzip": true
   }
