@@ -95,7 +95,10 @@ describe('mediaUrlSigning — signing enabled', () => {
     const mod = loadModule();
     const url = mod.signMediaUrl(CID, 3600);
     const params = new URL(url, 'http://localhost').searchParams;
-    const tamperedSig = `${params.get('sig')!.slice(0, -1)}0`;
+    const sig = params.get('sig')!;
+    const lastChar = sig.slice(-1);
+    const replacement = lastChar === '0' ? '1' : '0';
+    const tamperedSig = `${sig.slice(0, -1)}${replacement}`;
     expect(
       mod.verifyMediaUrlSignature(CID, params.get('exp'), tamperedSig),
     ).toBe(false);
