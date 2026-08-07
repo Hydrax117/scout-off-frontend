@@ -1,6 +1,10 @@
 import type { StorybookConfig } from '@storybook/react-vite';
 import react from '@vitejs/plugin-react';
 import tsconfigPaths from 'vite-tsconfig-paths';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const config: StorybookConfig = {
   stories: ['../stories/**/*.mdx', '../components/**/*.stories.@(ts|tsx)'],
@@ -23,6 +27,16 @@ const config: StorybookConfig = {
     config.define = {
       ...config.define,
       'process.env': {},
+    };
+    // Storybook uses the plain react-vite framework rather than
+    // @storybook/nextjs, so there's no App Router context provider for
+    // `next/navigation`'s hooks — components calling useRouter() (e.g.
+    // PlayerCard) throw and crash the story instead of rendering. Alias to
+    // a no-op stub so those hooks resolve harmlessly. See .storybook/mocks/next-navigation.tsx.
+    config.resolve ??= {};
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      'next/navigation': path.resolve(dirname, './mocks/next-navigation.tsx'),
     };
     return config;
   },

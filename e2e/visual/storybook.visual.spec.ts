@@ -44,9 +44,15 @@ test('storybook stories render consistently', async ({ page, baseURL }) => {
       await page.goto(`/iframe.html?id=${id}&viewMode=story`);
       // Not 'networkidle': Storybook's dev server keeps an HMR socket open,
       // so the network never truly goes idle and that wait can hang until
-      // the test timeout. 'load' is sufficient since stories render
-      // synchronously once the iframe document has loaded.
+      // the test timeout. 'load' only covers the outer iframe document,
+      // though — Storybook's dev server compiles each story on first
+      // request, so 'load' can fire before React has mounted anything into
+      // #storybook-root. toHaveScreenshot's own stability retry doesn't
+      // save this: a still-blank/loading root is itself a stable frame, so
+      // it can lock onto that instead of the real content. Wait for the
+      // root to actually have a child before screenshotting.
       await page.waitForLoadState('load');
+      await page.waitForSelector('#storybook-root > *', { state: 'attached' });
       await expect(page).toHaveScreenshot(`${id}.png`, { fullPage: true });
     });
   }
