@@ -9,14 +9,21 @@ import {
   ReactNode,
 } from 'react';
 import { mutate } from 'swr';
-import { TransactionBuilder, Networks } from '@stellar/stellar-sdk';
-import { rpc, NETWORK } from '@/lib/stellar';
 import { walletAdapters } from '@/lib/walletAdapters';
 import type { WalletProvider as WalletProviderAlias } from '@/lib/walletAdapters';
-
-const CURRENT_NETWORK_TYPE: 'testnet' | 'public' =
-  NETWORK === Networks.PUBLIC ? 'public' : 'testnet';
 import { purgeAllContactDetails } from '@/lib/contactDetailsCache';
+
+// @stellar/stellar-sdk and lib/stellar.ts (which also pulls it in) are
+// dynamically imported inside the functions below that actually need them
+// (loadBalance, doConnect, signAndSubmit, signOnly) rather than statically
+// here — WalletProvider is mounted at the root layout, so a static import
+// would put the whole SDK (and its sodium-native/crypto deps) on every
+// page's critical path just to compute a couple of constants and support
+// features most visitors never touch. This mirrors NETWORK's own
+// computation in lib/stellar.ts without needing the SDK's `Networks` enum
+// for it.
+const CURRENT_NETWORK_TYPE: 'testnet' | 'public' =
+  process.env.NEXT_PUBLIC_NETWORK === 'mainnet' ? 'public' : 'testnet';
 
 // ── Wallet provider types ─────────────────────────────────────────────────────
 
@@ -251,6 +258,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setIsLoadingBalance(true);
     setBalanceError(null);
     try {
+      const { rpc } = await import('@/lib/stellar');
       const account = await rpc.getAccount(address);
       const native = (
         (account as any).balances as Array<{
@@ -368,6 +376,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setIsConnecting(true);
       setConnectingProvider(provider);
       try {
+        const { NETWORK } = await import('@/lib/stellar');
         const pk = await walletAdapters[provider].getPublicKey();
 
         // SEP-10 Auth Flow
@@ -470,6 +479,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     async (xdr: string): Promise<string> => {
       if (!publicKey) throw new Error('Wallet not connected');
       if (!walletProvider) throw new Error('No wallet provider selected');
+      const { NETWORK, rpc, TransactionBuilder } =
+        await import('@/lib/stellar');
       const signedXdr = await walletAdapters[walletProvider].signTransaction(
         xdr,
         NETWORK,
@@ -494,6 +505,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     async (xdr: string): Promise<string> => {
       if (!publicKey) throw new Error('Wallet not connected');
       if (!walletProvider) throw new Error('No wallet provider selected');
+      const { NETWORK } = await import('@/lib/stellar');
       return walletAdapters[walletProvider].signTransaction(xdr, NETWORK);
     },
     [publicKey, walletProvider],

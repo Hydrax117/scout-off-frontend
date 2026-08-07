@@ -32,6 +32,10 @@ jest.mock('@/lib/walletAdapters', () => ({
 jest.mock('@/lib/stellar', () => ({
   rpc: { sendTransaction: jest.fn(), getAccount: jest.fn() },
   NETWORK: 'Test SDF Network ; September 2015',
+  // Mirrors lib/stellar.ts's real `export { ..., TransactionBuilder }` —
+  // WalletContext now reads TransactionBuilder off this dynamically
+  // imported module rather than importing @stellar/stellar-sdk directly.
+  TransactionBuilder: { fromXDR: jest.fn(() => ({})) },
 }));
 
 jest.mock('@stellar/stellar-sdk', () => ({

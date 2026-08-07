@@ -1,6 +1,5 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { getContractHealth, getContractPaused } from '@/lib/contract';
 
 interface ContractStatusData {
   isHealthy: boolean;
@@ -9,7 +8,14 @@ interface ContractStatusData {
 
 const POLL_INTERVAL_MS = 60_000;
 
+// lib/contract.ts (and the @stellar/stellar-sdk it pulls in) is dynamically
+// imported here rather than statically — this hook runs from Navbar, which
+// is mounted on every page via the root layout, so a static import would
+// put the whole SDK on every page's critical path just for a background
+// health-check poll.
 async function fetchContractStatus(): Promise<ContractStatusData> {
+  const { getContractHealth, getContractPaused } =
+    await import('@/lib/contract');
   const [isHealthy, isPaused] = await Promise.all([
     (async () => {
       try {

@@ -1,12 +1,3 @@
-import {
-  getPublicKey as freighterGetPublicKey,
-  isConnected as freighterIsConnected,
-  signTransaction as freighterSign,
-} from '@stellar/freighter-api';
-import { TransactionBuilder, StrKey } from '@stellar/stellar-sdk';
-import Str from '@ledgerhq/hw-app-str';
-import TransportWebHID from '@ledgerhq/hw-transport-webhid';
-
 export type WalletProvider = 'freighter' | 'albedo' | 'lobstr' | 'ledger';
 
 const STANDARD_LEDGER_PATH = "44'/148'/0'";
@@ -20,14 +11,19 @@ export const walletAdapters: Record<
     signTransaction(xdr: string, networkPassphrase: string): Promise<string>;
   }
 > = {
+  // Freighter's SDK is dynamically imported on first use — like Albedo below
+  // — so the extension-detection code isn't pulled into every page's initial
+  // bundle just because WalletProvider is mounted at the root layout.
   freighter: {
     async getPublicKey() {
-      if (!(await freighterIsConnected()))
-        throw new Error('Freighter not installed');
-      return freighterGetPublicKey();
+      const { getPublicKey, isConnected } =
+        await import('@stellar/freighter-api');
+      if (!(await isConnected())) throw new Error('Freighter not installed');
+      return getPublicKey();
     },
     async signTransaction(xdr, networkPassphrase) {
-      return freighterSign(xdr, { networkPassphrase });
+      const { signTransaction } = await import('@stellar/freighter-api');
+      return signTransaction(xdr, { networkPassphrase });
     },
   },
   // Albedo is web-based — there's no extension to inject `window.albedo`,
@@ -77,10 +73,21 @@ export const walletAdapters: Record<
       throw new Error('LOBSTR adapter not configured');
     },
   },
+  // hw-transport-webhid/hw-app-str (WebHID + Stellar app protocol) and
+  // stellar-sdk's TransactionBuilder/StrKey are dynamically imported on
+  // first use for the same reason as Freighter above — a Ledger is a rare,
+  // deliberate connection path, not something every page load should pay
+  // the parse/eval cost for.
   ledger: {
     async getPublicKey() {
       let transport;
       try {
+        const [{ default: TransportWebHID }, { default: Str }, { StrKey }] =
+          await Promise.all([
+            import('@ledgerhq/hw-transport-webhid'),
+            import('@ledgerhq/hw-app-str'),
+            import('@stellar/stellar-sdk'),
+          ]);
         transport = await TransportWebHID.create();
         const str = new Str(transport);
         const { rawPublicKey } = await str.getPublicKey(
@@ -99,6 +106,13 @@ export const walletAdapters: Record<
     async signTransaction(xdr, networkPassphrase) {
       let transport;
       try {
+        const [{ default: TransportWebHID }, { default: Str }, sdk] =
+          await Promise.all([
+            import('@ledgerhq/hw-transport-webhid'),
+            import('@ledgerhq/hw-app-str'),
+            import('@stellar/stellar-sdk'),
+          ]);
+        const { TransactionBuilder, StrKey } = sdk;
         transport = await TransportWebHID.create();
         const str = new Str(transport);
         const tx = TransactionBuilder.fromXDR(xdr, networkPassphrase);
