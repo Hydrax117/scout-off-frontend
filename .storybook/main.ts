@@ -13,6 +13,17 @@ const config: StorybookConfig = {
   async viteFinal(config) {
     config.plugins ??= [];
     config.plugins.push(react(), tsconfigPaths());
+    // Unlike Next.js's webpack build, Vite doesn't polyfill Node's `process`
+    // global — code under lib/ (e.g. lib/stellar.ts) reads process.env.* at
+    // module scope, which throws "process is not defined" the moment
+    // Storybook imports it and crashes every story that pulls it in
+    // transitively (PlayerCard → lib/contract.ts → lib/stellar.ts). Defining
+    // process.env as an empty object lets those reads resolve to `undefined`
+    // and fall through to their `??`/`||` defaults instead of throwing.
+    config.define = {
+      ...config.define,
+      'process.env': {},
+    };
     return config;
   },
 };
