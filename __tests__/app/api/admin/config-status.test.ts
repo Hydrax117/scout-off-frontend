@@ -8,6 +8,10 @@ describe('Config Status API', () => {
     process.env = { ...originalEnv };
     process.env.NEXT_PUBLIC_CONTRACT_ID = 'test-contract';
     process.env.NEXT_PUBLIC_NETWORK = 'testnet';
+    // Explicitly unset (rather than rely on the ambient environment lacking
+    // it) so this assertion holds in CI, which sets a PINATA_API_KEY
+    // placeholder at the workflow level for unrelated build steps.
+    delete process.env.PINATA_API_KEY;
   });
 
   afterAll(() => {

@@ -10,8 +10,8 @@ import { fetchWithRetry } from './fetchWithRetry';
 // bundle sees `undefined` here and falls through. See docker-compose.yml.
 const api = axios.create({
   baseURL:
-    process.env.API_URL_INTERNAL ??
-    process.env.NEXT_PUBLIC_API_URL ??
+    process.env.API_URL_INTERNAL ||
+    process.env.NEXT_PUBLIC_API_URL ||
     'http://localhost:4000',
   headers: { 'Content-Type': 'application/json' },
 });
