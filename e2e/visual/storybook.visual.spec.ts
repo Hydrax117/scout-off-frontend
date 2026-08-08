@@ -53,7 +53,7 @@ test('storybook stories render consistently', async ({ page, baseURL }) => {
       // root to actually have a child before screenshotting.
       await page.waitForLoadState('load');
       await page.waitForSelector('#storybook-root > *', { state: 'attached' });
-      await expect(page).toHaveScreenshot(`${id}.png`, { fullPage: true });
+      await expect.soft(page).toHaveScreenshot(`${id}.png`, { fullPage: true });
     });
   }
 });

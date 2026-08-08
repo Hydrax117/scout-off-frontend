@@ -12,7 +12,7 @@ const withTheme: Decorator = (Story, context) => {
     <div
       className={theme === 'dark' ? 'dark' : undefined}
       style={{
-        backgroundColor: 'var(--bg)',
+        backgroundColor: 'rgb(var(--bg))',
         color: 'var(--text)',
         minHeight: '100vh',
         padding: '1.5rem',
