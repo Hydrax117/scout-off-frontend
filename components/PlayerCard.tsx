@@ -144,12 +144,7 @@ function PlayerCard({
           aria-label={
             isCompareSelected ? 'Remove from comparison' : 'Add to comparison'
           }
-          className="absolute top-3 left-3 inline-flex h-6 w-6 items-center justify-center rounded border transition focus:outline-none focus:ring-2 focus:ring-brand-green"
-          style={
-            isCompareSelected
-              ? { borderColor: 'transparent', backgroundColor: '#22c55e' }
-              : { borderColor: '#4b5563' }
-          }
+          className="absolute top-3 left-3 inline-flex h-6 w-6 items-center justify-center rounded border transition focus:outline-none focus:ring-2 focus:ring-brand-green bg-brand-green"
         >
           {isCompareSelected && (
             <svg

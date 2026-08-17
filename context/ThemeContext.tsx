@@ -28,6 +28,7 @@ function getPreferredTheme(): Theme {
 
 function applyTheme(theme: Theme): void {
   document.documentElement.classList.toggle('dark', theme === 'dark');
+  document.documentElement.classList.toggle('light', theme === 'light');
 }
 
 export interface ThemeContextValue {
