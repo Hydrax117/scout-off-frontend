@@ -44,6 +44,7 @@ jest.mock('next-intl', () => ({
       app_title: 'ScoutOff',
       'nav.scout_dashboard': 'Scout Dashboard',
       'nav.player_dashboard': 'Player Dashboard',
+      'common.loading': 'Loading...',
       // wallet namespace
       connect: 'Connect Wallet',
       connecting: 'Connecting…',
