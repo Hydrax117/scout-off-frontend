@@ -12,11 +12,17 @@
  *   5. Activity Feed    – 5 skeleton rows
  *   6. Flagged Activity – 2 skeleton rows (FraudFlagsPanel)
  */
+'use client';
+import { useTranslations } from 'next-intl';
+
 export default function AdminDashboardSkeleton() {
+  const t = useTranslations();
+
   return (
     <div
+      role="status"
       aria-busy="true"
-      aria-label="Loading admin dashboard"
+      aria-label={t('common.loading')}
       className="max-w-3xl mx-auto flex flex-col gap-8"
     >
       {/* Page title */}
