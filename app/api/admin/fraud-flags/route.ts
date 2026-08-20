@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminWallet } from '@/lib/adminAuth';
 import {
   fetchAllReferralCodes,
   fetchActivityEvents,
@@ -41,10 +42,9 @@ async function fetchAllActivityEvents(): Promise<{
 }
 
 export async function GET(req: NextRequest) {
-  const sessionWallet = req.cookies.get('session')?.value;
-  const adminAddress = process.env.NEXT_PUBLIC_ADMIN_ADDRESS;
+  const sessionWallet = requireAdminWallet(req);
 
-  if (!sessionWallet || !adminAddress || sessionWallet !== adminAddress) {
+  if (!sessionWallet) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

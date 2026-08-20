@@ -1,12 +1,151 @@
 import { NextRequest } from 'next/server';
+import { createHmac, timingSafeEqual, randomUUID } from 'crypto';
+
+// See #778: the `session` cookie used to hold the caller's own plaintext
+// public key with no signature and no server-side expiry — any HTTP client
+// able to attach a `Cookie: session=<any-G-address>` header was
+// authenticated as that address, without ever producing a signed SEP-10
+// challenge transaction. Tokens below are HMAC-signed and time-bound so a
+// cookie can only carry an identity this server actually issued.
+
+/** How long an access token (the `session` cookie) is valid for. */
+export const ACCESS_TOKEN_TTL_SEC = 20 * 60; // 20 minutes
+
+/** Refresh token lifetime for a normal (non "remember me") sign-in. */
+export const DEFAULT_REFRESH_TTL_SEC = 60 * 60 * 24; // 1 day
+
+/** Refresh token lifetime when the caller opted into "remember me". */
+export const REMEMBER_ME_REFRESH_TTL_SEC = 60 * 60 * 24 * 30; // 30 days
+
+type SessionTokenType = 'access' | 'refresh';
+
+interface SessionTokenPayload {
+  sub: string;
+  typ: SessionTokenType;
+  iat: number;
+  exp: number;
+  /**
+   * Random per-token identifier. Guarantees each issued token is a distinct
+   * string even when two tokens for the same subject/type/TTL are minted
+   * within the same second (`iat` alone wouldn't distinguish them) — most
+   * relevant for rotation, where the whole point is that the pre-rotation
+   * token stops being the one currently in use.
+   */
+  jti: string;
+  /** Only set on refresh tokens; carries the "remember me" TTL class through rotation. */
+  remember?: boolean;
+}
+
+function getSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    throw new Error('SESSION_SECRET is not configured');
+  }
+  return secret;
+}
+
+function sign(payloadB64: string): string {
+  return createHmac('sha256', getSessionSecret())
+    .update(payloadB64)
+    .digest('base64url');
+}
 
 /**
- * Returns the authenticated wallet's public key from `req`'s session cookie,
- * or null if unauthenticated. Same cookie read GET /api/auth/session already
- * performs inline, and that lib/adminAuth.ts's requireAdminWallet further
- * restricts to the configured admin address — factored out here for routes
- * that just need "is someone logged in, and who."
+ * Creates an HMAC-signed, time-bound session token of the form
+ * `<base64url payload>.<base64url signature>`. Deliberately a lightweight,
+ * self-contained token (HMAC over a small JSON payload via Node's built-in
+ * crypto) rather than pulling in a JWT library — the payload here is two
+ * fields and one signature algorithm, so a full JWT implementation (header,
+ * multiple alg support, etc.) would add a dependency to solve a problem this
+ * doesn't have.
+ */
+export function createSessionToken(
+  publicKey: string,
+  type: SessionTokenType,
+  ttlSec: number,
+  opts: { remember?: boolean } = {},
+): string {
+  const now = Math.floor(Date.now() / 1000);
+  const payload: SessionTokenPayload = {
+    sub: publicKey,
+    typ: type,
+    iat: now,
+    exp: now + ttlSec,
+    jti: randomUUID(),
+    ...(type === 'refresh' ? { remember: !!opts.remember } : {}),
+  };
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString(
+    'base64url',
+  );
+  return `${payloadB64}.${sign(payloadB64)}`;
+}
+
+/**
+ * Verifies a session token's signature, type, and expiry, returning the
+ * decoded payload only when all three hold. Signature comparison uses
+ * `timingSafeEqual` (not `===`) to avoid leaking match-length information
+ * through response timing. This is the only sanctioned way to trust a
+ * token's claims — never parse/trust a cookie's raw value directly.
+ */
+export function verifySessionToken(
+  token: string,
+  expectedType: SessionTokenType,
+): SessionTokenPayload | null {
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [payloadB64, signature] = parts;
+
+  let expectedSignature: string;
+  try {
+    expectedSignature = sign(payloadB64);
+  } catch {
+    return null;
+  }
+
+  // Buffer.from(...).buffer is typed as ArrayBufferLike (it may back onto a
+  // SharedArrayBuffer), which timingSafeEqual's ArrayBufferView parameter
+  // type doesn't accept — Uint8Array.from copies into a plain ArrayBuffer,
+  // satisfying the type without changing the runtime bytes compared.
+  const sigBuf = Uint8Array.from(Buffer.from(signature));
+  const expectedBuf = Uint8Array.from(Buffer.from(expectedSignature));
+  if (
+    sigBuf.length !== expectedBuf.length ||
+    !timingSafeEqual(sigBuf, expectedBuf)
+  ) {
+    return null;
+  }
+
+  let payload: SessionTokenPayload;
+  try {
+    payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+
+  if (payload.typ !== expectedType) return null;
+  if (typeof payload.sub !== 'string' || !payload.sub) return null;
+  if (typeof payload.jti !== 'string' || !payload.jti) return null;
+  if (
+    typeof payload.exp !== 'number' ||
+    payload.exp < Math.floor(Date.now() / 1000)
+  ) {
+    return null;
+  }
+
+  return payload;
+}
+
+/**
+ * Returns the authenticated wallet's public key from `req`'s signed
+ * `session` cookie, or null if it's missing, malformed, tampered with, of
+ * the wrong token type, or expired. This is the ONLY sanctioned way for a
+ * route to read caller identity from the `session` cookie — routes that
+ * used to read `req.cookies.get('session')?.value` directly were trusting
+ * whatever string the client sent, with no proof it came from a completed
+ * SEP-10 flow (see #778).
  */
 export function getSessionWallet(req: NextRequest): string | null {
-  return req.cookies.get('session')?.value ?? null;
+  const token = req.cookies.get('session')?.value;
+  if (!token) return null;
+  return verifySessionToken(token, 'access')?.sub ?? null;
 }

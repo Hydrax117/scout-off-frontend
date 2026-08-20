@@ -1,9 +1,12 @@
 import { WebAuth, Networks, Keypair } from '@stellar/stellar-sdk';
 import { NextRequest, NextResponse } from 'next/server';
 import { createRequestLogger, withRequestId } from '@/lib/logger';
-
-const DEFAULT_SESSION_SECS = 60 * 60 * 24; // 1 day
-const REMEMBER_ME_SESSION_SECS = 60 * 60 * 24 * 30; // 30 days
+import {
+  createSessionToken,
+  ACCESS_TOKEN_TTL_SEC,
+  DEFAULT_REFRESH_TTL_SEC,
+  REMEMBER_ME_REFRESH_TTL_SEC,
+} from '@/lib/session';
 
 // Returns the set of origins this route will accept requests from. This is
 // derived ONLY from server-controlled configuration (env vars) — never from
@@ -93,14 +96,42 @@ export async function POST(req: NextRequest) {
       homeDomain,
     );
 
-    const maxAge = rememberMe ? REMEMBER_ME_SESSION_SECS : DEFAULT_SESSION_SECS;
+    // `maxAge` in the response reflects the refresh token's lifetime — the
+    // window before a caller must produce a brand-new signed SEP-10
+    // challenge rather than just calling /api/auth/refresh — preserving the
+    // shape existing consumers (context/WalletContext.tsx) already read.
+    // The `session` cookie itself is short-lived (ACCESS_TOKEN_TTL_SEC);
+    // /api/auth/refresh rotates it using the longer-lived `session_refresh`
+    // cookie. See #778.
+    const maxAge = rememberMe
+      ? REMEMBER_ME_REFRESH_TTL_SEC
+      : DEFAULT_REFRESH_TTL_SEC;
+    const isProd = process.env.NODE_ENV === 'production';
+
+    const accessToken = createSessionToken(
+      publicKey,
+      'access',
+      ACCESS_TOKEN_TTL_SEC,
+    );
+    const refreshToken = createSessionToken(publicKey, 'refresh', maxAge, {
+      remember: !!rememberMe,
+    });
 
     const response = NextResponse.json({ success: true, maxAge });
-    response.cookies.set('session', publicKey, {
+    response.cookies.set('session', accessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isProd,
       sameSite: 'strict',
       path: '/',
+      maxAge: ACCESS_TOKEN_TTL_SEC,
+    });
+    // Scoped to /api/auth so it's only ever sent to the refresh/logout
+    // endpoints, not on every request the way `session` is.
+    response.cookies.set('session_refresh', refreshToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: 'strict',
+      path: '/api/auth',
       maxAge,
     });
     return withRequestId(response, log.requestId);
@@ -174,5 +205,6 @@ export async function GET(req: NextRequest) {
 export async function DELETE() {
   const response = NextResponse.json({ success: true });
   response.cookies.delete('session');
+  response.cookies.delete({ name: 'session_refresh', path: '/api/auth' });
   return response;
 }

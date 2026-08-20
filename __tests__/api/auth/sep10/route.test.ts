@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { POST } from '../../../../app/api/auth/sep10/route';
+import { POST, DELETE } from '../../../../app/api/auth/sep10/route';
 import { NextRequest } from 'next/server';
 
 // Mock stellar-sdk so tests don't need real Stellar keys or network access.
@@ -22,6 +22,7 @@ jest.mock('@stellar/stellar-sdk', () => ({
 }));
 
 import { WebAuth } from '@stellar/stellar-sdk';
+import { verifySessionToken } from '@/lib/session';
 const mockVerify = WebAuth.verifyChallengeTxSigners as jest.Mock;
 
 const ALLOWED_ORIGIN = 'https://app.scoutoff.com';
@@ -112,12 +113,46 @@ describe('POST /api/auth/sep10 — successful authentication', () => {
     const body = await res.json();
     expect(body).toEqual({ success: true, maxAge: 86400 });
 
+    // Per #778, the cookie value must be an HMAC-signed, time-bound token —
+    // never the caller's plaintext public key — so a client can't forge a
+    // session by setting `session=<any-address>` by hand.
     const cookie = res.cookies.get('session');
     expect(cookie).toBeDefined();
-    expect(cookie?.value).toBe(VALID_PUBLIC_KEY);
+    expect(cookie?.value).not.toBe(VALID_PUBLIC_KEY);
+    const payload = verifySessionToken(cookie!.value, 'access');
+    expect(payload?.sub).toBe(VALID_PUBLIC_KEY);
     expect(cookie?.httpOnly).toBe(true);
     expect(cookie?.sameSite).toBe('strict');
     expect(cookie?.path).toBe('/');
+
+    // A distinct, longer-lived refresh token is also issued, scoped to
+    // /api/auth so it isn't sent on every request the way `session` is.
+    const refreshCookie = res.cookies.get('session_refresh');
+    expect(refreshCookie).toBeDefined();
+    const refreshPayload = verifySessionToken(refreshCookie!.value, 'refresh');
+    expect(refreshPayload?.sub).toBe(VALID_PUBLIC_KEY);
+    expect(refreshCookie?.httpOnly).toBe(true);
+    expect(refreshCookie?.path).toBe('/api/auth');
+  });
+
+  test('issues a REMEMBER_ME_REFRESH_TTL_SEC-lived refresh token when rememberMe is set', async () => {
+    mockVerify.mockReturnValueOnce(undefined);
+
+    const res = await POST(
+      makeRequest(ALLOWED_ORIGIN, {
+        signedXdr: SIGNED_XDR,
+        publicKey: VALID_PUBLIC_KEY,
+        rememberMe: true,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.maxAge).toBe(60 * 60 * 24 * 30);
+
+    const refreshCookie = res.cookies.get('session_refresh');
+    const refreshPayload = verifySessionToken(refreshCookie!.value, 'refresh');
+    expect(refreshPayload?.sub).toBe(VALID_PUBLIC_KEY);
   });
 });
 
@@ -308,5 +343,18 @@ describe('POST /api/auth/sep10 — production fails closed with no allow-list co
     const body = await res.json();
     expect(body).toEqual({ error: 'Forbidden' });
     expect(mockVerify).not.toHaveBeenCalled();
+  });
+});
+
+describe('DELETE /api/auth/sep10 — logout', () => {
+  test('clears both the access and refresh session cookies', async () => {
+    const res = await DELETE();
+    expect(res.status).toBe(200);
+
+    const cleared = res.cookies.get('session');
+    const refreshCleared = res.cookies.get('session_refresh');
+    // NextResponse represents a deleted cookie as an empty-value Set-Cookie.
+    expect(cleared?.value).toBe('');
+    expect(refreshCleared?.value).toBe('');
   });
 });

@@ -344,6 +344,100 @@ describe('WalletContext', () => {
     });
   });
 
+  describe('server-session reconciliation on restore (see #778)', () => {
+    // localStorage is only a hint for which wallet/provider to reconnect
+    // with — restoreSession must treat GET /api/auth/session (and, when
+    // that says the session's gone, POST /api/auth/refresh) as the source
+    // of truth for isAuthenticated/publicKey, never localStorage alone.
+    function seedStoredSession(publicKey: string) {
+      localStorage.setItem(
+        'wallet_session',
+        JSON.stringify({
+          publicKey,
+          provider: 'freighter',
+          networkType: 'testnet',
+        }),
+      );
+    }
+
+    it('never shows address A as authenticated when the server session is for a different address', async () => {
+      const ADDRESS_A = PUBLIC_KEY;
+      const ADDRESS_B = 'GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
+      seedStoredSession(ADDRESS_A);
+      freighter.getPublicKey.mockResolvedValue(ADDRESS_A);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ authenticated: true, publicKey: ADDRESS_B }),
+      });
+
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+
+      await waitFor(() => expect(result.current.isRestoringSession).toBe(false));
+
+      expect(result.current.isAuthenticated).toBe(false);
+      expect(result.current.publicKey).toBeNull();
+      expect(localStorage.getItem('wallet_session')).toBeNull();
+    });
+
+    it('forces re-auth when the server session is absent/expired and refresh fails', async () => {
+      seedStoredSession(PUBLIC_KEY);
+      freighter.getPublicKey.mockResolvedValue(PUBLIC_KEY);
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+        })
+        .mockResolvedValueOnce({ ok: false, status: 401 }); // POST /api/auth/refresh
+
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+
+      await waitFor(() => expect(result.current.isRestoringSession).toBe(false));
+
+      expect(result.current.isAuthenticated).toBe(false);
+      expect(result.current.publicKey).toBeNull();
+      expect(localStorage.getItem('wallet_session')).toBeNull();
+      expect(mockFetch).toHaveBeenCalledWith('/api/auth/refresh', {
+        method: 'POST',
+      });
+    });
+
+    it('recovers via refresh when the access token expired but the refresh token is still valid', async () => {
+      seedStoredSession(PUBLIC_KEY);
+      freighter.getPublicKey.mockResolvedValue(PUBLIC_KEY);
+      mockFetch
+        .mockResolvedValueOnce({ ok: false, status: 401 }) // GET /api/auth/session
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            success: true,
+            publicKey: PUBLIC_KEY,
+            maxAge: 86400,
+          }),
+        }); // POST /api/auth/refresh
+
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+
+      await waitFor(() => expect(result.current.isRestoringSession).toBe(false));
+
+      expect(result.current.isAuthenticated).toBe(true);
+      expect(result.current.publicKey).toBe(PUBLIC_KEY);
+    });
+
+    it('stays authenticated when the server session check itself fails (network error), not just when it succeeds', async () => {
+      seedStoredSession(PUBLIC_KEY);
+      freighter.getPublicKey.mockResolvedValue(PUBLIC_KEY);
+      mockFetch.mockRejectedValueOnce(new Error('network down'));
+
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+
+      await waitFor(() => expect(result.current.isRestoringSession).toBe(false));
+
+      expect(result.current.isAuthenticated).toBe(true);
+      expect(result.current.publicKey).toBe(PUBLIC_KEY);
+    });
+  });
+
   describe('disconnect — contact-details cache purge', () => {
     it('purges cached contact details immediately on logout', async () => {
       setupSep10();

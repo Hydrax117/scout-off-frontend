@@ -2,6 +2,7 @@
 import { GET, POST } from '@/app/api/admin/audit-log/route';
 import { NextRequest } from 'next/server';
 import { AdminAuditStore } from '@/lib/adminAuditStore';
+import { createSessionToken } from '@/lib/session';
 
 const ADMIN = 'GADMIN0000000000000000000000000000000000000000000000000';
 
@@ -10,7 +11,7 @@ function makeRequest(
   init: { method?: string; cookie?: string; body?: unknown } = {},
 ): NextRequest {
   const headers: Record<string, string> = {};
-  if (init.cookie !== undefined) headers['cookie'] = `session=${init.cookie}`;
+  if (init.cookie !== undefined) headers['cookie'] = `session=${createSessionToken(init.cookie, 'access', 20 * 60)}`;
   if (init.body !== undefined) headers['content-type'] = 'application/json';
   return new NextRequest(url, {
     method: init.method ?? 'GET',

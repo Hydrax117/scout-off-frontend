@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifySessionToken } from '@/lib/session';
 
 /**
  * GET /api/auth/session
  *
  * Returns the caller's authentication state based on the `session` cookie.
+ * The cookie is a signed, time-bound access token (see lib/session.ts) —
+ * this route verifies it rather than trusting its value, so a caller can no
+ * longer authenticate as an arbitrary address just by setting
+ * `session=<any-address>` by hand (see #778).
  *
  * Rate limiting: max 30 requests per IP per 10 seconds. This is a cheap,
  * low-risk read (it just echoes back a cookie), so the limit is generous
@@ -73,13 +78,14 @@ export async function GET(req: NextRequest) {
   }
 
   const session = req.cookies.get('session');
+  const payload = session ? verifySessionToken(session.value, 'access') : null;
 
-  if (!session) {
+  if (!payload) {
     return NextResponse.json({ authenticated: false }, { status: 401 });
   }
 
   return NextResponse.json({
     authenticated: true,
-    publicKey: session.value,
+    publicKey: payload.sub,
   });
 }

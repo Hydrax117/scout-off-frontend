@@ -16,6 +16,7 @@ import {
   analyzePayToContactAbuse,
 } from '@/lib/fraudDetection';
 import type { FraudFlag } from '@/types';
+import { createSessionToken } from '@/lib/session';
 
 const ADMIN = 'GADMIN0000000000000000000000000000000000000000000000000';
 
@@ -26,7 +27,8 @@ const mockAnalyzePayToContactAbuse = analyzePayToContactAbuse as jest.Mock;
 
 function makeRequest(cookie?: string): NextRequest {
   const headers: Record<string, string> = {};
-  if (cookie !== undefined) headers['cookie'] = `session=${cookie}`;
+  if (cookie !== undefined)
+    headers['cookie'] = `session=${createSessionToken(cookie, 'access', 20 * 60)}`;
   return new NextRequest('http://localhost/api/admin/fraud-flags', {
     headers,
   });

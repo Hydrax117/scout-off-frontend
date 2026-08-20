@@ -2,6 +2,7 @@
 import { GET, PUT } from '@/app/api/notification-preferences/route';
 import { NextRequest } from 'next/server';
 import { NotificationPreferencesStore } from '@/lib/notificationPreferencesStore';
+import { createSessionToken } from '@/lib/session';
 
 const SCOUT = 'GSCOUT0000000000000000000000000000000000000000000000000';
 
@@ -10,7 +11,7 @@ function makeRequest(
   init: { method?: string; cookie?: string; body?: unknown } = {},
 ): NextRequest {
   const headers: Record<string, string> = {};
-  if (init.cookie !== undefined) headers['cookie'] = `session=${init.cookie}`;
+  if (init.cookie !== undefined) headers['cookie'] = `session=${createSessionToken(init.cookie, 'access', 20 * 60)}`;
   if (init.body !== undefined) headers['content-type'] = 'application/json';
   return new NextRequest(url, {
     method: init.method ?? 'GET',
@@ -102,7 +103,7 @@ describe('PUT /api/notification-preferences', () => {
       {
         method: 'PUT',
         headers: {
-          cookie: `session=${SCOUT}`,
+          cookie: `session=${createSessionToken(SCOUT, 'access', 20 * 60)}`,
           'content-type': 'application/json',
         },
         body: 'not json',

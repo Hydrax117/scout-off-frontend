@@ -12,6 +12,7 @@ import { mutate } from 'swr';
 import { walletAdapters } from '@/lib/walletAdapters';
 import type { WalletProvider as WalletProviderAlias } from '@/lib/walletAdapters';
 import { purgeAllContactDetails } from '@/lib/contactDetailsCache';
+import { getServerSession, refreshSession } from '@/lib/sessionClient';
 
 // @stellar/stellar-sdk and lib/stellar.ts (which also pulls it in) are
 // dynamically imported inside the functions below that actually need them
@@ -325,6 +326,30 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       // next actual connect attempt instead.
       if (provider !== 'albedo') {
         await walletAdapters[provider].getPublicKey();
+      }
+
+      // Per #778: localStorage is only a hint for which wallet/provider to
+      // reconnect with — it is never proof of authentication. Reconcile
+      // against the server's session cookie before trusting this address.
+      // A `null` result means the check itself was inconclusive (network
+      // error) — treated as "assume still valid" rather than forcing a
+      // logout on a transient blip, since it's neither an explicit mismatch
+      // nor an explicit expiry.
+      const serverSession = await getServerSession();
+      if (serverSession && !serverSession.authenticated) {
+        const refreshed = await refreshSession();
+        if (!refreshed.authenticated || refreshed.publicKey !== pk) {
+          throw new Error('Server session expired or absent, and refresh failed');
+        }
+      } else if (
+        serverSession?.authenticated &&
+        serverSession.publicKey &&
+        serverSession.publicKey !== pk
+      ) {
+        // The server's session belongs to a different address than the one
+        // localStorage remembers — never show `pk` as authenticated based
+        // on the stale local hint alone.
+        throw new Error('Server session address does not match stored address');
       }
 
       setPublicKey(pk);

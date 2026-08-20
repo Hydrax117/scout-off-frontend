@@ -1,13 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import api from '@/lib/api';
-
-const ADMIN_ADDRESS = process.env.NEXT_PUBLIC_ADMIN_ADDRESS;
-
-function requireAdminWallet(req: NextRequest): string | null {
-  const sessionCookie = req.cookies.get('session')?.value;
-  if (!sessionCookie || sessionCookie !== ADMIN_ADDRESS) return null;
-  return sessionCookie;
-}
+import { requireAdminWallet } from '@/lib/adminAuth';
 
 export async function GET(req: NextRequest) {
   const admin = requireAdminWallet(req);

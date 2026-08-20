@@ -2,6 +2,7 @@
 import { PATCH } from '@/app/api/disputes/[id]/decide/route';
 import { NextRequest } from 'next/server';
 import { MilestoneDisputeStore } from '@/lib/milestoneDisputeStore';
+import { createSessionToken } from '@/lib/session';
 
 const ADMIN = 'GADMIN0000000000000000000000000000000000000000000000000';
 const SCOUT = 'GSCOUT0000000000000000000000000000000000000000000000000';
@@ -10,7 +11,7 @@ function makeRequest(
   init: { cookie?: string; body?: unknown } = {},
 ): NextRequest {
   const headers: Record<string, string> = {};
-  if (init.cookie !== undefined) headers['cookie'] = `session=${init.cookie}`;
+  if (init.cookie !== undefined) headers['cookie'] = `session=${createSessionToken(init.cookie, 'access', 20 * 60)}`;
   if (init.body !== undefined) headers['content-type'] = 'application/json';
   return new NextRequest('http://localhost/api/disputes/1/decide', {
     method: 'PATCH',
@@ -70,7 +71,7 @@ describe('PATCH /api/disputes/:id/decide', () => {
     const req = new NextRequest('http://localhost/api/disputes/1/decide', {
       method: 'PATCH',
       headers: {
-        cookie: `session=${ADMIN}`,
+        cookie: `session=${createSessionToken(ADMIN, 'access', 20 * 60)}`,
         'content-type': 'application/json',
       },
       body: 'not json',
