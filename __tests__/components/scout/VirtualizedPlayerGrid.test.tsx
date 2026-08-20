@@ -1,6 +1,9 @@
 import React from 'react';
-import { render, act } from '@testing-library/react';
-import { useVirtualizedRows } from '@/components/scout/VirtualizedPlayerGrid';
+import { render, act, screen } from '@testing-library/react';
+import VirtualizedPlayerGrid, {
+  useVirtualizedRows,
+  type VirtualizedPlayerGridHandle,
+} from '@/components/scout/VirtualizedPlayerGrid';
 
 // ── ResizeObserver mock ──────────────────────────────────────────────────────
 // jsdom does not implement ResizeObserver. We capture the callback passed by
@@ -174,5 +177,106 @@ describe('useVirtualizedRows', () => {
     unmount();
 
     expect(disconnectSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── VirtualizedPlayerGrid (grid-aware wrapper) ────────────────────────────────
+//
+// Covers issue #781's core acceptance criteria: mounted DOM stays bounded
+// for a large item list (not monotonically growing like the old
+// append-only "infinite scroll"), and scrolling shifts which items are
+// mounted rather than accumulating them.
+
+type TestItem = { id: string; label: string };
+
+function makeItems(count: number): TestItem[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `item-${i}`,
+    label: `Item ${i}`,
+  }));
+}
+
+describe('VirtualizedPlayerGrid', () => {
+  it('keeps mounted DOM nodes bounded for a 500-item list instead of mounting everything', () => {
+    const items = makeItems(500);
+    render(
+      <VirtualizedPlayerGrid<TestItem>
+        items={items}
+        getKey={(item) => item.id}
+        renderItem={(item) => <div role="article">{item.label}</div>}
+      />,
+    );
+
+    const mounted = screen.getAllByRole('article');
+    // jsdom reports clientHeight 0, so only the default overscan window
+    // renders — nowhere near the full 500-item list. The exact count isn't
+    // the point; that it's small and bounded (not 500) is.
+    expect(mounted.length).toBeGreaterThan(0);
+    expect(mounted.length).toBeLessThan(20);
+  });
+
+  it('unmounts off-screen items and mounts newly-visible ones when the container scrolls', () => {
+    const items = makeItems(500);
+    const { getByTestId } = render(
+      <VirtualizedPlayerGrid<TestItem>
+        items={items}
+        getKey={(item) => item.id}
+        renderItem={(item) => <div role="article">{item.label}</div>}
+        rowHeight={20}
+        overscan={1}
+      />,
+    );
+
+    expect(screen.getByText('Item 0')).toBeInTheDocument();
+    expect(screen.queryByText('Item 300')).not.toBeInTheDocument();
+
+    const container = getByTestId('player-grid');
+    Object.defineProperty(container, 'scrollTop', {
+      value: 6000, // row 300 at rowHeight 20
+      writable: true,
+    });
+    act(() => {
+      container.dispatchEvent(new Event('scroll'));
+    });
+
+    expect(screen.queryByText('Item 0')).not.toBeInTheDocument();
+    expect(screen.getByText('Item 300')).toBeInTheDocument();
+  });
+
+  it('scrollToItemIndex (imperative handle) scrolls the container to the right offset', () => {
+    const items = makeItems(100);
+    const ref = React.createRef<VirtualizedPlayerGridHandle>();
+    const { getByTestId } = render(
+      <VirtualizedPlayerGrid<TestItem>
+        ref={ref}
+        items={items}
+        getKey={(item) => item.id}
+        renderItem={(item) => <div role="article">{item.label}</div>}
+        rowHeight={50}
+      />,
+    );
+
+    act(() => {
+      ref.current?.scrollToItemIndex(10);
+    });
+
+    // columns default to 1 in jsdom (matchMedia never matches the sm/lg
+    // breakpoints), so item 10 is row 10.
+    expect(getByTestId('player-grid').scrollTop).toBe(500);
+  });
+
+  it('uses the provided data-testid and renders items via renderItem/getKey', () => {
+    const items = makeItems(3);
+    render(
+      <VirtualizedPlayerGrid<TestItem>
+        items={items}
+        getKey={(item) => item.id}
+        renderItem={(item) => <div role="article">{item.label}</div>}
+        data-testid="custom-grid"
+      />,
+    );
+
+    expect(screen.getByTestId('custom-grid')).toBeInTheDocument();
+    expect(screen.getByText('Item 0')).toBeInTheDocument();
   });
 });
