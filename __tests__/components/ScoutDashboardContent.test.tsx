@@ -11,7 +11,6 @@ class MockResizeObserver {
   unobserve() {}
   disconnect() {}
 }
-// @ts-expect-error partial ResizeObserver stub, sufficient for jsdom
 global.ResizeObserver = MockResizeObserver;
 
 // jsdom always reports clientHeight 0 (it doesn't run layout), so
