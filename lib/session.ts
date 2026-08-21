@@ -74,9 +74,7 @@ export function createSessionToken(
     jti: randomUUID(),
     ...(type === 'refresh' ? { remember: !!opts.remember } : {}),
   };
-  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString(
-    'base64url',
-  );
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
   return `${payloadB64}.${sign(payloadB64)}`;
 }
 

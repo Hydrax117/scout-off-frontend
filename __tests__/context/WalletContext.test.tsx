@@ -362,7 +362,8 @@ describe('WalletContext', () => {
 
     it('never shows address A as authenticated when the server session is for a different address', async () => {
       const ADDRESS_A = PUBLIC_KEY;
-      const ADDRESS_B = 'GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
+      const ADDRESS_B =
+        'GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
       seedStoredSession(ADDRESS_A);
       freighter.getPublicKey.mockResolvedValue(ADDRESS_A);
       mockFetch.mockResolvedValueOnce({
@@ -373,7 +374,9 @@ describe('WalletContext', () => {
 
       const { result } = renderHook(() => useWalletContext(), { wrapper });
 
-      await waitFor(() => expect(result.current.isRestoringSession).toBe(false));
+      await waitFor(() =>
+        expect(result.current.isRestoringSession).toBe(false),
+      );
 
       expect(result.current.isAuthenticated).toBe(false);
       expect(result.current.publicKey).toBeNull();
@@ -392,7 +395,9 @@ describe('WalletContext', () => {
 
       const { result } = renderHook(() => useWalletContext(), { wrapper });
 
-      await waitFor(() => expect(result.current.isRestoringSession).toBe(false));
+      await waitFor(() =>
+        expect(result.current.isRestoringSession).toBe(false),
+      );
 
       expect(result.current.isAuthenticated).toBe(false);
       expect(result.current.publicKey).toBeNull();
@@ -418,7 +423,9 @@ describe('WalletContext', () => {
 
       const { result } = renderHook(() => useWalletContext(), { wrapper });
 
-      await waitFor(() => expect(result.current.isRestoringSession).toBe(false));
+      await waitFor(() =>
+        expect(result.current.isRestoringSession).toBe(false),
+      );
 
       expect(result.current.isAuthenticated).toBe(true);
       expect(result.current.publicKey).toBe(PUBLIC_KEY);
@@ -431,7 +438,9 @@ describe('WalletContext', () => {
 
       const { result } = renderHook(() => useWalletContext(), { wrapper });
 
-      await waitFor(() => expect(result.current.isRestoringSession).toBe(false));
+      await waitFor(() =>
+        expect(result.current.isRestoringSession).toBe(false),
+      );
 
       expect(result.current.isAuthenticated).toBe(true);
       expect(result.current.publicKey).toBe(PUBLIC_KEY);

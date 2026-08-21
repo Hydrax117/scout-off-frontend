@@ -13,7 +13,11 @@ const PUBLIC_KEY = 'GTESTKEY0000000000000000000000000000000000000000000000000';
 
 describe('createSessionToken / verifySessionToken', () => {
   it('round-trips a valid access token', () => {
-    const token = createSessionToken(PUBLIC_KEY, 'access', ACCESS_TOKEN_TTL_SEC);
+    const token = createSessionToken(
+      PUBLIC_KEY,
+      'access',
+      ACCESS_TOKEN_TTL_SEC,
+    );
     const payload = verifySessionToken(token, 'access');
     expect(payload?.sub).toBe(PUBLIC_KEY);
     expect(payload?.typ).toBe('access');
@@ -32,13 +36,23 @@ describe('createSessionToken / verifySessionToken', () => {
   });
 
   it('rejects a token whose signature has been tampered with', () => {
-    const token = createSessionToken(PUBLIC_KEY, 'access', ACCESS_TOKEN_TTL_SEC);
+    const token = createSessionToken(
+      PUBLIC_KEY,
+      'access',
+      ACCESS_TOKEN_TTL_SEC,
+    );
     const [payloadB64] = token.split('.');
-    expect(verifySessionToken(`${payloadB64}.forgedsignature`, 'access')).toBeNull();
+    expect(
+      verifySessionToken(`${payloadB64}.forgedsignature`, 'access'),
+    ).toBeNull();
   });
 
   it('rejects a token whose payload has been tampered with (signature no longer matches)', () => {
-    const token = createSessionToken(PUBLIC_KEY, 'access', ACCESS_TOKEN_TTL_SEC);
+    const token = createSessionToken(
+      PUBLIC_KEY,
+      'access',
+      ACCESS_TOKEN_TTL_SEC,
+    );
     const [, signature] = token.split('.');
     const forgedPayload = Buffer.from(
       JSON.stringify({
@@ -48,7 +62,9 @@ describe('createSessionToken / verifySessionToken', () => {
         exp: Math.floor(Date.now() / 1000) + ACCESS_TOKEN_TTL_SEC,
       }),
     ).toString('base64url');
-    expect(verifySessionToken(`${forgedPayload}.${signature}`, 'access')).toBeNull();
+    expect(
+      verifySessionToken(`${forgedPayload}.${signature}`, 'access'),
+    ).toBeNull();
   });
 
   it('rejects an expired token', () => {
@@ -96,7 +112,11 @@ describe('getSessionWallet', () => {
   });
 
   it('returns the public key for a valid access token', () => {
-    const token = createSessionToken(PUBLIC_KEY, 'access', ACCESS_TOKEN_TTL_SEC);
+    const token = createSessionToken(
+      PUBLIC_KEY,
+      'access',
+      ACCESS_TOKEN_TTL_SEC,
+    );
     expect(getSessionWallet(requestWithCookie(`session=${token}`))).toBe(
       PUBLIC_KEY,
     );

@@ -11,7 +11,9 @@ function makeRequest(
   init: { cookie?: string; body?: unknown } = {},
 ): NextRequest {
   const headers: Record<string, string> = {};
-  if (init.cookie !== undefined) headers['cookie'] = `session=${createSessionToken(init.cookie, 'access', 20 * 60)}`;
+  if (init.cookie !== undefined)
+    headers['cookie'] =
+      `session=${createSessionToken(init.cookie, 'access', 20 * 60)}`;
   if (init.body !== undefined) headers['content-type'] = 'application/json';
   return new NextRequest('http://localhost/api/disputes/1/decide', {
     method: 'PATCH',

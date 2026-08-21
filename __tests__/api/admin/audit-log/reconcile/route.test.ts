@@ -23,7 +23,8 @@ const mockFetchEvents = fetchEvents as jest.Mock;
 function makeRequest(cookie?: string): NextRequest {
   const headers: Record<string, string> = {};
   if (cookie !== undefined)
-    headers['cookie'] = `session=${createSessionToken(cookie, 'access', 20 * 60)}`;
+    headers['cookie'] =
+      `session=${createSessionToken(cookie, 'access', 20 * 60)}`;
   return new NextRequest('http://localhost/api/admin/audit-log/reconcile', {
     headers,
   });

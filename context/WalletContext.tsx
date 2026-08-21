@@ -339,7 +339,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       if (serverSession && !serverSession.authenticated) {
         const refreshed = await refreshSession();
         if (!refreshed.authenticated || refreshed.publicKey !== pk) {
-          throw new Error('Server session expired or absent, and refresh failed');
+          throw new Error(
+            'Server session expired or absent, and refresh failed',
+          );
         }
       } else if (
         serverSession?.authenticated &&
