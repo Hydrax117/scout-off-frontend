@@ -72,9 +72,7 @@ test.describe('scout results grid — virtualization performance', () => {
 
     await page.goto('/en/scout');
 
-    await page
-      .getByLabel(/search by player name/i)
-      .fill('Perf Player');
+    await page.getByLabel(/search by player name/i).fill('Perf Player');
 
     await expect(page.getByText('500 players found')).toBeVisible({
       timeout: 10_000,

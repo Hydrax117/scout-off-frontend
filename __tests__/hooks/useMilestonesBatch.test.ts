@@ -56,10 +56,9 @@ describe('useMilestonesBatch', () => {
       p2: [],
     });
 
-    const { result } = renderHook(
-      () => useMilestonesBatch(['p1', 'p2']),
-      { wrapper },
-    );
+    const { result } = renderHook(() => useMilestonesBatch(['p1', 'p2']), {
+      wrapper,
+    });
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 

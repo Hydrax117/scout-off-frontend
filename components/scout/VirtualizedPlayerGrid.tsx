@@ -185,10 +185,7 @@ function VirtualizedPlayerGridInner<T>(
   ref: Ref<VirtualizedPlayerGridHandle>,
 ) {
   const columns = useResponsiveColumns();
-  const rows = useMemo(
-    () => chunkIntoRows(items, columns),
-    [items, columns],
-  );
+  const rows = useMemo(() => chunkIntoRows(items, columns), [items, columns]);
 
   const {
     containerRef,
