@@ -22,9 +22,11 @@ export interface ChatMessage {
 
 export async function fetchThreadMessages(
   threadId: string,
+  signal?: AbortSignal,
 ): Promise<ChatMessage[]> {
   const { data } = await chatApi.get<ChatMessage[]>(
     `/threads/${threadId}/messages`,
+    { signal },
   );
   return data;
 }

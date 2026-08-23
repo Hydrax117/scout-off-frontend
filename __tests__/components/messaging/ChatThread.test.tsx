@@ -10,14 +10,17 @@ import ChatThread from '@/components/messaging/ChatThread';
 import {
   fetchThreadMessages,
   sendThreadMessage,
-  markThreadRead,
   ChatMessage,
 } from '@/lib/messaging/chatApi';
+import { reportThreadRead } from '@/lib/messaging/readReceipts';
 
 jest.mock('@/lib/messaging/chatApi', () => ({
   fetchThreadMessages: jest.fn(),
   sendThreadMessage: jest.fn(),
-  markThreadRead: jest.fn(),
+}));
+
+jest.mock('@/lib/messaging/readReceipts', () => ({
+  reportThreadRead: jest.fn(),
 }));
 
 const mockedFetchThreadMessages = fetchThreadMessages as jest.MockedFunction<
@@ -26,11 +29,12 @@ const mockedFetchThreadMessages = fetchThreadMessages as jest.MockedFunction<
 const mockedSendThreadMessage = sendThreadMessage as jest.MockedFunction<
   typeof sendThreadMessage
 >;
-const mockedMarkThreadRead = markThreadRead as jest.MockedFunction<
-  typeof markThreadRead
+const mockedReportThreadRead = reportThreadRead as jest.MockedFunction<
+  typeof reportThreadRead
 >;
 
 const THREAD_ID = 'thread-1';
+const POLL_INTERVAL_MS = 4000;
 
 function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -44,10 +48,18 @@ function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
   };
 }
 
+/** Flush the microtask queue inside act so async poll/send continuations run. */
+async function flushPromises() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 describe('ChatThread', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockedMarkThreadRead.mockResolvedValue(undefined);
+    mockedReportThreadRead.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -83,13 +95,13 @@ describe('ChatThread', () => {
     render(<ChatThread threadId={THREAD_ID} />);
 
     await waitFor(() =>
-      expect(mockedMarkThreadRead).toHaveBeenCalledWith(THREAD_ID),
+      expect(mockedReportThreadRead).toHaveBeenCalledWith(THREAD_ID),
     );
   });
 
-  it('silently swallows a markThreadRead failure', async () => {
+  it('silently swallows a reportThreadRead failure', async () => {
     mockedFetchThreadMessages.mockResolvedValue([]);
-    mockedMarkThreadRead.mockRejectedValue(new Error('network error'));
+    mockedReportThreadRead.mockRejectedValue(new Error('network error'));
 
     render(<ChatThread threadId={THREAD_ID} />);
 
@@ -192,37 +204,33 @@ describe('ChatThread', () => {
 
     render(<ChatThread threadId={THREAD_ID} />);
 
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await flushPromises();
     expect(mockedFetchThreadMessages).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      jest.advanceTimersByTime(4000);
-      await Promise.resolve();
+      jest.advanceTimersByTime(POLL_INTERVAL_MS);
     });
+    await flushPromises();
     expect(mockedFetchThreadMessages).toHaveBeenCalledTimes(2);
 
     await act(async () => {
-      jest.advanceTimersByTime(4000);
-      await Promise.resolve();
+      jest.advanceTimersByTime(POLL_INTERVAL_MS);
     });
+    await flushPromises();
     expect(mockedFetchThreadMessages).toHaveBeenCalledTimes(3);
   });
 
-  it('clears the polling interval on unmount', async () => {
+  it('clears the pending poll timer on unmount', async () => {
     jest.useFakeTimers({ legacyFakeTimers: false });
     mockedFetchThreadMessages.mockResolvedValue([]);
-    const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
+    const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
 
     const { unmount } = render(<ChatThread threadId={THREAD_ID} />);
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await flushPromises();
 
     unmount();
-    expect(clearIntervalSpy).toHaveBeenCalled();
-    clearIntervalSpy.mockRestore();
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+    clearTimeoutSpy.mockRestore();
   });
 
   it('reloads messages when threadId changes', async () => {
@@ -230,11 +238,255 @@ describe('ChatThread', () => {
 
     const { rerender } = render(<ChatThread threadId={THREAD_ID} />);
     await screen.findByText('No messages yet. Say hello!');
-    expect(mockedFetchThreadMessages).toHaveBeenCalledWith(THREAD_ID);
+    expect(mockedFetchThreadMessages).toHaveBeenCalledWith(
+      THREAD_ID,
+      expect.any(AbortSignal),
+    );
 
     rerender(<ChatThread threadId="thread-2" />);
     await waitFor(() =>
-      expect(mockedFetchThreadMessages).toHaveBeenCalledWith('thread-2'),
+      expect(mockedFetchThreadMessages).toHaveBeenCalledWith(
+        'thread-2',
+        expect.any(AbortSignal),
+      ),
     );
+  });
+
+  it('ignores a stale poll response that resolves after a newer one', async () => {
+    jest.useFakeTimers({ legacyFakeTimers: false });
+    let resolveFirst!: (value: ChatMessage[]) => void;
+    let resolveSecond!: (value: ChatMessage[]) => void;
+
+    mockedFetchThreadMessages
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSecond = resolve;
+        }),
+      );
+
+    render(<ChatThread threadId={THREAD_ID} />);
+
+    // Second poll fires on the normal cadence while the first is still in
+    // flight — two overlapping requests are now outstanding.
+    await act(async () => {
+      jest.advanceTimersByTime(POLL_INTERVAL_MS);
+    });
+
+    // The newer response arrives first and is applied.
+    await act(async () => {
+      resolveSecond([makeMessage({ id: 'msg-2', body: 'Newest message' })]);
+    });
+    expect(screen.getByText('Newest message')).toBeInTheDocument();
+
+    // The stale first response lands afterwards and must not overwrite it.
+    await act(async () => {
+      resolveFirst([makeMessage({ id: 'msg-1', body: 'Stale message' })]);
+    });
+    expect(screen.queryByText('Stale message')).not.toBeInTheDocument();
+    expect(screen.getByText('Newest message')).toBeInTheDocument();
+  });
+
+  it('surfaces a poll failure and backs off exponentially until recovery', async () => {
+    jest.useFakeTimers({ legacyFakeTimers: false });
+    mockedFetchThreadMessages
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockRejectedValueOnce(new Error('still down'))
+      .mockResolvedValueOnce([]);
+
+    render(<ChatThread threadId={THREAD_ID} />);
+    await flushPromises();
+
+    // Initial failure: a distinct error/retry state, not a stuck loader.
+    expect(
+      screen.getByText("Couldn't load the conversation."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Loading conversation…')).not.toBeInTheDocument();
+
+    // First retry fires at the base interval and fails again.
+    await act(async () => {
+      jest.advanceTimersByTime(POLL_INTERVAL_MS);
+    });
+    await flushPromises();
+    expect(mockedFetchThreadMessages).toHaveBeenCalledTimes(2);
+
+    // Backoff: the next retry is scheduled at 2× the base interval, so
+    // nothing fires 4s after the second failure…
+    await act(async () => {
+      jest.advanceTimersByTime(POLL_INTERVAL_MS);
+    });
+    await flushPromises();
+    expect(mockedFetchThreadMessages).toHaveBeenCalledTimes(2);
+
+    // …and the retry lands at the 8s mark, then recovers and clears the error.
+    await act(async () => {
+      jest.advanceTimersByTime(POLL_INTERVAL_MS);
+    });
+    await flushPromises();
+    expect(mockedFetchThreadMessages).toHaveBeenCalledTimes(3);
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Couldn't load the conversation."),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText('No messages yet. Say hello!')).toBeInTheDocument();
+  });
+
+  it('shows an inline connection-lost banner when a poll fails after data loaded', async () => {
+    jest.useFakeTimers({ legacyFakeTimers: false });
+    mockedFetchThreadMessages
+      .mockResolvedValueOnce([makeMessage({ id: 'msg-1', body: 'Existing' })])
+      .mockRejectedValueOnce(new Error('network down'));
+
+    render(<ChatThread threadId={THREAD_ID} />);
+    await flushPromises();
+    expect(screen.getByText('Existing')).toBeInTheDocument();
+
+    await act(async () => {
+      jest.advanceTimersByTime(POLL_INTERVAL_MS);
+    });
+    await flushPromises();
+
+    // Existing messages stay visible, with a distinct retry affordance.
+    expect(screen.getByText('Existing')).toBeInTheDocument();
+    expect(screen.getByText('Connection lost — retrying…')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Retry now' }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the draft and shows an error when a send fails, then retries without retyping', async () => {
+    mockedFetchThreadMessages.mockResolvedValue([]);
+    mockedSendThreadMessage
+      .mockRejectedValueOnce(new Error('send failed'))
+      .mockResolvedValueOnce(makeMessage({ id: 'msg-new', body: 'Keep me' }));
+
+    render(<ChatThread threadId={THREAD_ID} />);
+    await screen.findByText('No messages yet. Say hello!');
+
+    const input = screen.getByPlaceholderText('Write a message…');
+    fireEvent.change(input, { target: { value: 'Keep me' } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    });
+
+    // Failure: the draft is preserved and a clear error with retry is shown.
+    expect(mockedSendThreadMessage).toHaveBeenCalledWith(THREAD_ID, 'Keep me');
+    expect(input).toHaveValue('Keep me');
+    expect(
+      screen.getByText(
+        "Couldn't send your message. Check your connection and try again.",
+      ),
+    ).toBeInTheDocument();
+
+    // Retry sends the same text without the user having to retype it.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    });
+
+    expect(mockedSendThreadMessage).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('Keep me')).toBeInTheDocument();
+    expect(input).toHaveValue('');
+    expect(
+      screen.queryByText(
+        "Couldn't send your message. Check your connection and try again.",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders delivered/read indicators on the current user’s messages and updates with status changes', async () => {
+    jest.useFakeTimers({ legacyFakeTimers: false });
+    mockedFetchThreadMessages.mockResolvedValue([
+      makeMessage({
+        id: 'mine-1',
+        senderId: 'me',
+        body: 'Hey',
+        status: 'sent',
+      }),
+      makeMessage({
+        id: 'theirs-1',
+        senderId: 'scout-1',
+        body: 'Hi',
+        status: 'read',
+      }),
+    ]);
+
+    render(<ChatThread threadId={THREAD_ID} currentUserId="me" />);
+    await flushPromises();
+
+    // A 'sent' own message shows no indicator, and the other party's status
+    // is never rendered (we can't know their delivery state).
+    expect(screen.getByText('Hey')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Delivered')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Read')).not.toBeInTheDocument();
+
+    // A poll brings an updated status for the own message.
+    mockedFetchThreadMessages.mockResolvedValue([
+      makeMessage({
+        id: 'mine-1',
+        senderId: 'me',
+        body: 'Hey',
+        status: 'read',
+      }),
+      makeMessage({
+        id: 'theirs-1',
+        senderId: 'scout-1',
+        body: 'Hi',
+        status: 'read',
+      }),
+    ]);
+
+    await act(async () => {
+      jest.advanceTimersByTime(POLL_INTERVAL_MS);
+    });
+    await flushPromises();
+
+    expect(screen.getByLabelText('Read')).toBeInTheDocument();
+  });
+
+  it('pauses polling while the document is hidden and refreshes on visibility return', async () => {
+    jest.useFakeTimers({ legacyFakeTimers: false });
+    mockedFetchThreadMessages.mockResolvedValue([]);
+
+    render(<ChatThread threadId={THREAD_ID} />);
+    await flushPromises();
+    expect(mockedFetchThreadMessages).toHaveBeenCalledTimes(1);
+
+    const visibilitySpy = jest.spyOn(document, 'visibilityState', 'get');
+    visibilitySpy.mockReturnValue('hidden');
+
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    // No polling happens while hidden, no matter how long the tab is away.
+    await act(async () => {
+      jest.advanceTimersByTime(20_000);
+    });
+    await flushPromises();
+    expect(mockedFetchThreadMessages).toHaveBeenCalledTimes(1);
+
+    // Returning to the visible tab triggers an immediate refresh…
+    visibilitySpy.mockReturnValue('visible');
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await flushPromises();
+    expect(mockedFetchThreadMessages).toHaveBeenCalledTimes(2);
+
+    // …and polling resumes at the normal cadence.
+    await act(async () => {
+      jest.advanceTimersByTime(POLL_INTERVAL_MS);
+    });
+    await flushPromises();
+    expect(mockedFetchThreadMessages).toHaveBeenCalledTimes(3);
+
+    visibilitySpy.mockRestore();
   });
 });
