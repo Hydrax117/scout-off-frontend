@@ -35,12 +35,19 @@ export interface WalletProviderInfo {
   provider: WalletProvider;
   label: string;
   icon: string;
+  /**
+   * Set when the provider is listed but not yet backed by a working
+   * adapter (see lib/walletAdapters.ts). The UI must render these as
+   * disabled/"coming soon" rather than wiring them up to connect —
+   * their adapter throws unconditionally if invoked.
+   */
+  comingSoon?: boolean;
 }
 
 export const WALLET_PROVIDERS: WalletProviderInfo[] = [
   { provider: 'freighter', label: 'Freighter', icon: '🔶' },
   { provider: 'albedo', label: 'Albedo', icon: '✨' },
-  { provider: 'lobstr', label: 'LOBSTR', icon: '🌐' },
+  { provider: 'lobstr', label: 'LOBSTR', icon: '🌐', comingSoon: true },
   { provider: 'ledger', label: 'Ledger', icon: '💎' },
 ];
 
