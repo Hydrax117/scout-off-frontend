@@ -1,4 +1,11 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import '@testing-library/jest-dom';
 import PendingMilestoneQueue from '@/components/validator/PendingMilestoneQueue';
 import { useValidatorPendingQueue } from '@/hooks/useValidatorPendingQueue';
@@ -489,6 +496,107 @@ describe('PendingMilestoneQueue', () => {
       const approveMilestone = jest.fn();
       setup({ approveMilestone });
       expect(approveMilestone).not.toHaveBeenCalled();
+    });
+
+    it('does not show a Stop control before a batch has started', () => {
+      setup();
+      expect(
+        screen.queryByRole('button', { name: /Stop/ }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('stops the batch after the in-flight item completes, leaving the rest unattempted and still selected', async () => {
+      const refetch = jest.fn();
+      const approveMilestone = jest.fn().mockResolvedValue('xdr-payload');
+      const signAndSubmit = jest.fn();
+      mockedDecideMilestoneSubmission.mockResolvedValue({} as any);
+
+      let resolveFirst!: (value: {
+        phase: string;
+        hash: string;
+        message: string;
+      }) => void;
+      const firstResult = new Promise<{
+        phase: string;
+        hash: string;
+        message: string;
+      }>((resolve) => {
+        resolveFirst = resolve;
+      });
+      mockedSubmitAndConfirm.mockImplementationOnce(() => firstResult as any);
+
+      setup({ refetch, approveMilestone, signAndSubmit });
+
+      fireEvent.click(
+        screen.getByLabelText('Select milestone for Alex Okafor'),
+      );
+      fireEvent.click(screen.getByLabelText('Select milestone for player-2'));
+      fireEvent.click(
+        screen.getByLabelText('Select milestone for Maria Santos'),
+      );
+
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: /Bulk Approve/ }));
+      });
+
+      // First item is in flight — the Stop control is now available.
+      const stopButton = await screen.findByRole('button', { name: 'Stop' });
+
+      act(() => {
+        fireEvent.click(stopButton);
+      });
+      expect(screen.getByRole('button', { name: 'Stopping…' })).toBeDisabled();
+
+      await act(async () => {
+        resolveFirst({
+          phase: 'success',
+          hash: 'tx-hash-1',
+          message: 'confirmed',
+        });
+      });
+
+      // Batch actually stops once the in-flight item resolves.
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('button', { name: /Stop/ }),
+        ).not.toBeInTheDocument();
+      });
+
+      // Exactly one item was attempted.
+      expect(mockedSubmitAndConfirm).toHaveBeenCalledTimes(1);
+      expect(mockedDecideMilestoneSubmission).toHaveBeenCalledTimes(1);
+      expect(mockedDecideMilestoneSubmission).toHaveBeenCalledWith(
+        'sub-1',
+        'approved',
+        'tx-hash-1',
+      );
+
+      // The attempted item succeeded and is no longer selected.
+      expect(screen.getByText('✓ Confirmed on-chain')).toBeInTheDocument();
+      expect(
+        screen.getByLabelText('Select milestone for Alex Okafor'),
+      ).not.toBeChecked();
+
+      // The remaining items were never attempted — not failed, not selected away.
+      expect(
+        screen.getAllByText('Not attempted — batch was stopped'),
+      ).toHaveLength(2);
+      expect(screen.queryByText(/✕/)).not.toBeInTheDocument();
+      expect(
+        screen.getByLabelText('Select milestone for player-2'),
+      ).toBeChecked();
+      expect(
+        screen.getByLabelText('Select milestone for Maria Santos'),
+      ).toBeChecked();
+
+      // refetch still runs so the completed approval is reflected.
+      expect(refetch).toHaveBeenCalledTimes(1);
+
+      expect(
+        screen.getByText(
+          '1 of 3 selected approvals completed before the batch was stopped — 1 confirmed on-chain, and 2 not attempted.',
+        ),
+      ).toBeInTheDocument();
     });
   });
 });
