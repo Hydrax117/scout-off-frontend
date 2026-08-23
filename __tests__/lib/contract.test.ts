@@ -62,6 +62,7 @@ import {
   getPlayer,
   checkIsValidator,
   getMilestoneHistory,
+  getMilestoneHistoryBatch,
   getContractHealth,
   getValidators,
   getSubscription,
@@ -336,6 +337,65 @@ describe('read-only contract queries', () => {
   test('getContractPaused simulates is_paused', async () => {
     mockScValToNative.mockReturnValueOnce(false);
     await expect(getContractPaused()).resolves.toBe(false);
+  });
+});
+
+// ── getMilestoneHistoryBatch ─────────────────────────────────────────────────
+//
+// Issue #781: milestone history for a batch of players must be one RPC
+// round-trip, not one per player.
+
+describe('getMilestoneHistoryBatch', () => {
+  test('returns {} without any RPC call for an empty ID list', async () => {
+    const result = await getMilestoneHistoryBatch([]);
+    expect(result).toEqual({});
+    expect(mockRpc.simulateTransaction).not.toHaveBeenCalled();
+  });
+
+  test('fetches milestone history for many players in a single simulateTransaction call', async () => {
+    mockScValToNative.mockReturnValueOnce({
+      p1: [],
+      p2: [],
+      p3: [],
+    });
+
+    const result = await getMilestoneHistoryBatch(['p1', 'p2', 'p3']);
+
+    expect(mockRpc.simulateTransaction).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ p1: [], p2: [], p3: [] });
+  });
+
+  test('de-duplicates repeated player IDs before calling out', async () => {
+    mockScValToNative.mockReturnValueOnce({ p1: [] });
+
+    await getMilestoneHistoryBatch(['p1', 'p1', 'p1']);
+
+    expect(mockRpc.simulateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  test('a real on-chain error (e.g. contract paused) is not swallowed by the fallback', async () => {
+    mockRpc.simulateTransaction.mockResolvedValueOnce({
+      error: 'Error(Contract, #9)',
+    } as any);
+
+    await expect(getMilestoneHistoryBatch(['p1'])).rejects.toThrow(
+      CONTRACT_ERRORS[9],
+    );
+    // No fallback per-player calls after a real contract error.
+    expect(mockRpc.simulateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  test('falls back to one call per player when the batch method is unavailable', async () => {
+    mockRpc.simulateTransaction
+      .mockRejectedValueOnce(new Error('UnexpectedType: unknown method'))
+      .mockResolvedValue({ result: { retval: {} } } as any);
+    mockScValToNative.mockReturnValue([]);
+
+    const result = await getMilestoneHistoryBatch(['p1', 'p2']);
+
+    // 1 failed batch attempt + 2 per-player fallback calls.
+    expect(mockRpc.simulateTransaction).toHaveBeenCalledTimes(3);
+    expect(result).toEqual({ p1: [], p2: [] });
   });
 });
 

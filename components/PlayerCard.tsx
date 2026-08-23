@@ -7,7 +7,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { mutate } from 'swr';
-import type { Player, ProgressLevel } from '@/types';
+import type { Milestone, Player, ProgressLevel } from '@/types';
 import { getProgressLabel } from '@/lib/progress';
 import { getMediaProxyUrl } from '@/lib/mediaUrl';
 import ProgressBar from './ProgressBar';
@@ -41,6 +41,17 @@ interface PlayerCardProps {
   /** When provided, renders a compare-selection checkbox at the top-left. */
   isCompareSelected?: boolean;
   onToggleCompare?: () => void;
+  /**
+   * When provided (even as an empty array), milestone data is taken from
+   * this prop instead of the card fetching its own via SWR. Callers that
+   * already have batched milestone data for a whole visible set of players
+   * (e.g. the virtualized scout results grid, via useMilestonesBatch) should
+   * pass it here to avoid one RPC round-trip per mounted card. Omit both
+   * this and `milestonesLoading` to keep the card's default self-fetching
+   * behavior for standalone usage (e.g. a single wallet-search result).
+   */
+  milestones?: Milestone[];
+  milestonesLoading?: boolean;
 }
 
 function PlayerCard({
@@ -49,15 +60,27 @@ function PlayerCard({
   onToggleWatchlist,
   isCompareSelected,
   onToggleCompare,
+  milestones: milestonesProp,
+  milestonesLoading: milestonesLoadingProp,
 }: PlayerCardProps) {
   const { id, vitals, progressLevel, ipfsHash } = player;
+  const usesExternalMilestones =
+    milestonesProp !== undefined || milestonesLoadingProp !== undefined;
   const {
-    data: milestones,
+    data: fetchedMilestones,
     error: milestonesError,
-    isLoading: milestonesLoading,
-  } = useSWR(`milestones:${id}`, () => getMilestoneHistory(id), {
-    revalidateOnFocus: false,
-  });
+    isLoading: fetchedMilestonesLoading,
+  } = useSWR(
+    usesExternalMilestones ? null : `milestones:${id}`,
+    () => getMilestoneHistory(id),
+    { revalidateOnFocus: false },
+  );
+  const milestones = usesExternalMilestones
+    ? milestonesProp
+    : fetchedMilestones;
+  const milestonesLoading = usesExternalMilestones
+    ? !!milestonesLoadingProp
+    : fetchedMilestonesLoading;
   const milestoneCount = milestones ? milestones.length : 0;
   const router = useRouter();
 
@@ -252,5 +275,7 @@ export default memo(
     prev.isWatched === next.isWatched &&
     prev.onToggleWatchlist === next.onToggleWatchlist &&
     prev.isCompareSelected === next.isCompareSelected &&
-    prev.onToggleCompare === next.onToggleCompare,
+    prev.onToggleCompare === next.onToggleCompare &&
+    prev.milestones === next.milestones &&
+    prev.milestonesLoading === next.milestonesLoading,
 );

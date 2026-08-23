@@ -2,17 +2,30 @@ import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
-// jsdom doesn't implement IntersectionObserver; useInfiniteScroll (used by
-// this component's pagination) constructs one on mount. This suite isn't
-// testing scroll-triggered loading itself, so a no-op stub is enough to
-// avoid the ReferenceError.
-class MockIntersectionObserver {
+// jsdom doesn't implement ResizeObserver; VirtualizedPlayerGrid's windowing
+// hook (useVirtualizedRows) constructs one on mount to track viewport
+// height. This suite isn't testing scroll/resize behavior itself, so a
+// no-op stub is enough to avoid the ReferenceError.
+class MockResizeObserver {
   observe() {}
   unobserve() {}
   disconnect() {}
 }
-// @ts-expect-error partial IntersectionObserver stub, sufficient for jsdom
-global.IntersectionObserver = MockIntersectionObserver;
+global.ResizeObserver = MockResizeObserver;
+
+// jsdom always reports clientHeight 0 (it doesn't run layout), so
+// VirtualizedPlayerGrid's viewport-derived visible window would otherwise
+// only include a couple of rows regardless of how many players a test
+// renders. Stub a realistic desktop viewport height so this suite's
+// existing interaction tests (which click buttons on several players at
+// once, e.g. multi-select compare) keep finding every player they render
+// in the DOM, the same way they would in a real browser where the grid
+// actually has room on screen. Dedicated virtualization/bounded-DOM
+// behavior is covered separately in VirtualizedPlayerGrid.test.tsx.
+Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+  configurable: true,
+  value: 2000,
+});
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -69,8 +82,11 @@ jest.mock('@/hooks/useScout', () => ({
   useScout: () => mockUseScout(),
 }));
 
+const mockGetMilestoneHistoryBatch = jest.fn().mockResolvedValue({});
 jest.mock('@/lib/contract', () => ({
   getPlayer: jest.fn(),
+  getMilestoneHistoryBatch: (...args: unknown[]) =>
+    mockGetMilestoneHistoryBatch(...args),
 }));
 
 const mockRouterReplace = jest.fn();
@@ -465,6 +481,55 @@ describe('ScoutDashboardContent — results', () => {
     const { rerender } = render(<ScoutDashboardContent />);
     simulateSearchCycle(rerender, [makePlayer('p1')]);
     expect(screen.getByText(/1 player found/i)).toBeInTheDocument();
+  });
+});
+
+// ── Milestone batching (issue #781) ───────────────────────────────────────────
+//
+// The results grid must fetch milestone data once for the whole result
+// set, not once per rendered PlayerCard — this is the fix for the N+1 RPC
+// fan-out the old per-card SWR call caused.
+
+describe('ScoutDashboardContent — milestone batching', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetMilestoneHistoryBatch.mockResolvedValue({});
+    setupScout();
+  });
+
+  it('fetches milestone data once for a batch of players, not once per card', async () => {
+    const manyPlayers = Array.from({ length: 30 }, (_, i) =>
+      makePlayer(`p${i}`),
+    );
+    const { rerender } = render(<ScoutDashboardContent />);
+
+    await act(async () => {
+      simulateSearchCycle(rerender, manyPlayers);
+      await Promise.resolve();
+    });
+
+    expect(mockGetMilestoneHistoryBatch).toHaveBeenCalledTimes(1);
+    expect(mockGetMilestoneHistoryBatch).toHaveBeenCalledWith(
+      manyPlayers.map((p) => p.id),
+    );
+  });
+
+  it('does not re-fetch milestones on a re-render with the same result set', async () => {
+    const players = Array.from({ length: 5 }, (_, i) => makePlayer(`p${i}`));
+    const { rerender } = render(<ScoutDashboardContent />);
+
+    await act(async () => {
+      simulateSearchCycle(rerender, players);
+      await Promise.resolve();
+    });
+    expect(mockGetMilestoneHistoryBatch).toHaveBeenCalledTimes(1);
+
+    // Re-render without changing the underlying result set.
+    await act(async () => {
+      rerender(<ScoutDashboardContent />);
+      await Promise.resolve();
+    });
+    expect(mockGetMilestoneHistoryBatch).toHaveBeenCalledTimes(1);
   });
 });
 

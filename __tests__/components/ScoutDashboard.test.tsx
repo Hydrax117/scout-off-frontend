@@ -4,22 +4,14 @@ import '@testing-library/jest-dom';
 
 // ── Globals ───────────────────────────────────────────────────────────────────
 
-// jsdom does not implement IntersectionObserver; provide a no-op stub.
-global.IntersectionObserver = class {
+// jsdom does not implement ResizeObserver; VirtualizedPlayerGrid's windowing
+// hook (useVirtualizedRows) constructs one on mount to track viewport
+// height. Provide a no-op stub.
+global.ResizeObserver = class {
   observe = jest.fn();
   unobserve = jest.fn();
   disconnect = jest.fn();
-  constructor(
-    _cb: IntersectionObserverCallback,
-    _opts?: IntersectionObserverInit,
-  ) {}
-  takeRecords(): IntersectionObserverEntry[] {
-    return [];
-  }
-  root: Element | null = null;
-  rootMargin: string = '';
-  thresholds: ReadonlyArray<number> = [];
-} as unknown as typeof IntersectionObserver;
+} as unknown as typeof ResizeObserver;
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -54,6 +46,7 @@ jest.mock('@/hooks/useScout', () => ({
 jest.mock('@/lib/contract', () => ({
   getPlayer: jest.fn(),
   filterPlayers: jest.fn(),
+  getMilestoneHistoryBatch: jest.fn().mockResolvedValue({}),
 }));
 
 jest.mock('next/navigation', () => ({

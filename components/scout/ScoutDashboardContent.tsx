@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -7,7 +7,7 @@ import { useRequireWallet } from '@/hooks/useRequireWallet';
 import { useRequireSubscription } from '@/hooks/useRequireSubscription';
 import { useScout } from '@/hooks/useScout';
 import { useSubscription } from '@/hooks/useSubscription';
-import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useMilestonesBatch } from '@/hooks/useMilestonesBatch';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useOnboardingTour } from '@/hooks/useOnboardingTour';
 import { useWatchlist } from '@/hooks/useWatchlist';
@@ -19,7 +19,6 @@ import PlayerCard from '@/components/PlayerCard';
 import PlayerCardSkeleton from '@/components/PlayerCardSkeleton';
 import PlayerFilterForm from '@/components/scout/PlayerFilterForm';
 import EmptyState from '@/components/ui/EmptyState';
-import Spinner from '@/components/ui/Spinner';
 import ReferralPanel from '@/components/scout/ReferralPanel';
 import SpendingSummary from '@/components/scout/SpendingSummary';
 import OnboardingTour from '@/components/ui/OnboardingTour';
@@ -27,6 +26,8 @@ import { scoutTourSteps, SCOUT_TOUR_ID } from '@/lib/tourSteps';
 import type { Player, PlayerFilter } from '@/types';
 import PullToRefresh from '@/components/ui/PullToRefresh';
 import ScrollToTop from '@/components/ui/ScrollToTop';
+import VirtualizedPlayerGrid from '@/components/scout/VirtualizedPlayerGrid';
+import type { VirtualizedPlayerGridHandle } from '@/components/scout/VirtualizedPlayerGrid';
 
 const PAGE_SIZE = 12;
 
@@ -97,15 +98,38 @@ export default function ScoutDashboardContent() {
   const [nameQuery, setNameQuery] = useState('');
   const debouncedName = useDebounce(nameQuery, 300);
 
-  const {
-    visibleItems: visiblePlayers,
-    isFetchingMore,
-    isExhausted,
-    sentinelRef,
-    goToPage,
-    currentPage,
-    totalPages,
-  } = useInfiniteScroll<Player>({ items: players, pageSize: PAGE_SIZE });
+  // Keyboard-accessible pagination is preserved as a first-class navigation
+  // mode alongside real scroll virtualization: `players` is fully in memory
+  // (rendering is windowed by VirtualizedPlayerGrid, not by slicing this
+  // array), so "page" here just means "where goToPage/Previous/Next scroll
+  // the virtualized grid to" — currentPage/totalPages describe that
+  // position rather than which items are mounted.
+  const totalPages = Math.max(1, Math.ceil(players.length / PAGE_SIZE));
+  const [currentPage, setCurrentPage] = useState(1);
+  const gridRef = useRef<VirtualizedPlayerGridHandle>(null);
+
+  // Reset to page 1 whenever the result set changes identity (new
+  // search/filter results replace `players` with a new array reference).
+  useEffect(() => {
+    setCurrentPage(1);
+    gridRef.current?.scrollToItemIndex(0);
+  }, [players]);
+
+  const goToPage = useCallback(
+    (page: number) => {
+      const clamped = Math.max(1, Math.min(page, totalPages));
+      setCurrentPage(clamped);
+      gridRef.current?.scrollToItemIndex((clamped - 1) * PAGE_SIZE);
+    },
+    [totalPages],
+  );
+
+  // Batched milestone fetch for the whole current result set — one request
+  // regardless of how many PlayerCards are mounted at any given scroll
+  // position, replacing each card's own per-player RPC call.
+  const playerIds = useMemo(() => players.map((p) => p.id), [players]);
+  const { milestonesById, isLoading: milestonesLoading } =
+    useMilestonesBatch(playerIds);
 
   const pageParam = Math.max(1, Number(searchParams.get('page') ?? '1'));
 
@@ -617,39 +641,22 @@ export default function ScoutDashboardContent() {
               </p>
             )}
 
-            <div
-              data-testid="player-grid"
-              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
-            >
-              {visiblePlayers.map((p) => (
+            <VirtualizedPlayerGrid
+              ref={gridRef}
+              items={players}
+              getKey={(p) => p.id}
+              renderItem={(p) => (
                 <PlayerCard
-                  key={p.id}
                   player={p}
                   isWatched={watchlist.isWatched(p.id)}
                   onToggleWatchlist={() => handleToggleWatchlist(p)}
                   isCompareSelected={compareIds.includes(p.id)}
                   onToggleCompare={() => toggleCompare(p.id)}
+                  milestones={milestonesById[p.id]}
+                  milestonesLoading={milestonesLoading && !milestonesById[p.id]}
                 />
-              ))}
-            </div>
-
-            <div ref={sentinelRef} aria-hidden="true" />
-
-            {isFetchingMore && (
-              <div className="flex justify-center py-4">
-                <Spinner size="md" />
-              </div>
-            )}
-
-            {isExhausted && players.length > PAGE_SIZE && (
-              <p
-                role="status"
-                aria-live="polite"
-                className="text-center text-sm text-gray-400 py-2"
-              >
-                No more results
-              </p>
-            )}
+              )}
+            />
 
             {players.length > PAGE_SIZE && (
               <nav

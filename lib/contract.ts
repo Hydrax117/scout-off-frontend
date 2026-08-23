@@ -35,6 +35,7 @@ import type {
   SubscriptionTier,
   TrialOfferDetails,
   TrialOfferType,
+  Milestone,
 } from '@/types';
 
 function getContract() {
@@ -484,6 +485,60 @@ export async function getMilestoneHistory(playerId: string) {
   return simulateTx('get_milestone_history', [
     nativeToScVal(playerId, { type: 'string' }),
   ]);
+}
+
+/**
+ * Retrieves milestone history for multiple players in a single RPC round-trip.
+ *
+ * Calls the contract's `get_milestone_history_batch` method, which accepts a
+ * vector of player IDs and returns a map of `playerId -> Milestone[]` in one
+ * simulation. This exists specifically to avoid the N-RPC-calls-per-render
+ * fan-out that comes from calling {@link getMilestoneHistory} once per
+ * player card — callers that need milestone data for a whole visible batch
+ * of players (e.g. a scout results grid) should call this instead of
+ * `Promise.all`-ing individual `getMilestoneHistory` calls.
+ *
+ * If the deployed contract does not yet expose `get_milestone_history_batch`
+ * (e.g. mid-rollout, before the contract-side method is deployed), this
+ * falls back to fetching each player's history individually via
+ * `Promise.all`, so callers keep working — just without the RPC-count win —
+ * until the batch method is live.
+ *
+ * @param playerIds - Player IDs to fetch milestone history for. Duplicate
+ *                     IDs are de-duplicated before the call. An empty array
+ *                     short-circuits to `{}` without any RPC call.
+ * @returns A Promise resolving to a map keyed by player ID, each value an
+ *          ordered array of {@link Milestone} records (empty array for a
+ *          player with no approved milestones).
+ * @throws {Error} If the RPC simulation request fails for a reason other
+ *                  than the batch method being unavailable.
+ */
+export async function getMilestoneHistoryBatch(
+  playerIds: string[],
+): Promise<Record<string, Milestone[]>> {
+  const uniqueIds = Array.from(new Set(playerIds));
+  if (uniqueIds.length === 0) return {};
+
+  try {
+    const result = await simulateTx('get_milestone_history_batch', [
+      nativeToScVal(uniqueIds),
+    ]);
+    return (result ?? {}) as Record<string, Milestone[]>;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // A real on-chain error (e.g. contract paused) is already normalized to
+    // one of CONTRACT_ERRORS' human-readable messages by parseContractError
+    // — those should still surface to the caller. Anything else is treated
+    // as "the deployed contract doesn't expose this batch method yet" and
+    // falls back to per-player calls instead of breaking the page.
+    if (Object.values(CONTRACT_ERRORS).includes(msg)) {
+      throw err;
+    }
+    const entries = await Promise.all(
+      uniqueIds.map(async (id) => [id, await getMilestoneHistory(id)] as const),
+    );
+    return Object.fromEntries(entries) as Record<string, Milestone[]>;
+  }
 }
 
 /**

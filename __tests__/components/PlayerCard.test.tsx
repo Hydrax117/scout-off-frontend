@@ -65,11 +65,12 @@ jest.mock('swr', () => ({
 // ── Typed mock handles ────────────────────────────────────────────────────────
 
 import { useRouter } from 'next/navigation';
-import { mutate } from 'swr';
+import useSWR, { mutate } from 'swr';
 import PlayerCard from '@/components/PlayerCard';
 
 const mockUseRouter = useRouter as jest.Mock;
 const mockMutate = mutate as jest.Mock;
+const mockUseSWR = useSWR as jest.Mock;
 
 // ── Shared fixture ────────────────────────────────────────────────────────────
 
@@ -429,5 +430,76 @@ describe('PlayerCard — no idle RPC traffic', () => {
 
     expect(mockUseRouter().prefetch).not.toHaveBeenCalled();
     expect(mockMutate).not.toHaveBeenCalled();
+  });
+});
+
+// ── Batched milestone data (issue #781) ───────────────────────────────────────
+//
+// Callers that already have milestone data for a whole visible batch of
+// players (e.g. the virtualized scout grid via useMilestonesBatch) pass it
+// in as a prop instead of letting the card fetch its own — this is what
+// eliminates the one-RPC-call-per-card fan-out. Standalone usage (no
+// milestones prop) must keep working exactly as before.
+
+describe('PlayerCard — externally-supplied milestones', () => {
+  beforeEach(() => {
+    mockUseSWR.mockClear();
+    mockUseSWR.mockReturnValue({
+      data: undefined,
+      error: undefined,
+      isLoading: false,
+    });
+  });
+
+  it('does not call its own SWR fetch when a milestones prop is supplied', () => {
+    render(<PlayerCard player={mockPlayer} milestones={[]} />);
+    // useSWR is still called (rules of hooks), but with a null key so SWR
+    // itself never issues a fetch for it.
+    expect(mockUseSWR).toHaveBeenCalledWith(
+      null,
+      expect.any(Function),
+      expect.any(Object),
+    );
+  });
+
+  it('renders the milestone count from the milestones prop, not internal SWR data', () => {
+    render(
+      <PlayerCard
+        player={mockPlayer}
+        milestones={[
+          {
+            id: 'm1',
+            description: 'x',
+            evidenceHash: 'Qm1',
+            validator: 'G1',
+            timestamp: 0,
+          },
+          {
+            id: 'm2',
+            description: 'y',
+            evidenceHash: 'Qm2',
+            validator: 'G2',
+            timestamp: 1,
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText('2 milestones')).toBeInTheDocument();
+  });
+
+  it('shows the loading skeleton while milestonesLoading is true, even with an empty milestones array', () => {
+    render(
+      <PlayerCard player={mockPlayer} milestones={[]} milestonesLoading />,
+    );
+    expect(screen.queryByText(/milestones/)).not.toBeInTheDocument();
+  });
+
+  it('falls back to its own SWR fetch when no milestones prop is passed (standalone usage)', () => {
+    render(<PlayerCard player={mockPlayer} />);
+    expect(mockUseSWR).toHaveBeenCalledWith(
+      `milestones:${mockPlayer.id}`,
+      expect.any(Function),
+      expect.any(Object),
+    );
   });
 });
