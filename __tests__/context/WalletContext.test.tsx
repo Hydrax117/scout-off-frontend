@@ -38,6 +38,17 @@ jest.mock('@/lib/stellar', () => ({
   TransactionBuilder: { fromXDR: jest.fn(() => ({})) },
 }));
 
+jest.mock('@/lib/sep10Validation', () => ({
+  validateSep10Challenge: jest.fn(() => ({ valid: true })),
+  getSep10ClientConfig: jest.fn(() => ({
+    serverAccount: 'GSERVERACCOUNT000000000000000000000000000000000000000',
+    homeDomain: 'localhost:3000',
+    networkPassphrase: 'Test SDF Network ; September 2015',
+  })),
+  SEP10_VALIDATION_USER_ERROR:
+    'Could not verify the login request from this site — please try again or contact support',
+}));
+
 jest.mock('@stellar/stellar-sdk', () => ({
   TransactionBuilder: { fromXDR: jest.fn(() => ({})) },
   Networks: {
@@ -168,6 +179,28 @@ describe('WalletContext', () => {
         }),
       ).rejects.toThrow('Freighter not installed');
       expect(result.current.isAuthenticated).toBe(false);
+    });
+
+    it('aborts before signing when SEP-10 challenge validation fails', async () => {
+      const { validateSep10Challenge, SEP10_VALIDATION_USER_ERROR } =
+        jest.requireMock('@/lib/sep10Validation');
+      validateSep10Challenge.mockReturnValueOnce({
+        valid: false,
+        reason: 'Transaction has operations that are not of type manageData',
+      });
+
+      setupSep10();
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+
+      await expect(
+        act(async () => {
+          await result.current.connectWithProvider('freighter');
+        }),
+      ).rejects.toThrow(SEP10_VALIDATION_USER_ERROR);
+
+      expect(freighter.signTransaction).not.toHaveBeenCalled();
+      expect(result.current.isAuthenticated).toBe(false);
+      expect(result.current.publicKey).toBeNull();
     });
 
     it('calls loadBalance after successful connect', async () => {

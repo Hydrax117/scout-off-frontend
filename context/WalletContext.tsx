@@ -403,13 +403,46 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setIsConnecting(true);
       setConnectingProvider(provider);
       try {
-        const { NETWORK } = await import('@/lib/stellar');
+        // Keep the SDK (and SEP-10 validation which imports it) off the
+        // critical path of every page — load both only when connecting.
+        const [
+          { NETWORK },
+          {
+            validateSep10Challenge,
+            getSep10ClientConfig,
+            SEP10_VALIDATION_USER_ERROR,
+          },
+        ] = await Promise.all([
+          import('@/lib/stellar'),
+          import('@/lib/sep10Validation'),
+        ]);
         const pk = await walletAdapters[provider].getPublicKey();
 
         // SEP-10 Auth Flow
         const challengeRes = await fetch(`/api/auth/sep10?account=${pk}`);
         if (!challengeRes.ok) throw new Error('Failed to fetch auth challenge');
         const { transaction } = await challengeRes.json();
+
+        // Client-side challenge verification (SEP-10 "Verifying the Challenge
+        // Transaction") — never ask a wallet to sign until we independently
+        // confirm this XDR is a well-formed auth challenge for this account
+        // and domain. Server-side verifyChallengeTxSigners alone cannot protect
+        // the user if the browser was handed an arbitrary transaction.
+        const sep10Config = getSep10ClientConfig();
+        const validation = validateSep10Challenge({
+          challengeXdr: transaction,
+          clientAccount: pk,
+          serverAccount: sep10Config.serverAccount,
+          homeDomain: sep10Config.homeDomain,
+          networkPassphrase: NETWORK,
+        });
+        if (!validation.valid) {
+          console.error(
+            'SEP-10 challenge validation failed:',
+            validation.reason,
+          );
+          throw new Error(SEP10_VALIDATION_USER_ERROR);
+        }
 
         const signedXdr = await walletAdapters[provider].signTransaction(
           transaction,

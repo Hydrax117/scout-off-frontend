@@ -37,6 +37,13 @@ process.env.NEXT_PUBLIC_NETWORK = 'testnet';
 process.env.NEXT_PUBLIC_CONTRACT_ID =
   'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 process.env.NEXT_PUBLIC_IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs';
+// Client-trusted SEP-10 expectations (mirrors .env.example). Unit tests that
+// build real challenges override these; WalletContext tests mock the validator.
+process.env.NEXT_PUBLIC_SEP10_SERVER_ACCOUNT =
+  process.env.NEXT_PUBLIC_SEP10_SERVER_ACCOUNT ??
+  'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
+process.env.NEXT_PUBLIC_SEP10_HOME_DOMAIN =
+  process.env.NEXT_PUBLIC_SEP10_HOME_DOMAIN ?? 'localhost:3000';
 // Signs the `session`/`session_refresh` cookies (see lib/session.ts). A
 // fixed test value so any test constructing a signed cookie by hand (via
 // createSessionToken) verifies against the same secret the route handlers
