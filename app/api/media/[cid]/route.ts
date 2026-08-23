@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyMediaUrlSignature } from '@/lib/mediaUrlSigning';
 import { createRequestLogger } from '@/lib/logger';
+import { fetchMediaFromGateways } from '@/lib/mediaProxyGateway';
 
 /**
  * GET /api/media/[cid]
@@ -24,6 +25,11 @@ import { createRequestLogger } from '@/lib/logger';
  * profile photo/video is a *new* CID (see buildUpdateProfile in
  * lib/contract.ts), not a mutation of an existing one, which is what makes
  * cache invalidation a non-issue here.
+ *
+ * HTTP Range requests are forwarded upstream so <video> scrubbing works.
+ * A bounded read-ahead probe (lib/mediaProxyGateway.ts) retries the next
+ * gateway when an upstream stream stalls or errors before any bytes are
+ * committed to the client.
  */
 
 const PRIMARY_GATEWAY =
@@ -132,40 +138,50 @@ export async function GET(
   }
 
   const gateways = [PRIMARY_GATEWAY, ...FALLBACK_GATEWAYS];
-  let lastError: unknown = null;
+  const rangeHeader = req.headers.get('range');
 
-  for (const gateway of gateways) {
-    try {
-      const upstream = await fetch(`${gateway}/${cid}`);
-      if (!upstream.ok || !upstream.body) {
-        lastError = new Error(`Gateway ${gateway} returned ${upstream.status}`);
-        continue;
-      }
+  try {
+    const result = await fetchMediaFromGateways({
+      cid,
+      gateways,
+      rangeHeader,
+    });
 
-      const contentType =
-        upstream.headers.get('content-type') ?? 'application/octet-stream';
-
-      return new NextResponse(upstream.body, {
-        status: 200,
-        headers: {
-          'Content-Type': contentType,
-          'Cache-Control': CACHE_CONTROL,
-          // Vercel's Edge Network (and most CDNs) prefer a dedicated
-          // CDN-facing directive over the browser-facing Cache-Control when
-          // both are present, so edge caching still applies even if a
-          // downstream proxy strips or rewrites Cache-Control for clients.
-          'CDN-Cache-Control': CACHE_CONTROL,
-          Vary: 'Accept',
-        },
-      });
-    } catch (err) {
-      lastError = err;
+    if (!result) {
+      log.error('All IPFS gateways exhausted', { cid });
+      return NextResponse.json({ error: 'Media not available' }, { status: 502 });
     }
-  }
 
-  log.error('All IPFS gateways exhausted', {
-    cid,
-    reason: lastError instanceof Error ? lastError.message : String(lastError),
-  });
-  return NextResponse.json({ error: 'Media not available' }, { status: 502 });
+    const responseHeaders: Record<string, string> = {
+      'Content-Type': result.contentType,
+      'Cache-Control': CACHE_CONTROL,
+      // Vercel's Edge Network (and most CDNs) prefer a dedicated
+      // CDN-facing directive over the browser-facing Cache-Control when
+      // both are present, so edge caching still applies even if a
+      // downstream proxy strips or rewrites Cache-Control for clients.
+      'CDN-Cache-Control': CACHE_CONTROL,
+      // Range + Accept so edge caches key full-file vs partial responses
+      // separately without disabling caching for the common start-from-zero case.
+      Vary: 'Range, Accept',
+      'Accept-Ranges': result.acceptRanges,
+    };
+
+    if (result.contentRange) {
+      responseHeaders['Content-Range'] = result.contentRange;
+    }
+    if (result.contentLength) {
+      responseHeaders['Content-Length'] = result.contentLength;
+    }
+
+    return new NextResponse(result.body, {
+      status: result.status,
+      headers: responseHeaders,
+    });
+  } catch (err) {
+    log.error('All IPFS gateways exhausted', {
+      cid,
+      reason: err instanceof Error ? err.message : String(err),
+    });
+    return NextResponse.json({ error: 'Media not available' }, { status: 502 });
+  }
 }
