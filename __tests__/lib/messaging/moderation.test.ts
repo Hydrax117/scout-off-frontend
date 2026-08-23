@@ -1,11 +1,13 @@
 const mockPost = jest.fn();
 const mockDelete = jest.fn();
+const mockGet = jest.fn();
 
 jest.mock('@/lib/messaging/chatApi', () => ({
   __esModule: true,
   default: {
     post: (...args: unknown[]) => mockPost(...args),
     delete: (...args: unknown[]) => mockDelete(...args),
+    get: (...args: unknown[]) => mockGet(...args),
   },
 }));
 
@@ -13,6 +15,7 @@ import {
   reportUser,
   blockUser,
   unblockUser,
+  fetchBlockedUsers,
   getBlockedUsers,
   isUserBlocked,
   type BlockedUser,
@@ -23,6 +26,7 @@ const BLOCKED_USERS_KEY = 'scoutoff_blocked_users';
 beforeEach(() => {
   mockPost.mockReset();
   mockDelete.mockReset();
+  mockGet.mockReset();
   mockPost.mockResolvedValue(undefined);
   mockDelete.mockResolvedValue(undefined);
   window.localStorage.clear();
@@ -100,6 +104,47 @@ describe('getBlockedUsers', () => {
   it('returns an empty array when localStorage contains invalid JSON', () => {
     window.localStorage.setItem(BLOCKED_USERS_KEY, 'not-json{{{');
     expect(getBlockedUsers()).toEqual([]);
+  });
+});
+
+describe('fetchBlockedUsers', () => {
+  it('fetches the authoritative block list from the server', async () => {
+    const serverList: BlockedUser[] = [
+      { userId: 'user-9', blockedAt: '2026-01-01T00:00:00.000Z' },
+    ];
+    mockGet.mockResolvedValue({ data: serverList });
+
+    const result = await fetchBlockedUsers();
+
+    expect(mockGet).toHaveBeenCalledWith('/moderation/blocks');
+    expect(result).toEqual(serverList);
+  });
+
+  it('persists the server response locally, overwriting whatever was cached', async () => {
+    window.localStorage.setItem(
+      BLOCKED_USERS_KEY,
+      JSON.stringify([{ userId: 'stale-user', blockedAt: 'x' }]),
+    );
+    const serverList: BlockedUser[] = [
+      { userId: 'user-9', blockedAt: '2026-01-01T00:00:00.000Z' },
+    ];
+    mockGet.mockResolvedValue({ data: serverList });
+
+    await fetchBlockedUsers();
+
+    expect(getBlockedUsers()).toEqual(serverList);
+  });
+
+  it('overwrites a corrupted local cache with the server response', async () => {
+    window.localStorage.setItem(BLOCKED_USERS_KEY, 'not-json{{{');
+    const serverList: BlockedUser[] = [
+      { userId: 'user-9', blockedAt: '2026-01-01T00:00:00.000Z' },
+    ];
+    mockGet.mockResolvedValue({ data: serverList });
+
+    await fetchBlockedUsers();
+
+    expect(getBlockedUsers()).toEqual(serverList);
   });
 });
 

@@ -1,17 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import {
-  blockUser,
-  isUserBlocked,
-  reportUser,
-  unblockUser,
-} from '@/lib/messaging/moderation';
+import { blockUser, reportUser, unblockUser } from '@/lib/messaging/moderation';
+import { useBlockedUsers } from '@/hooks/useBlockedUsers';
 
 /**
  * Report/Block controls for a message thread. Report captures a reason and
  * routes it to the moderation queue; Block stops further messages and
  * pay-to-contact unlocks from the counterpart, with an unblock option.
+ *
+ * Blocked state comes from useBlockedUsers, which reconciles against the
+ * server's authoritative block list rather than trusting only whatever
+ * this browser's localStorage happens to say.
  */
 export default function ReportBlockControls({
   threadId,
@@ -20,10 +20,16 @@ export default function ReportBlockControls({
   threadId: string;
   counterpartId: string;
 }) {
-  const [blocked, setBlocked] = useState(() => isUserBlocked(counterpartId));
+  const { isBlocked, refetch: refetchBlockedUsers } = useBlockedUsers();
+  const [optimisticBlocked, setOptimisticBlocked] = useState<boolean | null>(
+    null,
+  );
+  const blocked = optimisticBlocked ?? isBlocked(counterpartId);
+
   const [reporting, setReporting] = useState(false);
   const [reason, setReason] = useState('');
   const [status, setStatus] = useState<string | null>(null);
+  const [blockError, setBlockError] = useState<string | null>(null);
 
   const submitReport = async () => {
     if (!reason.trim()) return;
@@ -34,14 +40,28 @@ export default function ReportBlockControls({
   };
 
   const toggleBlock = async () => {
-    if (blocked) {
-      await unblockUser(counterpartId);
-      setBlocked(false);
-      setStatus('User unblocked.');
-    } else {
-      await blockUser(counterpartId);
-      setBlocked(true);
-      setStatus('User blocked. They can no longer message or contact you.');
+    const next = !blocked;
+    setOptimisticBlocked(next);
+    setBlockError(null);
+    try {
+      if (next) {
+        await blockUser(counterpartId);
+        setStatus('User blocked. They can no longer message or contact you.');
+      } else {
+        await unblockUser(counterpartId);
+        setStatus('User unblocked.');
+      }
+      // Kick off a refetch so the server list (and other consumers reading
+      // it) stay in sync, but don't wait on it to confirm the optimistic
+      // state — the block/unblock call already succeeded.
+      refetchBlockedUsers();
+    } catch {
+      setOptimisticBlocked(!next);
+      setBlockError(
+        next
+          ? 'Could not block this user. Please try again.'
+          : 'Could not unblock this user. Please try again.',
+      );
     }
   };
 
@@ -78,6 +98,7 @@ export default function ReportBlockControls({
 
       {blocked && <p className="text-gray-400">You have blocked this user.</p>}
       {status && <p className="text-green-600">{status}</p>}
+      {blockError && <p className="text-red-600">{blockError}</p>}
     </div>
   );
 }

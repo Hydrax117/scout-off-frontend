@@ -43,6 +43,20 @@ export async function unblockUser(counterpartId: string): Promise<void> {
   );
 }
 
+/**
+ * Fetches the current wallet's authoritative block list from the server.
+ * The local cache (read by getBlockedUsers/isUserBlocked) only reflects
+ * blocks made from this browser, so this is the source of truth once it
+ * resolves — the result is also persisted locally so subsequent
+ * synchronous reads (e.g. optimistic UI on the next page load) stay in
+ * sync with the server until the next fetch.
+ */
+export async function fetchBlockedUsers(): Promise<BlockedUser[]> {
+  const { data } = await chatApi.get<BlockedUser[]>('/moderation/blocks');
+  persistBlockedUsers(data);
+  return data;
+}
+
 export function getBlockedUsers(): BlockedUser[] {
   if (typeof window === 'undefined') return [];
   try {
