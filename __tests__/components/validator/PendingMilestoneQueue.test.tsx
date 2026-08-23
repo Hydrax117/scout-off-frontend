@@ -34,6 +34,16 @@ jest.mock('@/lib/api', () => ({
   decideMilestoneSubmission: jest.fn(),
 }));
 
+jest.mock('@/lib/confirmApprovalSubmission', () => ({
+  submitAndConfirmApproval: jest.fn(),
+  isOnChainApproved: (phase: string) =>
+    phase === 'success' || phase === 'event_lag',
+  CONFIRM_MAX_ATTEMPTS: 20,
+  CONFIRM_POLL_INTERVAL_MS: 2000,
+}));
+
+import { submitAndConfirmApproval } from '@/lib/confirmApprovalSubmission';
+
 const mockedUseValidatorPendingQueue =
   useValidatorPendingQueue as jest.MockedFunction<
     typeof useValidatorPendingQueue
@@ -52,6 +62,9 @@ const mockedDecideMilestoneSubmission =
   decideMilestoneSubmission as jest.MockedFunction<
     typeof decideMilestoneSubmission
   >;
+const mockedSubmitAndConfirm = submitAndConfirmApproval as jest.MockedFunction<
+  typeof submitAndConfirmApproval
+>;
 
 const VALIDATOR_ADDRESS = 'GVALIDATORPUBLICKEY';
 
@@ -311,11 +324,16 @@ describe('PendingMilestoneQueue', () => {
   });
 
   describe('bulk approve flow', () => {
-    it('approves selected items, shows a success summary, and refetches', async () => {
+    it('approves selected items only after confirmation, shows success summary, and refetches', async () => {
       const refetch = jest.fn();
       const approveMilestone = jest.fn().mockResolvedValue('xdr-payload');
-      const signAndSubmit = jest.fn().mockResolvedValue('tx-hash-1');
+      const signAndSubmit = jest.fn();
       mockedDecideMilestoneSubmission.mockResolvedValue({} as any);
+      mockedSubmitAndConfirm.mockResolvedValue({
+        phase: 'success',
+        hash: 'tx-hash-1',
+        message: 'Transaction confirmed on-chain.',
+      });
 
       setup({ refetch, approveMilestone, signAndSubmit });
 
@@ -329,31 +347,124 @@ describe('PendingMilestoneQueue', () => {
       });
 
       expect(
-        screen.getByText('All 2 selected milestones were approved.'),
+        screen.getByText('All 2 selected milestones were confirmed on-chain.'),
       ).toBeInTheDocument();
-      expect(approveMilestone).toHaveBeenCalledTimes(2);
-      expect(signAndSubmit).toHaveBeenCalledTimes(2);
+      expect(mockedSubmitAndConfirm).toHaveBeenCalledTimes(2);
       expect(mockedDecideMilestoneSubmission).toHaveBeenCalledTimes(2);
+      expect(mockedDecideMilestoneSubmission).toHaveBeenCalledWith(
+        'sub-1',
+        'approved',
+        'tx-hash-1',
+      );
       expect(refetch).toHaveBeenCalledTimes(1);
-      // Selection is cleared afterwards
       expect(
         screen.getByLabelText('Select all visible pending milestones'),
       ).not.toBeChecked();
     });
 
-    it('shows per-item failure state and a mixed-result summary when some approvals fail', async () => {
-      const approveMilestone = jest
-        .fn()
-        .mockImplementation((playerId: string) => {
-          if (playerId === 'player-2') {
-            return Promise.reject(new Error('Wallet not connected'));
-          }
-          return Promise.resolve('xdr-payload');
-        });
-      const signAndSubmit = jest.fn().mockResolvedValue('tx-hash-1');
+    it('does not call decideMilestoneSubmission when confirmation times out', async () => {
+      mockedSubmitAndConfirm.mockResolvedValue({
+        phase: 'timeout',
+        hash: 'tx-hash-timeout',
+        message:
+          'Transaction was submitted but not confirmed on-chain in time.',
+      });
+
+      setup({
+        approveMilestone: jest.fn().mockResolvedValue('xdr'),
+        signAndSubmit: jest.fn(),
+      });
+
+      fireEvent.click(
+        screen.getByLabelText('Select milestone for Alex Okafor'),
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Bulk Approve/ }));
+      });
+
+      expect(mockedDecideMilestoneSubmission).not.toHaveBeenCalled();
+      expect(screen.getByText(/Not confirmed in time/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          '0 of 1 approvals confirmed on-chain — 1 failed and remain pending for retry.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('one item timing out does not block or fail sibling items; summary counts confirmed only', async () => {
+      // First selected item times out; second succeeds.
+      let call = 0;
+      mockedSubmitAndConfirm.mockImplementation(async () => {
+        call += 1;
+        if (call === 1) {
+          return {
+            phase: 'timeout',
+            hash: 'timeout-hash',
+            message: 'not confirmed in time',
+          };
+        }
+        return {
+          phase: 'success',
+          hash: 'ok-hash',
+          message: 'confirmed',
+        };
+      });
       mockedDecideMilestoneSubmission.mockResolvedValue({} as any);
 
-      setup({ approveMilestone, signAndSubmit });
+      setup({
+        approveMilestone: jest.fn().mockResolvedValue('xdr-payload'),
+        signAndSubmit: jest.fn(),
+      });
+
+      fireEvent.click(
+        screen.getByLabelText('Select milestone for Alex Okafor'),
+      );
+      fireEvent.click(screen.getByLabelText('Select milestone for player-2'));
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Bulk Approve/ }));
+      });
+
+      expect(mockedSubmitAndConfirm).toHaveBeenCalledTimes(2);
+      expect(mockedDecideMilestoneSubmission).toHaveBeenCalledTimes(1);
+      expect(mockedDecideMilestoneSubmission).toHaveBeenCalledWith(
+        'sub-2',
+        'approved',
+        'ok-hash',
+      );
+      expect(
+        screen.getByText(
+          '1 of 2 approvals confirmed on-chain — 1 failed and remain pending for retry.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/Not confirmed in time/i)).toBeInTheDocument();
+      expect(screen.getByText('✓ Confirmed on-chain')).toBeInTheDocument();
+    });
+
+    it('shows per-item failure state and a mixed-result summary when some approvals fail on ledger', async () => {
+      let call = 0;
+      mockedSubmitAndConfirm.mockImplementation(async () => {
+        call += 1;
+        if (call === 2) {
+          return {
+            phase: 'failed',
+            hash: 'fail-hash',
+            message: 'Transaction failed on the ledger.',
+          };
+        }
+        return {
+          phase: 'success',
+          hash: 'tx-hash-1',
+          message: 'confirmed',
+        };
+      });
+      mockedDecideMilestoneSubmission.mockResolvedValue({} as any);
+
+      setup({
+        approveMilestone: jest.fn().mockResolvedValue('xdr-payload'),
+        signAndSubmit: jest.fn(),
+      });
 
       fireEvent.click(
         screen.getByLabelText('Select milestone for Alex Okafor'),
@@ -366,20 +477,17 @@ describe('PendingMilestoneQueue', () => {
 
       expect(
         screen.getByText(
-          '1 of 2 approvals succeeded — 1 failed and remain pending for retry.',
+          '1 of 2 approvals confirmed on-chain — 1 failed and remain pending for retry.',
         ),
       ).toBeInTheDocument();
-      expect(screen.getByText(/✕ Failed/)).toHaveTextContent(
-        'Wallet not connected',
-      );
-      expect(screen.getByText('✓ Approved')).toBeInTheDocument();
+      expect(screen.getByText(/Failed on ledger/i)).toBeInTheDocument();
+      expect(screen.getByText('✓ Confirmed on-chain')).toBeInTheDocument();
+      expect(mockedDecideMilestoneSubmission).toHaveBeenCalledTimes(1);
     });
 
     it('does nothing when Bulk Approve is triggered with no selection', () => {
       const approveMilestone = jest.fn();
       setup({ approveMilestone });
-
-      // Button is disabled, so simulate no-op by asserting handler never runs
       expect(approveMilestone).not.toHaveBeenCalled();
     });
   });
