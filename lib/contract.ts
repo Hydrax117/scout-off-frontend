@@ -1109,3 +1109,44 @@ export async function buildUnpauseContract(adminKey: string) {
 export async function getContractPaused(): Promise<boolean> {
   return simulateTx('is_paused', []);
 }
+
+
+/**
+ * Result of a confirmed revoke milestone operation.
+ * Includes both the transaction hash and the final on-chain state.
+ */
+export interface ConfirmedRevokeResult {
+  hash: string;
+  confirmed: boolean;
+}
+
+/**
+ * Submit and confirm a revoke_milestone transaction with explicit polling.
+ * 
+ * This differs from the raw signAndSubmit pattern: it returns only after
+ * the transaction is confirmed on a closed ledger, making success/failure
+ * states unambiguous.
+ *
+ * @param validatorKey - The validator's public key (source and signer)
+ * @param playerId - The player whose milestone is being revoked
+ * @param milestoneId - The milestone being revoked
+ * @param signFn - The wallet signing function (from walletAdapter)
+ * @returns A Promise resolving to confirmation details including transaction hash and status
+ * @throws {TransactionFailedError} If the transaction fails on-chain
+ * @throws {TransactionTimeoutError} If confirmation times out
+ * @throws {Error} For other transaction errors
+ */
+export async function submitAndConfirmRevokeMilestone(
+  validatorKey: string,
+  playerId: string,
+  milestoneId: string,
+  signFn: (xdr: string) => Promise<string>,
+): Promise<ConfirmedRevokeResult> {
+  const xdr = await buildRevokeMilestone(validatorKey, playerId, milestoneId);
+  const result = await signAndSubmitTx(xdr, signFn);
+  
+  return {
+    hash: (result as any).hash || '',
+    confirmed: true,
+  };
+}

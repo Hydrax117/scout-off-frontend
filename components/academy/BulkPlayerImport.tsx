@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, ChangeEvent } from 'react';
+import { useRef, useState, ChangeEvent, useEffect } from 'react';
 import { useWallet } from '@/hooks/useWallet';
 import useIsPaused from '@/hooks/useIsPaused';
 import { buildRegisterPlayer } from '@/lib/contract';
@@ -10,6 +10,15 @@ import {
   detectFormat,
   type ParsedRow,
 } from '@/lib/bulkImportParser';
+import {
+  hashFileContent,
+  getOrCreateSession,
+  getSessionRows,
+  updateRowStatus,
+  deleteSession,
+  cleanupExpiredSessions,
+  type BulkImportRowState,
+} from '@/lib/bulkImportStore';
 import { AFRICAN_REGIONS } from '@/lib/regions';
 import { FOOTBALL_POSITIONS } from '@/components/player/PlayerOnboardingWizard';
 import Button from '@/components/ui/Button';
@@ -136,6 +145,8 @@ export default function BulkPlayerImport() {
     {},
   );
   const [formError, setFormError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [fileHash, setFileHash] = useState<string | null>(null);
 
   const validRows = rows.filter((r) => r.isValid && r.valid);
   const invalidRows = rows.filter((r) => !r.isValid);
@@ -147,6 +158,11 @@ export default function BulkPlayerImport() {
     (s) => s.status === 'failed',
   ).length;
 
+  // On mount, clean up expired sessions
+  useEffect(() => {
+    cleanupExpiredSessions().catch(console.error);
+  }, []);
+
   const resetAll = () => {
     setPhase('upload');
     setFileName('');
@@ -154,6 +170,8 @@ export default function BulkPlayerImport() {
     setRows([]);
     setSubmissions({});
     setFormError(null);
+    setSessionId(null);
+    setFileHash(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -165,7 +183,7 @@ export default function BulkPlayerImport() {
     setFormError(null);
 
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const text = String(reader.result ?? '');
       const format = detectFormat(file.name, text);
       const result = parseBulkImportFile(text, format);
@@ -177,9 +195,28 @@ export default function BulkPlayerImport() {
         return;
       }
 
-      setRows(result.rows);
+      // Compute file hash for resume recognition
+      const hash = await hashFileContent(text);
+      setFileHash(hash);
+
+      // Check for existing session (resume case)
+      const session = await getOrCreateSession(hash, file.name);
+      setSessionId(session.sessionId);
       setFileName(file.name);
-      setSubmissions({});
+
+      // Restore persisted row states
+      const persistedRows = await getSessionRows(session.sessionId);
+      const submissionsMap: Record<number, RowSubmission> = {};
+      persistedRows.forEach((rowState, rowNum) => {
+        submissionsMap[rowNum] = {
+          status: rowState.status as RowSubmissionStatus,
+          txHash: rowState.txHash,
+          error: rowState.error,
+        };
+      });
+
+      setRows(result.rows);
+      setSubmissions(submissionsMap);
       setPhase('preview');
     };
     reader.onerror = () => {
@@ -212,16 +249,32 @@ export default function BulkPlayerImport() {
     setPhase('submitting');
 
     const initial: Record<number, RowSubmission> = {};
-    for (const r of validRows) initial[r.rowNumber] = { status: 'pending' };
+    for (const r of validRows) {
+      // Skip rows that already succeeded
+      if (submissions[r.rowNumber]?.status === 'success') {
+        initial[r.rowNumber] = submissions[r.rowNumber];
+        continue;
+      }
+      initial[r.rowNumber] = { status: 'pending' };
+    }
     setSubmissions(initial);
 
     for (const r of validRows) {
+      // Skip rows that already succeeded
+      if (submissions[r.rowNumber]?.status === 'success') {
+        continue;
+      }
+
       const vitals = r.valid as NonNullable<ParsedRow['valid']>;
 
       setSubmissions((prev) => ({
         ...prev,
         [r.rowNumber]: { status: 'signing' },
       }));
+      
+      if (sessionId) {
+        await updateRowStatus(sessionId, r.rowNumber, 'signing');
+      }
 
       try {
         const payload: PlayerVitals = {
@@ -244,11 +297,20 @@ export default function BulkPlayerImport() {
           ...prev,
           [r.rowNumber]: { status: 'success', txHash: hash },
         }));
+        
+        if (sessionId) {
+          await updateRowStatus(sessionId, r.rowNumber, 'success', hash);
+        }
       } catch (err) {
+        const errorMsg = parseContractError(err);
         setSubmissions((prev) => ({
           ...prev,
-          [r.rowNumber]: { status: 'failed', error: parseContractError(err) },
+          [r.rowNumber]: { status: 'failed', error: errorMsg },
         }));
+        
+        if (sessionId) {
+          await updateRowStatus(sessionId, r.rowNumber, 'failed', null, errorMsg);
+        }
       }
     }
 
@@ -454,7 +516,12 @@ export default function BulkPlayerImport() {
             <Button
               type="button"
               variant="secondary"
-              onClick={resetAll}
+              onClick={async () => {
+                if (sessionId) {
+                  await deleteSession(sessionId);
+                }
+                resetAll();
+              }}
               disabled={phase === 'submitting'}
             >
               {phase === 'done'
