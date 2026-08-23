@@ -25,6 +25,7 @@ jest.mock('axios', () => {
 });
 
 import { NextRequest } from 'next/server';
+import { createSessionToken } from '@/lib/session';
 
 function requestWithCookie(
   url: string,
@@ -32,7 +33,8 @@ function requestWithCookie(
   init: { method?: string; body?: string } = {},
 ): NextRequest {
   const headers: Record<string, string> = {};
-  if (cookie !== null) headers.cookie = `session=${cookie}`;
+  if (cookie !== null)
+    headers.cookie = `session=${createSessionToken(cookie, 'access', 20 * 60)}`;
   return new NextRequest(url, { ...init, headers });
 }
 

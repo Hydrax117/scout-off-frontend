@@ -125,6 +125,15 @@ describe('useWallet', () => {
       JSON.stringify({ publicKey: PUBLIC_KEY, provider: 'freighter' }),
     );
 
+    const { result } = renderHook(() => useWallet(), { wrapper });
+
+    // Let the mount-time restore (which now reconciles with GET
+    // /api/auth/session per #778) settle on the bare, unmocked `fetch`
+    // before queuing up the challenge/verify responses connect() itself
+    // needs — otherwise the restore's own network call consumes one of
+    // them first.
+    await waitFor(() => expect(result.current.isRestoringSession).toBe(false));
+
     (global.fetch as jest.Mock)
       .mockResolvedValueOnce({
         ok: true,
@@ -134,8 +143,6 @@ describe('useWallet', () => {
         ok: true,
         json: async () => ({}),
       });
-
-    const { result } = renderHook(() => useWallet(), { wrapper });
 
     await act(async () => {
       await result.current.connect();

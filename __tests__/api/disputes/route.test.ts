@@ -2,6 +2,7 @@
 import { GET, POST } from '@/app/api/disputes/route';
 import { NextRequest } from 'next/server';
 import { MilestoneDisputeStore } from '@/lib/milestoneDisputeStore';
+import { createSessionToken } from '@/lib/session';
 
 const ADMIN = 'GADMIN0000000000000000000000000000000000000000000000000';
 const SCOUT = 'GSCOUT0000000000000000000000000000000000000000000000000';
@@ -12,7 +13,9 @@ function makeRequest(
   init: { method?: string; cookie?: string; body?: unknown } = {},
 ): NextRequest {
   const headers: Record<string, string> = {};
-  if (init.cookie !== undefined) headers['cookie'] = `session=${init.cookie}`;
+  if (init.cookie !== undefined)
+    headers['cookie'] =
+      `session=${createSessionToken(init.cookie, 'access', 20 * 60)}`;
   if (init.body !== undefined) headers['content-type'] = 'application/json';
   return new NextRequest(url, {
     method: init.method ?? 'GET',
@@ -162,7 +165,7 @@ describe('POST /api/disputes', () => {
     const req = new NextRequest('http://localhost/api/disputes', {
       method: 'POST',
       headers: {
-        cookie: `session=${SCOUT}`,
+        cookie: `session=${createSessionToken(SCOUT, 'access', 20 * 60)}`,
         'content-type': 'application/json',
       },
       body: 'not json',

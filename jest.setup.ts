@@ -37,6 +37,11 @@ process.env.NEXT_PUBLIC_NETWORK = 'testnet';
 process.env.NEXT_PUBLIC_CONTRACT_ID =
   'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 process.env.NEXT_PUBLIC_IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs';
+// Signs the `session`/`session_refresh` cookies (see lib/session.ts). A
+// fixed test value so any test constructing a signed cookie by hand (via
+// createSessionToken) verifies against the same secret the route handlers
+// read.
+process.env.SESSION_SECRET = 'test-session-secret-do-not-use-in-production';
 
 jest.mock('next-intl', () => ({
   useTranslations: () => (key: string) => {

@@ -12,6 +12,7 @@ import { NextRequest } from 'next/server';
 import { AdminAuditStore } from '@/lib/adminAuditStore';
 import { getValidators, getContractPaused } from '@/lib/contract';
 import { fetchEvents } from '@/lib/indexerClient';
+import { createSessionToken } from '@/lib/session';
 
 const ADMIN = 'GADMIN0000000000000000000000000000000000000000000000000';
 
@@ -21,7 +22,9 @@ const mockFetchEvents = fetchEvents as jest.Mock;
 
 function makeRequest(cookie?: string): NextRequest {
   const headers: Record<string, string> = {};
-  if (cookie !== undefined) headers['cookie'] = `session=${cookie}`;
+  if (cookie !== undefined)
+    headers['cookie'] =
+      `session=${createSessionToken(cookie, 'access', 20 * 60)}`;
   return new NextRequest('http://localhost/api/admin/audit-log/reconcile', {
     headers,
   });

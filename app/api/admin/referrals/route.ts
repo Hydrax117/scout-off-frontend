@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import api from '@/lib/api';
-
-const ADMIN_ADDRESS = process.env.NEXT_PUBLIC_ADMIN_ADDRESS;
+import { requireAdminWallet } from '@/lib/adminAuth';
 
 export async function GET(req: NextRequest) {
-  const sessionCookie = req.cookies.get('session')?.value;
-  if (!sessionCookie || sessionCookie !== ADMIN_ADDRESS) {
+  const admin = requireAdminWallet(req);
+  if (!admin) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
