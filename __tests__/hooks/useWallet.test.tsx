@@ -19,6 +19,17 @@ jest.mock('@/lib/stellar', () => ({
   NETWORK: 'Test SDF Network ; September 2015',
 }));
 
+jest.mock('@/lib/sep10Validation', () => ({
+  validateSep10Challenge: jest.fn(() => ({ valid: true })),
+  getSep10ClientConfig: jest.fn(() => ({
+    serverAccount: 'GSERVERACCOUNT000000000000000000000000000000000000000',
+    homeDomain: 'localhost:3000',
+    networkPassphrase: 'Test SDF Network ; September 2015',
+  })),
+  SEP10_VALIDATION_USER_ERROR:
+    'Could not verify the login request from this site — please try again or contact support',
+}));
+
 jest.mock('@stellar/stellar-sdk', () => ({
   TransactionBuilder: { fromXDR: jest.fn(() => ({})) },
   Networks: { PUBLIC: 'Public Global Stellar Network ; September 2015' },
