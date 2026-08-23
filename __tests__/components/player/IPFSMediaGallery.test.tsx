@@ -39,6 +39,8 @@ let observerCallbacks: IntersectionObserverCallback[] = [];
 beforeEach(() => {
   observerCallbacks = [];
   mockUseVideoPosterFrame.mockReturnValue(null);
+  HTMLMediaElement.prototype.load = jest.fn();
+  HTMLMediaElement.prototype.play = jest.fn(() => Promise.resolve());
   global.IntersectionObserver = class {
     private cb: IntersectionObserverCallback;
     constructor(cb: IntersectionObserverCallback) {
@@ -201,5 +203,74 @@ describe('IPFSMediaGallery', () => {
   it('renders independent observers per tile for multiple CIDs', () => {
     render(<IPFSMediaGallery cids={['QmA.mp4', 'QmB.webm']} />);
     expect(observerCallbacks.length).toBe(2);
+  });
+
+  it('calls video.load() when playback starts', () => {
+    const { container } = render(<IPFSMediaGallery cids={['QmClip.mp4']} />);
+    fireIntersection(0, true);
+    fireEvent.click(screen.getByRole('button', { name: /play video/i }));
+    expect(HTMLMediaElement.prototype.load).toHaveBeenCalled();
+    expect(container.querySelector('source')).toBeInTheDocument();
+  });
+
+  it('shows reconnecting UI and retries with a cache-busted URL on video error', async () => {
+    const { container } = render(<IPFSMediaGallery cids={['QmClip.mp4']} />);
+    fireIntersection(0, true);
+    fireEvent.click(screen.getByRole('button', { name: /play video/i }));
+
+    const video = container.querySelector('video')!;
+    expect(container.querySelector('source')).toHaveAttribute(
+      'src',
+      '/api/media/QmClip.mp4',
+    );
+
+    await act(async () => {
+      fireEvent.error(video);
+    });
+
+    expect(screen.getByText(/reconnecting/i)).toBeInTheDocument();
+    expect(container.querySelector('source')).toHaveAttribute(
+      'src',
+      '/api/media/QmClip.mp4?retry=1',
+    );
+  });
+
+  it('shows unavailable retry UI after max automatic retries', async () => {
+    const { container } = render(<IPFSMediaGallery cids={['QmClip.mp4']} />);
+    fireIntersection(0, true);
+    fireEvent.click(screen.getByRole('button', { name: /play video/i }));
+
+    const video = container.querySelector('video')!;
+
+    await act(async () => {
+      fireEvent.error(video);
+      fireEvent.error(video);
+      fireEvent.error(video);
+    });
+
+    expect(
+      screen.getByRole('button', { name: /unavailable — retry/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('recovers playback when the user clicks unavailable retry', async () => {
+    const { container } = render(<IPFSMediaGallery cids={['QmClip.mp4']} />);
+    fireIntersection(0, true);
+    fireEvent.click(screen.getByRole('button', { name: /play video/i }));
+
+    const video = container.querySelector('video')!;
+    await act(async () => {
+      fireEvent.error(video);
+      fireEvent.error(video);
+      fireEvent.error(video);
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /unavailable — retry/i }),
+    );
+
+    expect(screen.queryByText(/unavailable/i)).not.toBeInTheDocument();
+    expect(HTMLMediaElement.prototype.load).toHaveBeenCalled();
+    expect(container.querySelector('source')).toBeInTheDocument();
   });
 });

@@ -17,7 +17,17 @@ function makeRequest(
 }
 
 function mockFetchOnce(response: Partial<Response> & { ok: boolean }) {
-  (global.fetch as jest.Mock).mockResolvedValueOnce(response as Response);
+  const body =
+    response.body ??
+    new ReadableStream({
+      start(controller) {
+        controller.close();
+      },
+    });
+  (global.fetch as jest.Mock).mockResolvedValueOnce({
+    ...response,
+    body,
+  } as Response);
 }
 
 beforeEach(() => {
@@ -34,7 +44,7 @@ describe('GET /api/media/[cid] — happy path', () => {
     mockFetchOnce({
       ok: true,
       status: 200,
-      body: new ReadableStream(),
+      body: makeBody([new Uint8Array([1])]),
       headers: new Headers({ 'content-type': 'image/webp' }),
     } as unknown as Response);
 
@@ -49,6 +59,8 @@ describe('GET /api/media/[cid] — happy path', () => {
     expect(res.headers.get('cdn-cache-control')).toBe(
       'public, max-age=31536000, immutable',
     );
+    expect(res.headers.get('accept-ranges')).toBe('bytes');
+    expect(res.headers.get('vary')).toBe('Range, Accept');
   });
 
   it('falls back to the next gateway when the primary fails', async () => {
@@ -57,7 +69,7 @@ describe('GET /api/media/[cid] — happy path', () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        body: new ReadableStream(),
+        body: makeBody([new Uint8Array([1])]),
         headers: new Headers({ 'content-type': 'image/png' }),
       } as unknown as Response);
 
@@ -94,7 +106,7 @@ describe('GET /api/media/[cid] — referrer gating (no signature)', () => {
     mockFetchOnce({
       ok: true,
       status: 200,
-      body: new ReadableStream(),
+      body: makeBody([new Uint8Array([1])]),
       headers: new Headers({ 'content-type': 'image/png' }),
     } as unknown as Response);
 
@@ -107,7 +119,7 @@ describe('GET /api/media/[cid] — referrer gating (no signature)', () => {
     mockFetchOnce({
       ok: true,
       status: 200,
-      body: new ReadableStream(),
+      body: makeBody([new Uint8Array([1])]),
       headers: new Headers({ 'content-type': 'image/png' }),
     } as unknown as Response);
 
@@ -134,7 +146,7 @@ describe('GET /api/media/[cid] — signed URL handling', () => {
     mockFetchOnce({
       ok: true,
       status: 200,
-      body: new ReadableStream(),
+      body: makeBody([new Uint8Array([1])]),
       headers: new Headers({ 'content-type': 'image/png' }),
     } as unknown as Response);
 
@@ -163,7 +175,7 @@ describe('GET /api/media/[cid] — rate limiting', () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       status: 200,
-      body: new ReadableStream(),
+      body: makeBody([new Uint8Array([1])]),
       headers: new Headers({ 'content-type': 'image/png' }),
     } as unknown as Response);
 
@@ -179,4 +191,225 @@ describe('GET /api/media/[cid] — rate limiting', () => {
     expect(lastRes!.status).toBe(429);
     expect(lastRes!.headers.get('retry-after')).toBe('60');
   });
+});
+
+function makeBody(
+  chunks: Uint8Array[],
+  failOnChunkIndex?: number,
+): ReadableStream<Uint8Array> {
+  let index = 0;
+  return new ReadableStream({
+    pull(controller) {
+      if (failOnChunkIndex !== undefined && index >= failOnChunkIndex) {
+        controller.error(new Error('stream failed'));
+        return;
+      }
+      if (index < chunks.length) {
+        controller.enqueue(chunks[index++]);
+      } else {
+        controller.close();
+      }
+    },
+  });
+}
+
+describe('GET /api/media/[cid] — HTTP Range support', () => {
+  it('returns 206 with Content-Range when upstream honors Range', async () => {
+    const chunk = new Uint8Array([1, 2, 3, 4]);
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 206,
+      body: makeBody([chunk]),
+      headers: new Headers({
+        'content-type': 'video/mp4',
+        'content-range': 'bytes 1024-1027/20971520',
+        'content-length': '4',
+        'accept-ranges': 'bytes',
+      }),
+    } as Response);
+
+    const req = makeRequest('http://localhost:3000/api/media/QmClip.mp4', {
+      range: 'bytes=1024-1027',
+    });
+    const res = await GET(req, { params: { cid: 'QmClip.mp4' } });
+
+    expect(res.status).toBe(206);
+    expect(res.headers.get('content-range')).toBe('bytes 1024-1027/20971520');
+    expect(res.headers.get('content-length')).toBe('4');
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('QmClip.mp4'),
+      expect.objectContaining({
+        headers: { Range: 'bytes=1024-1027' },
+      }),
+    );
+  });
+
+  it('falls back to 200 when upstream ignores Range', async () => {
+    const chunk = new Uint8Array(1024).fill(1);
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: makeBody([chunk]),
+      headers: new Headers({
+        'content-type': 'video/mp4',
+        'content-length': '1024',
+      }),
+    } as Response);
+
+    const req = makeRequest('http://localhost:3000/api/media/QmClip.mp4', {
+      range: 'bytes=0-1023',
+    });
+    const res = await GET(req, { params: { cid: 'QmClip.mp4' } });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-range')).toBeNull();
+  });
+
+  it('simulates seek/scrub via a second Range request for a large clip', async () => {
+    const firstChunk = new Uint8Array(4096).fill(2);
+    const seekChunk = new Uint8Array(4096).fill(9);
+
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 206,
+        body: makeBody([firstChunk]),
+        headers: new Headers({
+          'content-type': 'video/mp4',
+          'content-range': 'bytes 0-4095/20971520',
+          'content-length': '4096',
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 206,
+        body: makeBody([seekChunk]),
+        headers: new Headers({
+          'content-type': 'video/mp4',
+          'content-range': 'bytes 1048576-1048576+4095/20971520',
+          'content-length': '4096',
+        }),
+      } as Response);
+
+    const startReq = makeRequest('http://localhost:3000/api/media/QmClip.mp4', {
+      range: 'bytes=0-4095',
+    });
+    const startRes = await GET(startReq, { params: { cid: 'QmClip.mp4' } });
+    expect(startRes.status).toBe(206);
+
+    const seekReq = makeRequest('http://localhost:3000/api/media/QmClip.mp4', {
+      range: 'bytes=1048576-1048576+4095',
+    });
+    const seekRes = await GET(seekReq, { params: { cid: 'QmClip.mp4' } });
+    expect(seekRes.status).toBe(206);
+    expect(seekRes.headers.get('content-range')).toContain('1048576');
+  });
+});
+
+describe('GET /api/media/[cid] — mid-stream gateway failover', () => {
+  it('retries the next gateway when the first upstream stream fails during read-ahead', async () => {
+    const okChunk = new Uint8Array([5, 6, 7]);
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: makeBody([], 0),
+        headers: new Headers({ 'content-type': 'video/mp4' }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: makeBody([okChunk]),
+        headers: new Headers({ 'content-type': 'video/mp4' }),
+      } as Response);
+
+    const req = makeRequest('http://localhost:3000/api/media/QmClip.mp4');
+    const res = await GET(req, { params: { cid: 'QmClip.mp4' } });
+
+    expect(res.status).toBe(200);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    const reader = res.body!.getReader();
+    const { value } = await reader.read();
+    expect(Array.from(value!)).toEqual([5, 6, 7]);
+  });
+
+  it('surfaces a clean error when every gateway fails during read-ahead', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: makeBody([], 0),
+      headers: new Headers({ 'content-type': 'video/mp4' }),
+    } as Response);
+
+    const req = makeRequest('http://localhost:3000/api/media/QmClip.mp4');
+    const res = await GET(req, { params: { cid: 'QmClip.mp4' } });
+
+    expect(res.status).toBe(502);
+  });
+});
+
+describe('GET /api/media/[cid] — Range with signature/referrer gating', () => {
+  it('accepts a valid signature with a Range header', async () => {
+    mockVerify.mockReturnValue(true);
+    mockFetchOnce({
+      ok: true,
+      status: 206,
+      body: makeBody([new Uint8Array([1])]),
+      headers: new Headers({
+        'content-type': 'video/mp4',
+        'content-range': 'bytes 0-0/100',
+        'content-length': '1',
+      }),
+    } as unknown as Response);
+
+    const req = makeRequest(
+      'http://localhost:3000/api/media/QmClip.mp4?exp=9999999999&sig=deadbeef',
+      { range: 'bytes=0-0' },
+    );
+    const res = await GET(req, { params: { cid: 'QmClip.mp4' } });
+    expect(res.status).toBe(206);
+  });
+
+  it('rejects an invalid signature with a Range header', async () => {
+    mockVerify.mockReturnValue(false);
+
+    const req = makeRequest(
+      'http://localhost:3000/api/media/QmClip.mp4?exp=9999999999&sig=bad',
+      { range: 'bytes=0-1023' },
+    );
+    const res = await GET(req, { params: { cid: 'QmClip.mp4' } });
+    expect(res.status).toBe(403);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/media/[cid] — startup latency (no-regression guard)', () => {
+  it(
+    'delivers the first byte quickly for a representative 20MB clip (full-file, no Range)',
+    async () => {
+      const firstByte = new Uint8Array([0x00]);
+      mockFetchOnce({
+        ok: true,
+        status: 200,
+        body: makeBody([firstByte]),
+        headers: new Headers({
+          'content-type': 'video/mp4',
+          'content-length': '20971520',
+        }),
+      } as unknown as Response);
+
+      const start = performance.now();
+      const req = makeRequest('http://localhost:3000/api/media/QmClip.mp4');
+      const res = await GET(req, { params: { cid: 'QmClip.mp4' } });
+      const reader = res.body!.getReader();
+      await reader.read();
+      const elapsed = performance.now() - start;
+
+      // Method: measure wall time from route handler entry to first body chunk
+      // via ReadableStream reader — same path browsers use for first-byte delivery.
+      // Budget: 500ms in unit tests (mocked upstream, no real network).
+      expect(elapsed).toBeLessThan(500);
+      expect(res.status).toBe(200);
+    },
+  );
 });

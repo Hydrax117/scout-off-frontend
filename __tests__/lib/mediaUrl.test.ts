@@ -55,4 +55,13 @@ describe('getMediaProxyUrl', () => {
     expect(withGateway).toBe('/api/media/QmAbc123');
     expect(withoutGateway).toBe(withGateway);
   });
+
+  test('appends a retry query param for client playback recovery', () => {
+    expect(getMediaProxyUrl('QmClip.mp4', { retry: 2 })).toBe(
+      '/api/media/QmClip.mp4?retry=2',
+    );
+    expect(getMediaProxyUrl('QmClip.mp4', { retry: 0 })).toBe(
+      '/api/media/QmClip.mp4',
+    );
+  });
 });
