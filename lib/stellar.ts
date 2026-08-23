@@ -41,12 +41,34 @@ export class TransactionTimeoutError extends Error {
   }
 }
 
+export interface PollTransactionOptions {
+  /** Abort mid-poll (e.g. component unmount). */
+  signal?: AbortSignal;
+}
+
+function assertNotAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    const err = new Error('Polling aborted');
+    err.name = 'AbortError';
+    throw err;
+  }
+}
+
+/**
+ * Polls Soroban RPC until `hash` is included in a closed ledger (or fails).
+ *
+ * Defaults: 20 attempts × 2s ≈ 40s — ~8 Stellar ledger closes (~5s each),
+ * enough for normal confirmation under mild congestion without hanging forever.
+ */
 export async function pollTransaction(
   hash: string,
-  maxAttempts = 10,
-  delayMs = 3000,
+  maxAttempts = 20,
+  delayMs = 2000,
+  options: PollTransactionOptions = {},
 ) {
+  const { signal } = options;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    assertNotAborted(signal);
     const result = await rpc.getTransaction(hash);
     if (result.status !== 'NOT_FOUND') {
       if (result.status === 'FAILED') {
@@ -55,7 +77,22 @@ export async function pollTransaction(
       return result;
     }
     if (attempt < maxAttempts - 1) {
-      await new Promise<void>((r) => setTimeout(r, delayMs));
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, delayMs);
+        const onAbort = () => {
+          clearTimeout(timer);
+          const err = new Error('Polling aborted');
+          err.name = 'AbortError';
+          reject(err);
+        };
+        if (signal) {
+          if (signal.aborted) {
+            onAbort();
+            return;
+          }
+          signal.addEventListener('abort', onAbort, { once: true });
+        }
+      });
     }
   }
   throw new TransactionTimeoutError(hash, maxAttempts);

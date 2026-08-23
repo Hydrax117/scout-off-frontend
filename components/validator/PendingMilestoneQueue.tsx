@@ -7,7 +7,13 @@ import { useValidator } from '@/hooks/useValidator';
 import { useWallet } from '@/hooks/useWallet';
 import useIsPaused from '@/hooks/useIsPaused';
 import { decideMilestoneSubmission } from '@/lib/api';
-import { parseContractError } from '@/lib/contractErrorMessage';
+import {
+  CONFIRM_MAX_ATTEMPTS,
+  CONFIRM_POLL_INTERVAL_MS,
+  isOnChainApproved,
+  submitAndConfirmApproval,
+  type ApprovalPhase,
+} from '@/lib/confirmApprovalSubmission';
 import Select from '@/components/ui/Select';
 import EmptyState from '@/components/ui/EmptyState';
 import Button from '@/components/ui/Button';
@@ -16,7 +22,14 @@ import type { MilestoneSubmission } from '@/types';
 
 type SortOrder = 'oldest' | 'newest';
 type PlayerFilter = 'all' | 'previously-approved';
-type ItemStatus = 'signing' | 'success' | 'failed';
+type ItemStatus =
+  | 'signing'
+  | 'confirming'
+  | 'success'
+  | 'event_lag'
+  | 'failed'
+  | 'timeout'
+  | 'error';
 
 interface PendingMilestoneQueueProps {
   validatorAddress: string;
@@ -28,6 +41,28 @@ function sortSubmissions(
 ): MilestoneSubmission[] {
   const sorted = [...submissions].sort((a, b) => a.createdAt - b.createdAt);
   return order === 'newest' ? sorted.reverse() : sorted;
+}
+
+function phaseToItemStatus(phase: ApprovalPhase): ItemStatus | null {
+  switch (phase) {
+    case 'signing':
+      return 'signing';
+    case 'submitted':
+    case 'confirming':
+      return 'confirming';
+    case 'success':
+      return 'success';
+    case 'event_lag':
+      return 'event_lag';
+    case 'failed':
+      return 'failed';
+    case 'timeout':
+      return 'timeout';
+    case 'error':
+      return 'error';
+    default:
+      return null;
+  }
 }
 
 export default function PendingMilestoneQueue({
@@ -46,6 +81,7 @@ export default function PendingMilestoneQueue({
   const [bulkRunning, setBulkRunning] = useState(false);
   const [itemStatus, setItemStatus] = useState<Record<string, ItemStatus>>({});
   const [itemError, setItemError] = useState<Record<string, string>>({});
+  const [itemHash, setItemHash] = useState<Record<string, string>>({});
   const [bulkSummary, setBulkSummary] = useState<{
     succeeded: number;
     failed: number;
@@ -97,6 +133,8 @@ export default function PendingMilestoneQueue({
   // signed transaction without a batch entry point in the contract — this
   // submits one signed transaction per selected item, sequentially, so a
   // rejected/failed signature only stops that item rather than the batch.
+  // Each item has a bounded confirmation poll (~40s) so one timeout cannot
+  // hang the batch indefinitely.
   async function handleBulkApprove() {
     if (!validatorAddress || isPaused || bulkRunning) return;
     const ids = visibleIds.filter((id) => selectedIds.has(id));
@@ -105,6 +143,7 @@ export default function PendingMilestoneQueue({
     setBulkRunning(true);
     setBulkSummary(null);
     setItemError({});
+    setItemHash({});
     setItemStatus(Object.fromEntries(ids.map((id) => [id, 'signing'])));
 
     let succeeded = 0;
@@ -116,17 +155,71 @@ export default function PendingMilestoneQueue({
 
       setItemStatus((prev) => ({ ...prev, [id]: 'signing' }));
       try {
-        const xdr = await approveMilestone(
-          submission.playerId,
-          submission.description,
-        );
-        const hash = await signAndSubmit(xdr);
-        await decideMilestoneSubmission(id, 'approved', hash);
-        setItemStatus((prev) => ({ ...prev, [id]: 'success' }));
-        succeeded++;
+        const result = await submitAndConfirmApproval({
+          buildXdr: () =>
+            approveMilestone(submission.playerId, submission.description),
+          signAndSubmit,
+          playerId: submission.playerId,
+          validatorAddress,
+          confirmMaxAttempts: CONFIRM_MAX_ATTEMPTS,
+          confirmDelayMs: CONFIRM_POLL_INTERVAL_MS,
+          // Keep event wait short in bulk so siblings are not delayed as much.
+          eventReconcileTimeoutMs: 8_000,
+          onPhase: (phase, meta) => {
+            const mapped = phaseToItemStatus(phase);
+            if (mapped) {
+              setItemStatus((prev) => ({ ...prev, [id]: mapped }));
+            }
+            if (meta.hash) {
+              setItemHash((prev) => ({ ...prev, [id]: meta.hash! }));
+            }
+            if (
+              meta.message &&
+              (phase === 'failed' || phase === 'timeout' || phase === 'error')
+            ) {
+              setItemError((prev) => ({
+                ...prev,
+                [id]: meta.message!,
+              }));
+            }
+          },
+        });
+
+        if (result.hash) {
+          setItemHash((prev) => ({ ...prev, [id]: result.hash! }));
+        }
+
+        if (isOnChainApproved(result.phase)) {
+          // Only notify the backend after ledger confirmation (or confirmed
+          // with indexer lag — on-chain state is still correct).
+          await decideMilestoneSubmission(id, 'approved', result.hash!);
+          setItemStatus((prev) => ({
+            ...prev,
+            [id]: result.phase === 'event_lag' ? 'event_lag' : 'success',
+          }));
+          if (result.phase === 'event_lag') {
+            setItemError((prev) => ({ ...prev, [id]: result.message }));
+          }
+          succeeded++;
+        } else {
+          setItemStatus((prev) => ({
+            ...prev,
+            [id]:
+              result.phase === 'timeout'
+                ? 'timeout'
+                : result.phase === 'failed'
+                  ? 'failed'
+                  : 'error',
+          }));
+          setItemError((prev) => ({ ...prev, [id]: result.message }));
+          failed++;
+        }
       } catch (e) {
-        setItemStatus((prev) => ({ ...prev, [id]: 'failed' }));
-        setItemError((prev) => ({ ...prev, [id]: parseContractError(e) }));
+        setItemStatus((prev) => ({ ...prev, [id]: 'error' }));
+        setItemError((prev) => ({
+          ...prev,
+          [id]: e instanceof Error ? e.message : 'Approval failed',
+        }));
         failed++;
       }
     }
@@ -250,14 +343,15 @@ export default function PendingMilestoneQueue({
               }`}
             >
               {bulkSummary.failed > 0
-                ? `${bulkSummary.succeeded} of ${bulkSummary.succeeded + bulkSummary.failed} approvals succeeded — ${bulkSummary.failed} failed and remain pending for retry.`
-                : `All ${bulkSummary.succeeded} selected milestones were approved.`}
+                ? `${bulkSummary.succeeded} of ${bulkSummary.succeeded + bulkSummary.failed} approvals confirmed on-chain — ${bulkSummary.failed} failed and remain pending for retry.`
+                : `All ${bulkSummary.succeeded} selected milestones were confirmed on-chain.`}
             </div>
           )}
 
           <ul className="flex flex-col gap-3">
             {visibleSubmissions.map((submission) => {
               const status = itemStatus[submission.id];
+              const hash = itemHash[submission.id];
               return (
                 <li
                   key={submission.id}
@@ -280,7 +374,11 @@ export default function PendingMilestoneQueue({
                         <span className="text-xs text-gray-400">
                           {new Date(submission.createdAt).toLocaleDateString(
                             undefined,
-                            { year: 'numeric', month: 'short', day: 'numeric' },
+                            {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                            },
                           )}
                         </span>
                       </div>
@@ -304,14 +402,45 @@ export default function PendingMilestoneQueue({
                           Awaiting signature&hellip;
                         </span>
                       )}
-                      {status === 'success' && (
-                        <span className="text-xs text-brand-green mt-1">
-                          ✓ Approved
+                      {status === 'confirming' && (
+                        <span className="inline-flex flex-wrap items-center gap-1.5 text-xs text-yellow-300 mt-1">
+                          <Spinner size="sm" className="text-yellow-300" />
+                          Submitted — confirming on-chain&hellip;
+                          {hash && (
+                            <a
+                              href={`https://stellar.expert/explorer/${process.env.NEXT_PUBLIC_NETWORK === 'mainnet' ? 'mainnet' : 'testnet'}/tx/${hash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-brand-green underline"
+                            >
+                              View tx
+                            </a>
+                          )}
                         </span>
                       )}
-                      {status === 'failed' && (
+                      {status === 'success' && (
+                        <span className="text-xs text-brand-green mt-1">
+                          ✓ Confirmed on-chain
+                        </span>
+                      )}
+                      {status === 'event_lag' && (
+                        <span className="text-xs text-amber-400 mt-1">
+                          ✓ Confirmed on-chain (feed lag)
+                          {itemError[submission.id]
+                            ? ` — ${itemError[submission.id]}`
+                            : ''}
+                        </span>
+                      )}
+                      {(status === 'failed' ||
+                        status === 'timeout' ||
+                        status === 'error') && (
                         <span className="text-xs text-red-400 mt-1">
-                          ✕ Failed
+                          ✕{' '}
+                          {status === 'timeout'
+                            ? 'Not confirmed in time'
+                            : status === 'failed'
+                              ? 'Failed on ledger'
+                              : 'Failed'}
                           {itemError[submission.id]
                             ? `: ${itemError[submission.id]}`
                             : ''}

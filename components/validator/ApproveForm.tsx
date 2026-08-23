@@ -5,12 +5,41 @@ import { useWallet } from '@/hooks/useWallet';
 import useIsPaused from '@/hooks/useIsPaused';
 import { useValidator } from '@/hooks/useValidator';
 import { getPlayer } from '@/lib/contract';
+import {
+  isOnChainApproved,
+  submitAndConfirmApproval,
+  type ApprovalPhase,
+} from '@/lib/confirmApprovalSubmission';
 import { PROGRESS_LABELS } from '@/types';
 import type { Player } from '@/types';
 import TransactionStatus, { TxStatus } from '@/components/ui/TransactionStatus';
 
 interface ApproveFormProps {
   onSuccess: () => void;
+}
+
+function phaseToTxStatus(phase: ApprovalPhase): TxStatus | null {
+  switch (phase) {
+    case 'idle':
+      return null;
+    case 'signing':
+      return 'pending';
+    case 'submitted':
+    case 'confirming':
+      return 'confirming';
+    case 'success':
+      return 'success';
+    case 'event_lag':
+      return 'event_lag';
+    case 'failed':
+      return 'failed';
+    case 'timeout':
+      return 'timeout';
+    case 'error':
+      return 'error';
+    default:
+      return 'error';
+  }
 }
 
 export default function ApproveForm({ onSuccess }: ApproveFormProps) {
@@ -93,11 +122,36 @@ export default function ApproveForm({ onSuccess }: ApproveFormProps) {
     setSubmitError(null);
     try {
       const sanitizedDescription = sanitize(description);
-      const xdr = await approveMilestone(playerId.trim(), sanitizedDescription);
-      const result = await signAndSubmit(xdr);
-      const hash = (result as any)?.hash ?? null;
-      setTxHash(hash);
-      setTxStatus('success');
+      const result = await submitAndConfirmApproval({
+        buildXdr: () => approveMilestone(playerId.trim(), sanitizedDescription),
+        signAndSubmit,
+        playerId: playerId.trim(),
+        validatorAddress: publicKey,
+        onPhase: (phase, meta) => {
+          setTxStatus(phaseToTxStatus(phase));
+          if (meta.hash) setTxHash(meta.hash);
+          if (
+            phase === 'failed' ||
+            phase === 'timeout' ||
+            phase === 'error' ||
+            phase === 'event_lag'
+          ) {
+            setSubmitError(meta.message ?? null);
+          }
+        },
+      });
+
+      setTxHash(result.hash);
+      setTxStatus(phaseToTxStatus(result.phase));
+      if (!isOnChainApproved(result.phase)) {
+        setSubmitError(result.message);
+        return;
+      }
+      if (result.phase === 'event_lag') {
+        setSubmitError(result.message);
+      } else {
+        setSubmitError(null);
+      }
       onSuccess();
     } catch (e: any) {
       setTxStatus('error');
@@ -134,6 +188,13 @@ export default function ApproveForm({ onSuccess }: ApproveFormProps) {
     );
   }
 
+  const submitLabel =
+    txStatus === 'confirming'
+      ? 'Confirming on-chain\u2026'
+      : submitting
+        ? 'Submitting\u2026'
+        : 'Approve Milestone';
+
   return (
     <form
       onSubmit={handleSubmit}
@@ -141,19 +202,22 @@ export default function ApproveForm({ onSuccess }: ApproveFormProps) {
     >
       <h2 className="text-xl font-semibold text-white">Approve Milestone</h2>
 
-      {submitAttempted && submitError && (
-        <div
-          ref={summaryRef}
-          role="alert"
-          aria-label="Form submission error"
-          tabIndex={-1}
-          className="rounded-md border border-red-500 bg-red-950/30 p-3 outline-none"
-        >
-          <p className="text-sm text-red-400 font-medium">
-            Submission failed. Please review the error and try again.
-          </p>
-        </div>
-      )}
+      {submitAttempted &&
+        submitError &&
+        txStatus !== 'event_lag' &&
+        txStatus !== 'success' && (
+          <div
+            ref={summaryRef}
+            role="alert"
+            aria-label="Form submission error"
+            tabIndex={-1}
+            className="rounded-md border border-red-500 bg-red-950/30 p-3 outline-none"
+          >
+            <p className="text-sm text-red-400 font-medium">
+              Submission failed. Please review the error and try again.
+            </p>
+          </div>
+        )}
 
       <div className="flex flex-col gap-1">
         <label htmlFor="approve-player-id" className="text-xs text-gray-400">
@@ -264,7 +328,7 @@ export default function ApproveForm({ onSuccess }: ApproveFormProps) {
         title={isPaused ? 'Contract is currently paused' : undefined}
         className="bg-brand-green text-black font-semibold py-2 rounded-lg hover:opacity-90 transition disabled:opacity-50"
       >
-        {submitting ? 'Submitting\u2026' : 'Approve Milestone'}
+        {submitLabel}
       </button>
     </form>
   );
