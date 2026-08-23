@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useValidatorPendingQueue } from '@/hooks/useValidatorPendingQueue';
 import { useApprovedPlayers } from '@/hooks/useApprovedPlayers';
 import { useValidator } from '@/hooks/useValidator';
@@ -29,7 +29,8 @@ type ItemStatus =
   | 'event_lag'
   | 'failed'
   | 'timeout'
-  | 'error';
+  | 'error'
+  | 'skipped';
 
 interface PendingMilestoneQueueProps {
   validatorAddress: string;
@@ -79,13 +80,16 @@ export default function PendingMilestoneQueue({
   const [playerFilter, setPlayerFilter] = useState<PlayerFilter>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkRunning, setBulkRunning] = useState(false);
+  const [stopRequested, setStopRequested] = useState(false);
   const [itemStatus, setItemStatus] = useState<Record<string, ItemStatus>>({});
   const [itemError, setItemError] = useState<Record<string, string>>({});
   const [itemHash, setItemHash] = useState<Record<string, string>>({});
   const [bulkSummary, setBulkSummary] = useState<{
     succeeded: number;
     failed: number;
+    skipped: number;
   } | null>(null);
+  const cancelBulkRef = useRef(false);
 
   const previouslyApprovedIds = useMemo(
     () => new Set(approvedPlayers.map((p) => p.id)),
@@ -128,6 +132,11 @@ export default function PendingMilestoneQueue({
     });
   }
 
+  function handleCancelBulk() {
+    cancelBulkRef.current = true;
+    setStopRequested(true);
+  }
+
   // Soroban transactions carry a single invoke-host-function operation each,
   // so there is no way to bundle multiple approve_milestone calls into one
   // signed transaction without a batch entry point in the contract — this
@@ -135,23 +144,35 @@ export default function PendingMilestoneQueue({
   // rejected/failed signature only stops that item rather than the batch.
   // Each item has a bounded confirmation poll (~40s) so one timeout cannot
   // hang the batch indefinitely.
+  //
+  // A signature prompt already in flight can't cleanly be interrupted, so
+  // cancellation is checked between items: the current item is always
+  // allowed to finish (success or failure) before the loop stops.
   async function handleBulkApprove() {
     if (!validatorAddress || isPaused || bulkRunning) return;
     const ids = visibleIds.filter((id) => selectedIds.has(id));
     if (ids.length === 0) return;
 
+    cancelBulkRef.current = false;
+    setStopRequested(false);
     setBulkRunning(true);
     setBulkSummary(null);
     setItemError({});
     setItemHash({});
-    setItemStatus(Object.fromEntries(ids.map((id) => [id, 'signing'])));
+    setItemStatus({});
 
     let succeeded = 0;
     let failed = 0;
+    const processedIds = new Set<string>();
 
     for (const id of ids) {
+      if (cancelBulkRef.current) break;
+
       const submission = submissions.find((s) => s.id === id);
-      if (!submission) continue;
+      if (!submission) {
+        processedIds.add(id);
+        continue;
+      }
 
       setItemStatus((prev) => ({ ...prev, [id]: 'signing' }));
       try {
@@ -222,12 +243,31 @@ export default function PendingMilestoneQueue({
         }));
         failed++;
       }
+
+      processedIds.add(id);
     }
 
-    setBulkSummary({ succeeded, failed });
-    setSelectedIds(new Set());
+    // Items never reached because the batch was stopped are neither
+    // succeeded nor failed — mark them distinctly and leave them selected
+    // so the validator can resume or retry them directly.
+    const skippedIds = ids.filter((id) => !processedIds.has(id));
+    if (skippedIds.length > 0) {
+      setItemStatus((prev) => ({
+        ...prev,
+        ...Object.fromEntries(skippedIds.map((id) => [id, 'skipped'])),
+      }));
+    }
+
+    setBulkSummary({ succeeded, failed, skipped: skippedIds.length });
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      processedIds.forEach((id) => next.delete(id));
+      return next;
+    });
     setBulkRunning(false);
-    refetch(); // drop the now-approved items from the pending list
+    setStopRequested(false);
+    refetch(); // drop the now-approved items from the pending list; a
+    // cancelled batch may still have items that succeeded before it stopped
   }
 
   const selectedCount = visibleIds.filter((id) => selectedIds.has(id)).length;
@@ -315,21 +355,32 @@ export default function PendingMilestoneQueue({
               />
               Select all
             </label>
-            <Button
-              onClick={handleBulkApprove}
-              isLoading={bulkRunning}
-              disabled={
-                selectedCount === 0 ||
-                bulkRunning ||
-                isPaused ||
-                !validatorAddress
-              }
-              title={isPaused ? 'Contract is currently paused' : undefined}
-            >
-              {bulkRunning
-                ? `Approving ${selectedCount}…`
-                : `Bulk Approve${selectedCount > 0 ? ` (${selectedCount})` : ''}`}
-            </Button>
+            <div className="flex items-center gap-2">
+              {bulkRunning && (
+                <Button
+                  variant="danger"
+                  onClick={handleCancelBulk}
+                  disabled={stopRequested}
+                >
+                  {stopRequested ? 'Stopping…' : 'Stop'}
+                </Button>
+              )}
+              <Button
+                onClick={handleBulkApprove}
+                isLoading={bulkRunning}
+                disabled={
+                  selectedCount === 0 ||
+                  bulkRunning ||
+                  isPaused ||
+                  !validatorAddress
+                }
+                title={isPaused ? 'Contract is currently paused' : undefined}
+              >
+                {bulkRunning
+                  ? `Approving ${selectedCount}…`
+                  : `Bulk Approve${selectedCount > 0 ? ` (${selectedCount})` : ''}`}
+              </Button>
+            </div>
           </div>
 
           {bulkSummary && (
@@ -339,12 +390,16 @@ export default function PendingMilestoneQueue({
               className={`rounded-md border p-3 text-sm ${
                 bulkSummary.failed > 0
                   ? 'border-red-500 bg-red-950/30 text-red-300'
-                  : 'border-brand-green bg-brand-green/10 text-brand-green'
+                  : bulkSummary.skipped > 0
+                    ? 'border-amber-500 bg-amber-950/30 text-amber-300'
+                    : 'border-brand-green bg-brand-green/10 text-brand-green'
               }`}
             >
-              {bulkSummary.failed > 0
-                ? `${bulkSummary.succeeded} of ${bulkSummary.succeeded + bulkSummary.failed} approvals confirmed on-chain — ${bulkSummary.failed} failed and remain pending for retry.`
-                : `All ${bulkSummary.succeeded} selected milestones were confirmed on-chain.`}
+              {bulkSummary.skipped > 0
+                ? `${bulkSummary.succeeded} of ${bulkSummary.succeeded + bulkSummary.failed + bulkSummary.skipped} selected approvals completed before the batch was stopped — ${bulkSummary.succeeded} confirmed on-chain${bulkSummary.failed > 0 ? `, ${bulkSummary.failed} failed` : ''}, and ${bulkSummary.skipped} not attempted.`
+                : bulkSummary.failed > 0
+                  ? `${bulkSummary.succeeded} of ${bulkSummary.succeeded + bulkSummary.failed} approvals confirmed on-chain — ${bulkSummary.failed} failed and remain pending for retry.`
+                  : `All ${bulkSummary.succeeded} selected milestones were confirmed on-chain.`}
             </div>
           )}
 
@@ -444,6 +499,11 @@ export default function PendingMilestoneQueue({
                           {itemError[submission.id]
                             ? `: ${itemError[submission.id]}`
                             : ''}
+                        </span>
+                      )}
+                      {status === 'skipped' && (
+                        <span className="text-xs text-gray-400 mt-1">
+                          Not attempted — batch was stopped
                         </span>
                       )}
                     </div>
