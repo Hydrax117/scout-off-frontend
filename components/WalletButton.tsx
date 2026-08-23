@@ -94,7 +94,7 @@ export default function WalletButton({
     if (!showWalletModal) return;
     let cancelled = false;
     Promise.all(
-      WALLET_PROVIDERS.map(async (wp) => {
+      WALLET_PROVIDERS.filter((wp) => !wp.comingSoon).map(async (wp) => {
         const provider = wp.provider as WalletProvider;
         return [provider, await isWalletInstalled(provider)] as const;
       }),
@@ -109,12 +109,13 @@ export default function WalletButton({
     };
   }, [showWalletModal]);
 
-  const allChecked = WALLET_PROVIDERS.every(
+  const availableProviders = WALLET_PROVIDERS.filter((wp) => !wp.comingSoon);
+  const allChecked = availableProviders.every(
     (wp) => installedMap[wp.provider as WalletProvider] !== undefined,
   );
   const noneInstalled =
     allChecked &&
-    WALLET_PROVIDERS.every(
+    availableProviders.every(
       (wp) => installedMap[wp.provider as WalletProvider] === false,
     );
 
@@ -238,10 +239,18 @@ export default function WalletButton({
                   <button
                     key={wp.provider}
                     type="button"
-                    onClick={() =>
-                      handleConnectWithProvider(wp.provider as WalletProvider)
+                    onClick={
+                      wp.comingSoon
+                        ? undefined
+                        : () =>
+                            handleConnectWithProvider(
+                              wp.provider as WalletProvider,
+                            )
                     }
-                    disabled={isThisConnecting || isOtherConnecting}
+                    disabled={
+                      wp.comingSoon || isThisConnecting || isOtherConnecting
+                    }
+                    aria-disabled={wp.comingSoon}
                     className="flex items-center gap-3 w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-left text-white hover:border-brand-green hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span className="text-2xl shrink-0" aria-hidden="true">
@@ -250,11 +259,13 @@ export default function WalletButton({
                     <div className="flex-1 min-w-0">
                       <p className="font-medium">{wp.label}</p>
                       <p className="text-xs text-gray-400">
-                        {wp.provider === 'ledger'
-                          ? t('ledgerConnect')
-                          : wp.provider === 'albedo'
-                            ? t('installMobile')
-                            : t('install')}
+                        {wp.comingSoon
+                          ? t('comingSoon')
+                          : wp.provider === 'ledger'
+                            ? t('ledgerConnect')
+                            : wp.provider === 'albedo'
+                              ? t('installMobile')
+                              : t('install')}
                       </p>
                       {wp.provider === 'ledger' && (
                         <p className="text-xs text-yellow-400 mt-1">

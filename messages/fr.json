@@ -94,7 +94,8 @@
     "connection_failed": "Échec de la connexion au portefeuille",
     "balanceError": "Solde indisponible — erreur réseau",
     "ledgerConnect": "Portefeuille matériel — connectez via USB",
-    "ledgerInstructions": "Connectez votre appareil Ledger via USB et ouvrez l'application Stellar."
+    "ledgerInstructions": "Connectez votre appareil Ledger via USB et ouvrez l'application Stellar.",
+    "comingSoon": "Bientôt disponible"
   },
   "errors": {
     "not_found": "Non trouvé",
