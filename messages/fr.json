@@ -101,7 +101,18 @@
     "balanceError": "Solde indisponible — erreur réseau",
     "ledgerConnect": "Portefeuille matériel — connectez via USB",
     "ledgerInstructions": "Connectez votre appareil Ledger via USB et ouvrez l'application Stellar.",
-    "comingSoon": "Bientôt disponible"
+    "comingSoon": "Bientôt disponible",
+    "accountSwitched": "Compte changé avec succès.",
+    "accountSwitchFailed": "Échec du changement de compte. Veuillez réessayer.",
+    "accountSwitchMismatch": "Votre extension de portefeuille est actuellement sur un compte différent de celui que vous avez sélectionné. Veuillez changer le compte actif dans votre extension de portefeuille, puis réessayer.",
+    "switchAccountTitle": "Changer de compte",
+    "currentAccount": "Compte actuel",
+    "accountSwitcherLabel": "Changer de compte de portefeuille",
+    "forgetAllAccounts": "Oublier tous les comptes mémorisés",
+    "forgetAllConfirmTitle": "Oublier tous les comptes ?",
+    "forgetAllConfirmMessage": "Cela supprimera toutes les adresses de portefeuille mémorisées de cet appareil. Vous pourrez les reconnecter plus tard.",
+    "removeAccountConfirmTitle": "Supprimer ce compte ?",
+    "removeAccountConfirmMessage": "Cette adresse sera supprimée de vos comptes mémorisés sur cet appareil."
   },
   "errors": {
     "not_found": "Non trouvé",

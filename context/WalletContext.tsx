@@ -185,6 +185,35 @@ function removeSessionExpiry() {
   }
 }
 
+// ── Account-switch mismatch sentinel ─────────────────────────────────────────
+//
+// Thrown by doConnect/connectWithProvider when the caller provided an
+// expectedPublicKey that does not match the key actually returned by the wallet
+// adapter.  AccountSwitcher (and any future caller with a specific target address)
+// can `instanceof`-check this to distinguish a mismatch from a generic failure
+// and surface an actionable "switch your wallet's active account" message.
+//
+// The class is exported so tests and UI can import it without pulling in the
+// full WalletContext bundle.
+export class WalletAccountMismatchError extends Error {
+  /** The address the user intended to switch to. */
+  readonly expectedPublicKey: string;
+  /** The address the wallet extension actually returned. */
+  readonly actualPublicKey: string;
+
+  constructor(expectedPublicKey: string, actualPublicKey: string) {
+    super(
+      `Wallet account mismatch: expected ${expectedPublicKey}, got ${actualPublicKey}. ` +
+        'Please switch the active account inside your wallet extension and try again.',
+    );
+    this.name = 'WalletAccountMismatchError';
+    this.expectedPublicKey = expectedPublicKey;
+    this.actualPublicKey = actualPublicKey;
+    // Maintain proper prototype chain in transpiled environments.
+    Object.setPrototypeOf(this, WalletAccountMismatchError.prototype);
+  }
+}
+
 // ── Remembered addresses helpers ──────────────────────────────────────────────
 
 export function getRememberedAddresses(): RememberedAddress[] {
@@ -244,6 +273,7 @@ interface WalletContextValue {
   connectWithProvider: (
     provider: WalletProvider,
     rememberMe?: boolean,
+    expectedPublicKey?: string,
   ) => Promise<void>;
   connect: () => Promise<void>;
   disconnect: () => void;
@@ -518,7 +548,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const closeWalletModal = useCallback(() => setShowWalletModal(false), []);
 
   const doConnect = useCallback(
-    async (provider: WalletProvider, rememberMe = false) => {
+    async (provider: WalletProvider, rememberMe = false, expectedPublicKey?: string) => {
       setIsConnecting(true);
       setConnectingProvider(provider);
       try {
@@ -536,6 +566,16 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           import('@/lib/sep10Validation'),
         ]);
         const pk = await walletAdapters[provider].getPublicKey();
+
+        // ── Account-switch mismatch guard ────────────────────────────────────
+        // When the caller knows which account they expect (e.g. AccountSwitcher),
+        // verify the wallet adapter returned that exact key.  Wallet extension
+        // APIs cannot be forced to switch their active account from a dApp; if
+        // there's a mismatch we must abort cleanly without persisting any session
+        // data for the unintended account.
+        if (expectedPublicKey && pk !== expectedPublicKey) {
+          throw new WalletAccountMismatchError(expectedPublicKey, pk);
+        }
 
         // SEP-10 Auth Flow
         const challengeRes = await fetch(`/api/auth/sep10?account=${pk}`);
@@ -599,7 +639,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
         await loadBalance(pk);
       } catch (error) {
-        console.error('Connection/Auth error:', error);
+        // WalletAccountMismatchError is an expected, user-facing outcome —
+        // not an unexpected failure — so we don't log it as an error.
+        if (!(error instanceof WalletAccountMismatchError)) {
+          console.error('Connection/Auth error:', error);
+        }
         setPublicKey(null);
         setIsAuthenticated(false);
         setXlmBalance(null);
@@ -622,8 +666,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [doConnect, openWalletModal]);
 
   const connectWithProvider = useCallback(
-    async (provider: WalletProvider, rememberMe = false) => {
-      await doConnect(provider, rememberMe);
+    async (provider: WalletProvider, rememberMe = false, expectedPublicKey?: string) => {
+      await doConnect(provider, rememberMe, expectedPublicKey);
     },
     [doConnect],
   );

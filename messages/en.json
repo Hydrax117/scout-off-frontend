@@ -87,7 +87,18 @@
     "balanceError": "Balance unavailable — network error",
     "ledgerConnect": "Hardware wallet — connect via USB",
     "ledgerInstructions": "Connect your Ledger device via USB and open the Stellar app.",
-    "comingSoon": "Coming soon"
+    "comingSoon": "Coming soon",
+    "accountSwitched": "Account switched successfully.",
+    "accountSwitchFailed": "Failed to switch account. Please try again.",
+    "accountSwitchMismatch": "Your wallet extension is currently on a different account than the one you selected. Please switch the active account inside your wallet extension, then try again.",
+    "switchAccountTitle": "Switch Account",
+    "currentAccount": "Current account",
+    "accountSwitcherLabel": "Switch wallet account",
+    "forgetAllAccounts": "Forget all remembered accounts",
+    "forgetAllConfirmTitle": "Forget all accounts?",
+    "forgetAllConfirmMessage": "This will remove all remembered wallet addresses from this device. You can still reconnect them later.",
+    "removeAccountConfirmTitle": "Remove this account?",
+    "removeAccountConfirmMessage": "This address will be removed from your remembered accounts on this device."
   },
   "errors": {
     "not_found": "Not found",

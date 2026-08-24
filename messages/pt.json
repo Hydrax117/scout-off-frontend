@@ -100,7 +100,19 @@
     "connection_failed": "Falha ao conectar a carteira",
     "balanceError": "Saldo indisponível — erro de rede",
     "ledgerConnect": "Carteira de hardware — conecte via USB",
-    "ledgerInstructions": "Conecte seu dispositivo Ledger via USB e abra o aplicativo Stellar."
+    "ledgerInstructions": "Conecte seu dispositivo Ledger via USB e abra o aplicativo Stellar.",
+    "comingSoon": "Em breve",
+    "accountSwitched": "Conta alterada com sucesso.",
+    "accountSwitchFailed": "Falha ao trocar de conta. Por favor, tente novamente.",
+    "accountSwitchMismatch": "Sua extensão de carteira está atualmente em uma conta diferente da que você selecionou. Por favor, troque a conta ativa dentro da extensão da sua carteira e tente novamente.",
+    "switchAccountTitle": "Trocar Conta",
+    "currentAccount": "Conta atual",
+    "accountSwitcherLabel": "Trocar conta da carteira",
+    "forgetAllAccounts": "Esquecer todas as contas lembradas",
+    "forgetAllConfirmTitle": "Esquecer todas as contas?",
+    "forgetAllConfirmMessage": "Isso removerá todos os endereços de carteira lembrados deste dispositivo. Você pode reconectá-los mais tarde.",
+    "removeAccountConfirmTitle": "Remover esta conta?",
+    "removeAccountConfirmMessage": "Este endereço será removido das suas contas lembradas neste dispositivo."
   },
   "errors": {
     "not_found": "Não encontrado",

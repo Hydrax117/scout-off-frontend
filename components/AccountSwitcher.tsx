@@ -9,6 +9,7 @@ import {
   removeRememberedAddress,
   clearAllRememberedAddresses,
   type RememberedAddress,
+  WalletAccountMismatchError,
 } from '@/context/WalletContext';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Spinner from '@/components/ui/Spinner';
@@ -68,17 +69,33 @@ export default function AccountSwitcher() {
       }
       setSwitchingTo(addr.publicKey);
       try {
-        await connectWithProvider(addr.provider);
+        // Pass the target address as expectedPublicKey so doConnect can verify
+        // the wallet adapter actually returned the account the user selected.
+        // Wallet extension APIs (Freighter, Albedo, Ledger) always return their
+        // currently-active account — they cannot be directed to a specific key —
+        // so a mismatch is possible and must be caught explicitly here.
+        await connectWithProvider(addr.provider, false, addr.publicKey);
         setIsOpen(false);
         showToast({
           variant: 'success',
           message: tWallet('accountSwitched'),
         });
-      } catch {
-        showToast({
-          variant: 'error',
-          message: tWallet('accountSwitchFailed'),
-        });
+      } catch (err) {
+        if (err instanceof WalletAccountMismatchError) {
+          // The wallet extension's active account differs from the one the user
+          // selected.  Surface a clear, actionable message — the user must switch
+          // the active account inside the extension themselves, since we cannot
+          // do it for them.
+          showToast({
+            variant: 'error',
+            message: tWallet('accountSwitchMismatch'),
+          });
+        } else {
+          showToast({
+            variant: 'error',
+            message: tWallet('accountSwitchFailed'),
+          });
+        }
       } finally {
         setSwitchingTo(null);
       }

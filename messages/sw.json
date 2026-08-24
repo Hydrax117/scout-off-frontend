@@ -159,7 +159,18 @@
     "balanceError": "TODO: Machine-translated - Salio halipatikani — kosa la mtandao",
     "ledgerConnect": "TODO: Machine-translated - Pochi ya vifaa — unganisha kupitia USB",
     "ledgerInstructions": "TODO: Machine-translated - Unganisha kifaa chako cha Ledger kupitia USB na ufungue programu ya Stellar.",
-    "comingSoon": "TODO: Machine-translated - Inakuja hivi karibuni"
+    "comingSoon": "TODO: Machine-translated - Inakuja hivi karibuni",
+    "accountSwitched": "TODO: Machine-translated - Akaunti imebadilishwa kwa mafanikio.",
+    "accountSwitchFailed": "TODO: Machine-translated - Imeshindwa kubadilisha akaunti. Tafadhali jaribu tena.",
+    "accountSwitchMismatch": "TODO: Machine-translated - Nyongeza ya pochi yako iko kwenye akaunti tofauti na ile uliyochagua. Tafadhali badilisha akaunti inayotumika ndani ya nyongeza ya pochi yako, kisha jaribu tena.",
+    "switchAccountTitle": "TODO: Machine-translated - Badilisha Akaunti",
+    "currentAccount": "TODO: Machine-translated - Akaunti ya sasa",
+    "accountSwitcherLabel": "TODO: Machine-translated - Badilisha akaunti ya pochi",
+    "forgetAllAccounts": "TODO: Machine-translated - Sahau akaunti zote zilizokumbukwa",
+    "forgetAllConfirmTitle": "TODO: Machine-translated - Sahau akaunti zote?",
+    "forgetAllConfirmMessage": "TODO: Machine-translated - Hii itaondoa anwani zote za pochi zilizokumbukwa kutoka kwa kifaa hiki. Unaweza kuziunganisha tena baadaye.",
+    "removeAccountConfirmTitle": "TODO: Machine-translated - Ondoa akaunti hii?",
+    "removeAccountConfirmMessage": "TODO: Machine-translated - Anwani hii itaondolewa kutoka kwa akaunti zako zilizokumbukwa kwenye kifaa hiki."
   },
   "errors": {
     "not_found": "Haijafikiwa",
