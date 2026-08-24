@@ -26,13 +26,69 @@ for patterns _across_ wallets (one redeemer touching many scouts, a scout's
 redemptions clustering around one other wallet, etc.) that no single
 request could ever reveal.
 
-This is computed on demand — an admin loading the panel triggers a fresh
-run — rather than by a scheduled background job, because no job
-infrastructure exists in this repo yet. That's a reasonable place to start:
-the heuristics themselves don't care who calls them, so wiring the same
-`analyzeReferralAbuse`/`analyzePayToContactAbuse` functions into a cron job
-or the `server/` backend later (once one exists) is a small follow-up, not
-a rewrite.
+This used to be computed only on demand — an admin loading the panel
+triggering a fresh run, with no scheduled re-evaluation and no persistence
+(issue #1007). That left an active abuse pattern able to run unnoticed for
+as long as no admin happened to open the panel. Investigation and the
+resulting design:
+
+### Scheduling investigation (#1007)
+
+- **No background-job/queue infrastructure exists in this repo.** No cron
+  runner, no task queue, no `server/` worker process that polls anything on
+  an interval. `hooks/useAdminAuditLog.ts` hit the same gap for
+  reconciliation and worked around it with a client-side `setInterval`
+  while the audit log is open — not applicable here, since the whole point
+  is running *without* an admin's session open.
+- **This is a Next.js app deployed on Vercel** (see `next.config.js`,
+  `next-pwa`, `@vercel/analytics`), which supports **Vercel Cron Jobs** —
+  a scheduled HTTP GET against an API route, no extra infrastructure to
+  stand up. That's the mechanism picked here: `vercel.json`'s `crons` entry
+  hits `GET /api/cron/fraud-flags` hourly (`0 * * * *`). Hourly was chosen
+  as a starting bound-on-staleness that's frequent enough to catch a
+  fast-moving burst (`rapid_contact_burst`'s own window is 10 minutes) well
+  within the "bounded time window" goal, without re-running a
+  multi-thousand-event scan (`MAX_ACTIVITY_PAGES` in
+  `lib/fraudFlagsRunner.ts`) so often that it's wasteful — retune once
+  there's real traffic data, same as the heuristic thresholds themselves.
+- `app/api/admin/fraud-flags/route.ts`'s work was genuinely read-only and
+  side-effect-free, confirmed by `lib/fraudDetection.ts`'s own
+  "pure function" design — safe to invoke on a schedule with no additional
+  guardrails needed on that front. The gathering/analysis logic was
+  extracted into `lib/fraudFlagsRunner.ts`'s `runFraudFlagEvaluation()` so
+  both the admin route and the cron route call the exact same code path —
+  no duplicated heuristic-calling logic to drift out of sync.
+- **Authorization**: a scheduled invocation has no admin session cookie to
+  present, so `app/api/cron/fraud-flags/route.ts` does **not** use
+  `requireAdminWallet`. It instead checks
+  `Authorization: Bearer ${CRON_SECRET}` — the header Vercel Cron
+  automatically attaches to its own requests when a `CRON_SECRET` env var
+  is configured (https://vercel.com/docs/cron-jobs/manage-cron-jobs#securing-cron-jobs).
+  The route refuses all requests if `CRON_SECRET` isn't configured, rather
+  than falling open.
+- **Persistence**: every run (manual or cron) is recorded by
+  `lib/fraudFlagsStore.ts` (a `better-sqlite3` table, mirroring
+  `lib/adminAuditStore.ts`'s conventions) with a timestamp, trigger
+  (`'manual' | 'cron'`), and high-severity count.
+  `GET /api/admin/fraud-flags` still runs a fresh evaluation on each admin
+  page load (unchanged on-demand behavior) but now also persists that run
+  and returns `evaluatedAt`, and `FraudFlagsPanel.tsx` displays "As of
+  [time]". `GET /api/admin/fraud-flags/status` is a cheap read of the most
+  recently persisted run (whichever of manual/cron ran last) without
+  recomputation, used to drive a header-level staleness badge
+  (`components/admin/FraudFlagsStalenessBadge.tsx`) that's visible without
+  opening the panel at all, and flips to a "stale" style once the last run
+  is older than 6 hours.
+- **Alerting**: no outbound-notification mechanism (email, Slack, push)
+  exists anywhere in this codebase today (verified — searched for
+  webhook/notification-provider integrations before assuming one needed to
+  be built). Building a full integration was judged out of scope for this
+  issue; the staleness/high-severity badge above is the minimal
+  proactive-surfacing mechanism in its place. A fuller version — e.g.
+  paging an on-call Slack channel when a cron run's `highSeverityCount`
+  crosses a threshold — is a follow-up that requires picking a
+  notification provider and its own credentials/config, deliberately not
+  bundled into this change.
 
 ## Heuristics
 

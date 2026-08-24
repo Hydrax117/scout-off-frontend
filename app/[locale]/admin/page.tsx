@@ -107,6 +107,7 @@ import type { ValidatorInfo, ReferralOverview } from '@/types';
 import TruncatedAddress from '@/components/ui/TruncatedAddress';
 import { parseContractError } from '@/lib/contractErrorMessage';
 import ConfigStatus from '@/components/admin/ConfigStatus';
+import FraudFlagsStalenessBadge from '@/components/admin/FraudFlagsStalenessBadge';
 
 const ADMIN_ADDRESS = process.env.NEXT_PUBLIC_ADMIN_ADDRESS;
 const CONTRACT_ID = process.env.NEXT_PUBLIC_CONTRACT_ID ?? '';
@@ -391,7 +392,10 @@ function AdminDashboardContent() {
 
   return (
     <div className="max-w-3xl mx-auto flex flex-col gap-8">
-      <h1 className="text-3xl font-bold text-white">Admin Dashboard</h1>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="text-3xl font-bold text-white">Admin Dashboard</h1>
+        <FraudFlagsStalenessBadge />
+      </div>
 
       {/* Contract Info */}
       <section className="bg-brand-card border border-gray-800 rounded-xl p-6 flex flex-col gap-4">

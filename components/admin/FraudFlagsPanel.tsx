@@ -78,6 +78,7 @@ function FlagCard({ flag }: { flag: FraudFlag }) {
 export default function FraudFlagsPanel() {
   const [flags, setFlags] = useState<FraudFlag[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [evaluatedAt, setEvaluatedAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -86,10 +87,11 @@ export default function FraudFlagsPanel() {
     setLoading(true);
     setError(false);
     fetchFraudFlags()
-      .then(({ flags, warnings }) => {
+      .then(({ flags, warnings, evaluatedAt }) => {
         if (cancelled) return;
         setFlags(flags);
         setWarnings(warnings);
+        setEvaluatedAt(evaluatedAt);
       })
       .catch(() => {
         if (!cancelled) setError(true);
@@ -110,6 +112,11 @@ export default function FraudFlagsPanel() {
           Suspicious referral and pay-to-contact patterns detected across all
           wallets. Alert-only — review and investigate manually.
         </p>
+        {evaluatedAt !== null && (
+          <p className="text-xs text-gray-500 mt-2">
+            As of {new Date(evaluatedAt).toLocaleString()}
+          </p>
+        )}
       </div>
 
       {loading ? (
