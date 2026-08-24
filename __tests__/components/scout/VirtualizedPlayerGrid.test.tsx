@@ -2,12 +2,14 @@ import React from 'react';
 import { render, act, screen } from '@testing-library/react';
 import VirtualizedPlayerGrid, {
   useVirtualizedRows,
+  PLAYER_GRID_ROW_HEIGHT,
+  MAX_MOUNTED_CARDS,
   type VirtualizedPlayerGridHandle,
 } from '@/components/scout/VirtualizedPlayerGrid';
 
 // ── ResizeObserver mock ──────────────────────────────────────────────────────
 // jsdom does not implement ResizeObserver. We capture the callback passed by
-// each instantiation so tests can manually trigger a resize.
+// each instantiation so tests can manually trigger a resize or measurement.
 let resizeCallbacks: ResizeObserverCallback[] = [];
 let observeSpy: jest.Mock;
 let disconnectSpy: jest.Mock;
@@ -215,6 +217,21 @@ describe('VirtualizedPlayerGrid', () => {
     expect(mounted.length).toBeLessThan(20);
   });
 
+  it('keeps mounted DOM nodes bounded at MAX_MOUNTED_CARDS for a 5,000-item list', () => {
+    const items = makeItems(5000);
+    render(
+      <VirtualizedPlayerGrid<TestItem>
+        items={items}
+        getKey={(item) => item.id}
+        renderItem={(item) => <div role="article">{item.label}</div>}
+      />,
+    );
+
+    const mounted = screen.getAllByRole('article');
+    expect(mounted.length).toBeGreaterThan(0);
+    expect(mounted.length).toBeLessThanOrEqual(MAX_MOUNTED_CARDS);
+  });
+
   it('unmounts off-screen items and mounts newly-visible ones when the container scrolls', () => {
     const items = makeItems(500);
     const { getByTestId } = render(
@@ -222,7 +239,7 @@ describe('VirtualizedPlayerGrid', () => {
         items={items}
         getKey={(item) => item.id}
         renderItem={(item) => <div role="article">{item.label}</div>}
-        rowHeight={20}
+        estimatedRowHeight={20}
         overscan={1}
       />,
     );
@@ -252,7 +269,7 @@ describe('VirtualizedPlayerGrid', () => {
         items={items}
         getKey={(item) => item.id}
         renderItem={(item) => <div role="article">{item.label}</div>}
-        rowHeight={50}
+        estimatedRowHeight={50}
       />,
     );
 
@@ -278,5 +295,67 @@ describe('VirtualizedPlayerGrid', () => {
 
     expect(screen.getByTestId('custom-grid')).toBeInTheDocument();
     expect(screen.getByText('Item 0')).toBeInTheDocument();
+  });
+
+  it('exports MAX_MOUNTED_CARDS as a reasonable stated bound', () => {
+    expect(MAX_MOUNTED_CARDS).toBe(60);
+  });
+});
+
+// ── Variable-height row measurement ──────────────────────────────────────────
+
+describe('VirtualizedPlayerGrid — variable-height rows', () => {
+  it('exports PLAYER_GRID_ROW_HEIGHT as a reasonable default estimate', () => {
+    expect(PLAYER_GRID_ROW_HEIGHT).toBeGreaterThan(200);
+    expect(PLAYER_GRID_ROW_HEIGHT).toBeLessThan(500);
+  });
+
+  it('uses estimatedRowHeight as fallback when no measurement available', () => {
+    const items = makeItems(10);
+    const { getByTestId } = render(
+      <VirtualizedPlayerGrid<TestItem>
+        items={items}
+        getKey={(item) => item.id}
+        renderItem={(item) => <div role="article">{item.label}</div>}
+        estimatedRowHeight={100}
+      />,
+    );
+
+    // The grid rendered — with jsdom clientHeight 0, only a small window
+    // is mounted, using the estimated height for spacer calculations.
+    const grid = getByTestId('player-grid');
+    expect(grid).toBeInTheDocument();
+    expect(screen.getAllByRole('article').length).toBeGreaterThan(0);
+  });
+});
+
+// ── Accessibility: virtualized-out cards are unmounted ────────────────────────
+
+describe('VirtualizedPlayerGrid — accessibility', () => {
+  it('virtualized-out cards are removed from the DOM (no stale tab stops)', () => {
+    const items = makeItems(200);
+    render(
+      <VirtualizedPlayerGrid<TestItem>
+        items={items}
+        getKey={(item) => item.id}
+        renderItem={(item) => (
+          <div role="article" tabIndex={0}>
+            {item.label}
+          </div>
+        )}
+        estimatedRowHeight={20}
+        overscan={1}
+      />,
+    );
+
+    // Only a handful of items are mounted — items far from the viewport
+    // are completely unmounted (removed from DOM), so they cannot appear
+    // in the tab order or be announced by screen readers.
+    const articles = screen.getAllByRole('article');
+    expect(articles.length).toBeLessThan(items.length);
+    expect(articles.length).toBeLessThanOrEqual(MAX_MOUNTED_CARDS);
+
+    // Verify that a distant item is NOT in the DOM
+    expect(screen.queryByText('Item 199')).not.toBeInTheDocument();
   });
 });

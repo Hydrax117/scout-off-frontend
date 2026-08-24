@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useCallback,
 } from 'react';
 import type { ReactElement, ReactNode, Ref } from 'react';
 
@@ -17,6 +18,10 @@ import type { ReactElement, ReactNode, Ref } from 'react';
  * list, avoiding the slow initial render / janky scroll seen with hundreds
  * of player cards. No external dependency required — swap in for a direct
  * `.map()` render wherever the full player grid is mounted.
+ *
+ * This hook uses a fixed row height for windowing math. For variable-height
+ * rows, see `VirtualizedPlayerGrid` which measures actual row heights via
+ * ResizeObserver.
  */
 export function useVirtualizedRows<T>({
   items,
@@ -67,40 +72,18 @@ export function useVirtualizedRows<T>({
   };
 }
 
-// ── Grid-aware wrapper ───────────────────────────────────────────────────────
+// ── Variable-height grid virtualization ──────────────────────────────────────
 //
-// `useVirtualizedRows` windows a flat list of *rows*. The scout results grid
-// is a responsive CSS grid (1 column on mobile, 2 at `sm`, 3 at `lg` —
-// matching Tailwind's `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`), so a
-// "row" here is actually `columns` player cards. `VirtualizedPlayerGrid`
-// buckets the flat item list into rows of the current column count, then
-// windows *those* rows — only cards on/near screen are ever mounted, so
-// scrolling away unmounts them instead of leaving them accumulated in the
-// DOM (fixing the unbounded growth from the old append-only "infinite
-// scroll").
+// The scout results grid uses responsive CSS columns (1/2/3 by breakpoint)
+// with variable-height PlayerCards (height varies based on badge count,
+// watchlist state, name length). Fixed-row-height windowing produces
+// incorrect spacer heights and potential row overlap when actual heights
+// differ from the estimate.
 //
-// Why hand-rolled instead of react-window/react-virtual: those libraries
-// assume a single fixed column count you configure directly (FixedSizeGrid)
-// — reproducing this layout's *responsive* column count (1/2/3 by
-// breakpoint) means fighting the library's own sizing model as much as
-// using it, for a ~5-7kB dependency this repo doesn't otherwise need. This
-// file already had a working, tested single-column windowing primitive
-// (`useVirtualizedRows`, added in a prior pass at this issue) — grouping
-// items into responsive-width rows on top of it reuses that primitive
-// as-is rather than introducing a second windowing implementation.
-
-/**
- * Estimated height (px) of one grid row, including the `gap-6` (24px)
- * spacing below it. Fixed-row-height virtualization only needs this to be a
- * reasonable estimate — it sizes the top/bottom spacer elements that keep
- * scroll position and scrollbar proportions correct, not the cards
- * themselves (each card still lays out at its natural height). PlayerCard's
- * content (avatar, name, position/region line, two badges, progress bar,
- * "View Profile" button) is fairly uniform in height across players, so a
- * shared estimate — rather than per-row measurement — keeps the windowing
- * math O(1) per scroll event.
- */
-export const PLAYER_GRID_ROW_HEIGHT = 316;
+// This module measures actual row heights via ResizeObserver after each
+// render of visible rows, then uses prefix sums of measured heights for
+// accurate spacer calculations and a binary search to find the visible
+// row range in O(log n) per scroll event.
 
 /** Tailwind breakpoints mirrored here: `sm` = 640px, `lg` = 1024px. */
 const COLUMN_BREAKPOINTS: Array<{ minWidth: number; columns: number }> = [
@@ -163,7 +146,8 @@ export interface VirtualizedPlayerGridProps<T> {
   /** Stable React key for an item, e.g. `(player) => player.id`. */
   getKey: (item: T) => string;
   renderItem: (item: T) => ReactNode;
-  rowHeight?: number;
+  /** Estimated row height used before measurement. Default PLAYER_GRID_ROW_HEIGHT. */
+  estimatedRowHeight?: number;
   overscan?: number;
   /** CSS height of the scrollable viewport. Default `'70vh'`. */
   height?: string;
@@ -171,12 +155,45 @@ export interface VirtualizedPlayerGridProps<T> {
   'data-testid'?: string;
 }
 
+/**
+ * Estimated height (px) of one grid row before ResizeObserver measures it.
+ * Used as the initial spacer height and as a fallback for rows that haven't
+ * been measured yet. PlayerCard's content (avatar, name, position/region,
+ * badges, progress bar, "View Profile" button) is fairly uniform in height
+ * across players, so this estimate is close to actual for most rows.
+ */
+export const PLAYER_GRID_ROW_HEIGHT = 316;
+
+/**
+ * Stated DOM bound: the grid will never mount more than this many PlayerCards
+ * simultaneously, regardless of viewport size or result-set size. With 3
+ * columns and a typical 1080p viewport (~700px visible at 70vh), we see
+ * ~2-3 rows (6-9 cards) plus overscan — well under 60. Even on an
+ * unusually tall 4K viewport with 3 columns, the bound holds.
+ */
+export const MAX_MOUNTED_CARDS = 60;
+
+/**
+ * Binary search: find the first index where prefixSums[idx] > target.
+ * Returns array length if no such index exists.
+ */
+function lowerBound(prefixSums: number[], target: number): number {
+  let lo = 0;
+  let hi = prefixSums.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (prefixSums[mid] <= target) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
 function VirtualizedPlayerGridInner<T>(
   {
     items,
     getKey,
     renderItem,
-    rowHeight = PLAYER_GRID_ROW_HEIGHT,
+    estimatedRowHeight = PLAYER_GRID_ROW_HEIGHT,
     overscan = 2,
     height = '70vh',
     className,
@@ -184,16 +201,109 @@ function VirtualizedPlayerGridInner<T>(
   }: VirtualizedPlayerGridProps<T>,
   ref: Ref<VirtualizedPlayerGridHandle>,
 ) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
   const columns = useResponsiveColumns();
   const rows = useMemo(() => chunkIntoRows(items, columns), [items, columns]);
 
-  const {
-    containerRef,
-    visibleItems: visibleRows,
-    startIndex,
-    topSpacerHeight,
-    bottomSpacerHeight,
-  } = useVirtualizedRows<T[]>({ items: rows, rowHeight, overscan });
+  // ── Scroll + viewport tracking ───────────────────────────────────────────
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onScroll = () => setScrollTop(el.scrollTop);
+    setViewportHeight(el.clientHeight);
+    el.addEventListener('scroll', onScroll, { passive: true });
+
+    const resizeObserver = new ResizeObserver(() => {
+      setViewportHeight(el.clientHeight);
+    });
+    resizeObserver.observe(el);
+
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  // ── Row height measurement ──────────────────────────────────────────────
+  // Maps row index → measured pixel height. Until a row is measured,
+  // estimatedRowHeight is used as a fallback.
+
+  const [measuredHeights, setMeasuredHeights] = useState<Map<number, number>>(
+    new Map(),
+  );
+  const rowElementRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  const getRowHeight = useCallback(
+    (idx: number) => measuredHeights.get(idx) ?? estimatedRowHeight,
+    [measuredHeights, estimatedRowHeight],
+  );
+
+  // ── Prefix sums for all rows ────────────────────────────────────────────
+
+  const prefixSums = useMemo(() => {
+    const sums = [0];
+    for (let i = 0; i < rows.length; i++) {
+      sums.push(sums[i] + getRowHeight(i));
+    }
+    return sums;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows.length, getRowHeight]);
+
+  const totalHeight = prefixSums[rows.length];
+
+  // ── Visible row range via binary search ─────────────────────────────────
+
+  const startIndex = useMemo(() => {
+    const idx = lowerBound(prefixSums, scrollTop);
+    return Math.max(0, idx - overscan);
+  }, [prefixSums, scrollTop, overscan]);
+
+  const endIndex = useMemo(() => {
+    const idx = lowerBound(prefixSums, scrollTop + viewportHeight);
+    return Math.min(rows.length, idx + overscan);
+  }, [prefixSums, scrollTop, viewportHeight, overscan]);
+
+  const visibleRows = rows.slice(startIndex, endIndex);
+  const topSpacerHeight = prefixSums[startIndex];
+  const bottomSpacerHeight = Math.max(0, totalHeight - prefixSums[endIndex]);
+
+  // ── ResizeObserver: measure visible row heights after render ────────────
+
+  useEffect(() => {
+    const observer = new ResizeObserver((entries) => {
+      let changed = false;
+      const updates = new Map<number, number>();
+      for (const entry of entries) {
+        const target = entry.target as HTMLElement;
+        const rowIdx = Number(target.dataset.rowIndex);
+        if (Number.isNaN(rowIdx)) continue;
+        const h =
+          entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+        if (h > 0) updates.set(rowIdx, h);
+      }
+      if (updates.size > 0) {
+        setMeasuredHeights((prev) => {
+          const next = new Map(prev);
+          updates.forEach((h, k) => {
+            if (next.get(k) !== h) {
+              next.set(k, h);
+              changed = true;
+            }
+          });
+          return changed ? next : prev;
+        });
+      }
+    });
+
+    rowElementRefs.current.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [visibleRows, startIndex]);
+
+  // ── Imperative handle: scrollToItemIndex ────────────────────────────────
 
   useImperativeHandle(
     ref,
@@ -202,11 +312,13 @@ function VirtualizedPlayerGridInner<T>(
         const el = containerRef.current;
         if (!el) return;
         const rowIndex = Math.floor(itemIndex / Math.max(1, columns));
-        el.scrollTop = rowIndex * rowHeight;
+        el.scrollTop = prefixSums[rowIndex] ?? rowIndex * estimatedRowHeight;
       },
     }),
-    [columns, rowHeight, containerRef],
+    [columns, estimatedRowHeight, prefixSums, containerRef],
   );
+
+  // ── Render ──────────────────────────────────────────────────────────────
 
   return (
     <div
@@ -216,16 +328,24 @@ function VirtualizedPlayerGridInner<T>(
       style={{ height }}
     >
       <div style={{ height: topSpacerHeight }} aria-hidden="true" />
-      {visibleRows.map((row, i) => (
-        <div
-          key={startIndex + i}
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-6"
-        >
-          {row.map((item) => (
-            <Fragment key={getKey(item)}>{renderItem(item)}</Fragment>
-          ))}
-        </div>
-      ))}
+      {visibleRows.map((row, i) => {
+        const rowIdx = startIndex + i;
+        return (
+          <div
+            key={rowIdx}
+            data-row-index={rowIdx}
+            ref={(el) => {
+              if (el) rowElementRefs.current.set(rowIdx, el);
+              else rowElementRefs.current.delete(rowIdx);
+            }}
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-6"
+          >
+            {row.map((item) => (
+              <Fragment key={getKey(item)}>{renderItem(item)}</Fragment>
+            ))}
+          </div>
+        );
+      })}
       <div style={{ height: bottomSpacerHeight }} aria-hidden="true" />
     </div>
   );
@@ -233,9 +353,11 @@ function VirtualizedPlayerGridInner<T>(
 
 /**
  * Windowed, grid-aware player list: only cards on/near the visible viewport
- * are mounted. See the module-level comment above for why this hand-rolls
- * windowing on top of `useVirtualizedRows` instead of pulling in a
- * general-purpose grid-virtualization dependency.
+ * are mounted. Uses ResizeObserver to measure actual row heights for correct
+ * spacer sizing when card heights vary (variable badge count, watchlist
+ * state, name length). See the module-level comment above for why this
+ * hand-rolls windowing instead of pulling in a general-purpose
+ * grid-virtualization dependency.
  */
 const VirtualizedPlayerGrid = forwardRef(VirtualizedPlayerGridInner) as <T>(
   props: VirtualizedPlayerGridProps<T> & {

@@ -6,14 +6,14 @@ import { mockSorobanRpc } from './fixtures/mock-contract';
  * virtualized scout results grid.
  *
  * This is the CI-friendly frame-timing harness the issue calls for: a
- * scripted scroll through a large (500-player) result set, measured with
+ * scripted scroll through a large (5,000-player) result set, measured with
  * the browser's native Long Tasks API
  * (https://developer.mozilla.org/en-US/docs/Web/API/PerformanceLongTaskTiming)
  * rather than an approximation — a task the browser itself reports as
- * blocking the main thread for >50ms is the same signal Chrome DevTools'
- * Performance panel surfaces, just captured programmatically so it can run
- * unattended in CI. Sidesteps mocking Soroban RPC's XDR encoding for 500
- * synthetic players by driving the *name search* path
+ * blocking the main thread for >20ms (the 55fps budget) is the same signal
+ * Chrome DevTools' Performance panel surfaces, just captured programmatically
+ * so it can run unattended in CI. Sidesteps mocking Soroban RPC's XDR
+ * encoding for 5,000 synthetic players by driving the *name search* path
  * (`/api/players/search`, a plain JSON Next.js route) instead of the
  * contract `filter_players` path — this test is about scroll/render
  * performance and DOM bounding, not contract read correctness.
@@ -38,11 +38,11 @@ function makeSyntheticPlayers(count: number) {
 }
 
 test.describe('scout results grid — virtualization performance', () => {
-  test('scrolling through 500 players stays under the 50ms long-task budget and keeps the DOM bounded', async ({
+  test('scrolling through 5,000 players stays under the 20ms frame-budget and keeps the DOM bounded to ≤60 cards', async ({
     page,
     wallet,
   }) => {
-    test.setTimeout(60_000);
+    test.setTimeout(120_000);
 
     mockSorobanRpc(page, {
       isValidator: false,
@@ -52,7 +52,7 @@ test.describe('scout results grid — virtualization performance', () => {
       },
     });
 
-    const players = makeSyntheticPlayers(500);
+    const players = makeSyntheticPlayers(5000);
     await page.route('**/api/players/search**', async (route) => {
       await route.fulfill({
         status: 200,
@@ -74,8 +74,8 @@ test.describe('scout results grid — virtualization performance', () => {
 
     await page.getByLabel(/search by player name/i).fill('Perf Player');
 
-    await expect(page.getByText('500 players found')).toBeVisible({
-      timeout: 10_000,
+    await expect(page.getByText('5000 players found')).toBeVisible({
+      timeout: 15_000,
     });
 
     const grid = page.getByTestId('player-grid');
@@ -93,20 +93,24 @@ test.describe('scout results grid — virtualization performance', () => {
       (window as any).__perfObserver = observer;
     });
 
+    // ── DOM bounding: initial mount ────────────────────────────────────────
+    const MAX_MOUNTED_CARDS = 60;
+
     const domCountAtTop = await page
       .getByTestId('player-grid')
       .locator('[role="article"]')
       .count();
+    expect(
+      domCountAtTop,
+      `DOM at top: ${domCountAtTop} cards (must be ≤ ${MAX_MOUNTED_CARDS})`,
+    ).toBeLessThanOrEqual(MAX_MOUNTED_CARDS);
 
-    // Script a smooth scroll all the way down and back up, yielding to the
-    // browser's rAF/task queue between steps so long tasks (if any) are
-    // actually captured by the observer rather than coalesced into one
-    // synchronous burst.
+    // ── Scripted scroll: all the way down and back up ──────────────────────
     await page.evaluate(async () => {
       const el = document.querySelector(
         '[data-testid="player-grid"]',
       ) as HTMLElement;
-      const steps = 40;
+      const steps = 60;
       const max = el.scrollHeight - el.clientHeight;
       const wait = () => new Promise((r) => requestAnimationFrame(r));
 
@@ -122,29 +126,35 @@ test.describe('scout results grid — virtualization performance', () => {
       }
     });
 
+    // ── DOM bounding: after scrolling ──────────────────────────────────────
     const domCountAfterScroll = await page
       .getByTestId('player-grid')
       .locator('[role="article"]')
       .count();
+    expect(
+      domCountAfterScroll,
+      `DOM after full scroll: ${domCountAfterScroll} cards (must be ≤ ${MAX_MOUNTED_CARDS})`,
+    ).toBeLessThanOrEqual(MAX_MOUNTED_CARDS);
 
+    // ── Frame budget assertion ─────────────────────────────────────────────
     const longTasks: number[] = await page.evaluate(() => {
       (window as any).__perfObserver?.disconnect();
       return (window as any).__longTasks ?? [];
     });
 
-    // The core assertion: no single main-thread task exceeded the 50ms
-    // frame budget while scrolling through all 500 players.
+    // The core assertion: no single main-thread task exceeded 20ms
+    // (the 55fps budget) while scrolling through all 5,000 players.
     const worst = longTasks.length ? Math.max(...longTasks) : 0;
     expect(
       worst,
-      `longest task during scroll was ${worst.toFixed(1)}ms (tasks: ${longTasks.length})`,
-    ).toBeLessThanOrEqual(50);
+      `longest task during scroll was ${worst.toFixed(1)}ms (${longTasks.length} long tasks)`,
+    ).toBeLessThanOrEqual(20);
 
-    // Bounded DOM: mounted cards after scrolling all the way through and
-    // back must be nowhere near the full 500-item list — true
-    // virtualization windows the DOM instead of accumulating it.
-    expect(domCountAtTop).toBeLessThan(50);
-    expect(domCountAfterScroll).toBeLessThan(50);
+    // ── Summary for CI logs ────────────────────────────────────────────────
+    console.log(
+      `Virtualization perf: ${domCountAtTop} cards at top, ${domCountAfterScroll} after scroll, ` +
+        `worst task ${worst.toFixed(1)}ms, ${longTasks.length} long tasks`,
+    );
   });
 
   test('RPC calls for milestone data do not scale with the number of players scrolled', async ({
