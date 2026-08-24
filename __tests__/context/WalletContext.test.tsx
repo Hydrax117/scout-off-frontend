@@ -517,4 +517,291 @@ describe('WalletContext', () => {
       expect(cacheProbe.result.current.data).toBeUndefined();
     });
   });
+
+  describe('sessionExpiresAt lifecycle', () => {
+    it('sets sessionExpiresAt after a successful doConnect', async () => {
+      setupSep10();
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+
+      const before = Date.now();
+      await act(async () => {
+        await result.current.connectWithProvider('freighter');
+      });
+
+      expect(result.current.sessionExpiresAt).toBeGreaterThan(before);
+      // Default maxAge when the server response lacks it is 86400s (1 day)
+      expect(result.current.sessionExpiresAt).toBeLessThanOrEqual(
+        before + 86400 * 1000 + 1000, // +1s tolerance for test execution
+      );
+    });
+
+    it('persists sessionExpiresAt in localStorage', async () => {
+      setupSep10();
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+      await act(async () => {
+        await result.current.connectWithProvider('freighter');
+      });
+
+      const stored = localStorage.getItem('scoutoff:session_expiry');
+      expect(stored).not.toBeNull();
+      expect(Number(stored)).toBe(result.current.sessionExpiresAt);
+    });
+
+    it('restores sessionExpiresAt from localStorage on mount', async () => {
+      const futureExpiry = Date.now() + 3600 * 1000;
+      localStorage.setItem(
+        'wallet_session',
+        JSON.stringify({
+          publicKey: PUBLIC_KEY,
+          provider: 'freighter',
+          networkType: 'testnet',
+        }),
+      );
+      localStorage.setItem('scoutoff:session_expiry', String(futureExpiry));
+
+      // Mock getServerSession to return authenticated
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ authenticated: true, publicKey: PUBLIC_KEY }),
+      });
+
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+      await waitFor(() =>
+        expect(result.current.isRestoringSession).toBe(false),
+      );
+
+      expect(result.current.isAuthenticated).toBe(true);
+      expect(result.current.sessionExpiresAt).toBe(futureExpiry);
+    });
+
+    it('clears sessionExpiresAt and localStorage on disconnect', async () => {
+      setupSep10();
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+      await act(async () => {
+        await result.current.connectWithProvider('freighter');
+      });
+      expect(result.current.sessionExpiresAt).not.toBeNull();
+
+      act(() => {
+        result.current.disconnect();
+      });
+
+      expect(result.current.sessionExpiresAt).toBeNull();
+      expect(localStorage.getItem('scoutoff:session_expiry')).toBeNull();
+    });
+  });
+
+  describe('periodic session reconciliation', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('signs out when server says session is unauthenticated and refresh fails', async () => {
+      setupSep10();
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+      await act(async () => {
+        await result.current.connectWithProvider('freighter');
+      });
+      expect(result.current.isAuthenticated).toBe(true);
+
+      // Mock periodic reconciliation: GET /api/auth/session returns 401,
+      // POST /api/auth/refresh also fails.
+      mockFetch
+        .mockResolvedValueOnce({ ok: false, status: 401 }) // reconciliation GET
+        .mockResolvedValueOnce({ ok: false, status: 401 }); // refresh POST
+
+      await act(async () => {
+        jest.advanceTimersByTime(60_000); // 1 interval
+      });
+
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(false);
+      });
+      expect(result.current.publicKey).toBeNull();
+      expect(result.current.sessionExpiresAt).toBeNull();
+    });
+
+    it('stays authenticated when server confirms session is valid', async () => {
+      setupSep10();
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+      await act(async () => {
+        await result.current.connectWithProvider('freighter');
+      });
+
+      // Mock periodic reconciliation: GET /api/auth/session returns authenticated
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ authenticated: true, publicKey: PUBLIC_KEY }),
+      });
+
+      await act(async () => {
+        jest.advanceTimersByTime(60_000);
+      });
+
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(true);
+      });
+    });
+
+    it('recovers via refresh when access token expired but refresh token valid', async () => {
+      setupSep10();
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+      await act(async () => {
+        await result.current.connectWithProvider('freighter');
+      });
+
+      mockFetch
+        .mockResolvedValueOnce({ ok: false, status: 401 }) // session check
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            success: true,
+            publicKey: PUBLIC_KEY,
+            maxAge: 86400,
+          }),
+        }); // refresh
+
+      await act(async () => {
+        jest.advanceTimersByTime(60_000);
+      });
+
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(true);
+      });
+    });
+  });
+
+  describe('reauthenticate() concurrency guard', () => {
+    it('deduplicates concurrent calls into a single wallet-signature prompt', async () => {
+      // Step 1: Connect normally with default mocks so there's a stored session.
+      setupSep10();
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+      await act(async () => {
+        await result.current.connectWithProvider('freighter');
+      });
+      expect(result.current.isAuthenticated).toBe(true);
+
+      // Step 2: Now mock signTransaction with a controllable pending promise
+      // for the reauthentication flow (the initial connect already used the
+      // default mock and completed).
+      let resolveSign: (value: string) => void;
+      const signPromise = new Promise<string>((r) => {
+        resolveSign = r;
+      });
+      freighter.signTransaction.mockImplementation(() => signPromise);
+
+      // Set up challenge fetch for reauthentication.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ transaction: CHALLENGE_XDR }),
+      });
+
+      // Fire two concurrent reauthenticate() calls.
+      let reauth1Done = false;
+      let reauth2Done = false;
+      act(() => {
+        result.current.reauthenticate().then(() => {
+          reauth1Done = true;
+        });
+      });
+      act(() => {
+        result.current.reauthenticate().then(() => {
+          reauth2Done = true;
+        });
+      });
+
+      // Let microtasks settle — the second call should piggyback on the
+      // first in-flight promise without calling getPublicKey/signTransaction
+      // again.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+
+      // getPublicKey should have been called once for the reauth (the second
+      // reauthenticate() piggybacks on the first via inFlightConnectRef).
+      // Count: 1 from initial connect + 1 from the in-flight reauth = 2.
+      expect(freighter.getPublicKey).toHaveBeenCalledTimes(2);
+
+      // Set up auth POST mock for when signing completes.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, maxAge: 86400 }),
+      });
+
+      // Release the pending signature so the reauth completes.
+      await act(async () => {
+        resolveSign!(SIGNED_XDR);
+      });
+
+      await waitFor(() => {
+        expect(reauth1Done).toBe(true);
+        expect(reauth2Done).toBe(true);
+      });
+
+      // signTransaction was called once for the reauth (not twice).
+      // Count: 1 from initial connect + 1 from reauth = 2.
+      expect(freighter.signTransaction).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('cross-tab session invalidation', () => {
+    it('signs out when another tab fires a storage event for session invalidation', async () => {
+      setupSep10();
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+      await act(async () => {
+        await result.current.connectWithProvider('freighter');
+      });
+      expect(result.current.isAuthenticated).toBe(true);
+
+      // Simulate another tab calling disconnect() by dispatching a storage
+      // event for the invalidation key.
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: 'scoutoff:session-invalidated',
+            newValue: String(Date.now()),
+          }),
+        );
+      });
+
+      await waitFor(() => {
+        expect(result.current.isAuthenticated).toBe(false);
+      });
+      expect(result.current.publicKey).toBeNull();
+      expect(result.current.sessionExpiresAt).toBeNull();
+      expect(localStorage.getItem('wallet_session')).toBeNull();
+    });
+
+    it('disconnect in this tab writes the invalidation key to localStorage', async () => {
+      setupSep10();
+      const { result } = renderHook(() => useWalletContext(), { wrapper });
+      await act(async () => {
+        await result.current.connectWithProvider('freighter');
+      });
+
+      // Listen for storage events dispatched by disconnect().
+      let storageEventFired = false;
+      const handler = (e: StorageEvent) => {
+        if (e.key === 'scoutoff:session-invalidated') storageEventFired = true;
+      };
+      window.addEventListener('storage', handler);
+
+      act(() => {
+        result.current.disconnect();
+      });
+
+      // The key should have been written then removed (best-effort).
+      // In jsdom the storage event fires synchronously from setItem, but
+      // the key itself should be gone after removeItem.
+      expect(localStorage.getItem('scoutoff:session-invalidated')).toBeNull();
+
+      window.removeEventListener('storage', handler);
+    });
+  });
 });

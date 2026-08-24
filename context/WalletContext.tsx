@@ -6,6 +6,7 @@ import {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
   ReactNode,
 } from 'react';
 import { mutate } from 'swr';
@@ -94,6 +95,21 @@ export async function isWalletInstalled(
 const WALLET_SESSION_KEY = 'wallet_session';
 const REMEMBERED_ADDRESSES_KEY = 'scoutoff:remembered_addresses';
 const SESSION_EXPIRY_KEY = 'scoutoff:session_expiry';
+
+// ── Cross-tab session invalidation key ────────────────────────────────────────
+// Writing a timestamp to this key and then removing it fires the browser's
+// `storage` event in other same-origin tabs, which we listen for below.
+// Using a dedicated key keeps this signal isolated from app data.
+const SESSION_INVALIDATED_KEY = 'scoutoff:session-invalidated';
+
+// ── Periodic session reconciliation cadence ───────────────────────────────────
+// GET /api/auth/session is rate-limited to 30 requests per IP per 10 seconds
+// (app/api/auth/session/route.ts:19-20).  With a 60-second polling interval
+// and at most ~5 tabs open simultaneously, the worst-case burst is 5 req/60s
+// ≈ 0.83 req/10s — well under the 30/10s ceiling.  The tab-refocus
+// (visibilitychange) check is instant and doesn't count toward this cadence
+// since it's a one-off, not a recurring timer.
+const RECONCILIATION_INTERVAL_MS = 60_000; // 60 seconds
 
 // ── Session types ─────────────────────────────────────────────────────────────
 
@@ -258,6 +274,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
 
+  // ── Concurrency guard: de-duplicate concurrent doConnect calls ──────────
+  // Multiple callers (e.g. reauthenticate from SessionExpiryWarning and a
+  // manual WalletButton click) can race into doConnect simultaneously.  We
+  // model this on the in-flight dedup pattern from hooks/useXlmUsdRate.ts:
+  // the first caller creates the promise, subsequent callers piggyback on
+  // the same promise, and it is cleaned up on settlement.
+  const inFlightConnectRef = useRef<Promise<void> | null>(null);
+
   const walletProviderInfo: WalletProviderInfo | null = walletProvider
     ? (WALLET_PROVIDERS.find((wp) => wp.provider === walletProvider) ?? null)
     : null;
@@ -364,6 +388,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setPublicKey(pk);
       setIsAuthenticated(true);
       setWalletProvider(provider);
+
+      // Restore session expiry from localStorage so SessionExpiryWarning
+      // can schedule its timer. If the stored expiry is already past, the
+      // reconciliation loop (below) will detect the expired server cookie
+      // and sign the user out shortly.
+      const storedExpiry = getSessionExpiry();
+      if (storedExpiry && storedExpiry > Date.now()) {
+        setSessionExpiresAt(storedExpiry);
+      } else {
+        setSessionExpiresAt(null);
+      }
+
       try {
         await loadBalance(pk);
       } catch {
@@ -401,6 +437,82 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [restoreSession]);
+
+  // ── Periodic session reconciliation ─────────────────────────────────────
+  // While authenticated, poll GET /api/auth/server periodically to detect
+  // server-side session expiry (e.g. access token TTL elapsed, cookie
+  // cleared by user) that the client can't observe via wallet extension
+  // availability alone.  The interval is 60s — see RECONCILIATION_INTERVAL_MS
+  // header comment for the rate-limit math.
+  //
+  // On tab refocus (visibilitychange → visible) we also reconcile immediately
+  // (handled by the restoreSession effect above), which doesn't count toward
+  // the polling cadence.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const reconcileWithServer = async () => {
+      const serverSession = await getServerSession();
+      if (serverSession && !serverSession.authenticated) {
+        // Server says the session is gone.  Try a refresh first — the
+        // access token may have just elapsed while the refresh token is
+        // still valid.
+        const refreshed = await refreshSession();
+        if (!refreshed.authenticated) {
+          // Refresh failed — sign out locally.
+          setPublicKey(null);
+          setIsAuthenticated(false);
+          setSessionExpiresAt(null);
+          setWalletProvider(null);
+          removeStoredSession();
+          removeSessionExpiry();
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(
+              new CustomEvent('scoutoff:session-expired', {
+                detail: {
+                  message:
+                    'Your session expired. Please reconnect your wallet to continue.',
+                },
+              }),
+            );
+          }
+        } else if (refreshed.publicKey && publicKey && refreshed.publicKey !== publicKey) {
+          // Refresh returned a different address — force re-auth.
+          setPublicKey(null);
+          setIsAuthenticated(false);
+          setSessionExpiresAt(null);
+          setWalletProvider(null);
+          removeStoredSession();
+          removeSessionExpiry();
+        }
+      }
+    };
+
+    const intervalId = setInterval(reconcileWithServer, RECONCILIATION_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, [isAuthenticated, publicKey]);
+
+  // ── Cross-tab session invalidation listener ─────────────────────────────
+  // When another tab calls disconnect(), it writes then removes
+  // SESSION_INVALIDATED_KEY from localStorage.  The browser fires a
+  // `storage` event in every other same-origin tab, which we listen for
+  // here to sign the user out without requiring a visibilitychange event.
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === SESSION_INVALIDATED_KEY) {
+        // Another tab logged out — reconcile our state against the server.
+        setPublicKey(null);
+        setIsAuthenticated(false);
+        setSessionExpiresAt(null);
+        setWalletProvider(null);
+        removeStoredSession();
+        removeSessionExpiry();
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   const openWalletModal = useCallback(() => setShowWalletModal(true), []);
   const closeWalletModal = useCallback(() => setShowWalletModal(false), []);
@@ -473,6 +585,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setPublicKey(pk);
         setIsAuthenticated(true);
         setWalletProvider(provider);
+        setSessionExpiresAt(expiresAt);
+        setSessionExpiry(expiresAt);
         setStoredSession(pk, provider, CURRENT_NETWORK_TYPE);
         setShowWalletModal(false);
 
@@ -514,13 +628,24 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [doConnect],
   );
 
+  // Re-authenticate the current session.  Concurrent calls (e.g. the user
+  // manually reconnecting while SessionExpiryWarning's auto-flow is also
+  // mid-reauth) are de-duplicated into a single in-flight doConnect promise,
+  // modelling the pattern from hooks/useXlmUsdRate.ts's inFlight Map.
   const reauthenticate = useCallback(async () => {
     const session = getStoredSession();
     if (!session) {
       openWalletModal();
       return;
     }
-    await doConnect(session.provider);
+    if (inFlightConnectRef.current) {
+      return inFlightConnectRef.current;
+    }
+    const promise = doConnect(session.provider).finally(() => {
+      inFlightConnectRef.current = null;
+    });
+    inFlightConnectRef.current = promise;
+    return promise;
   }, [doConnect, openWalletModal]);
 
   const disconnect = useCallback(() => {
@@ -534,12 +659,26 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setWalletProvider(null);
     setSessionExpiresAt(null);
     removeStoredSession();
+    removeSessionExpiry();
     // Unlocked contact details (and any other cached data) must not survive
     // logout — see lib/contactDetailsCache.ts. The explicit purge below is
     // belt-and-suspenders on top of this blanket wipe: it also cancels any
     // pending auto-purge timers, which the blanket mutate alone wouldn't do.
     mutate(() => true, undefined, { revalidate: false });
     purgeAllContactDetails();
+
+    // Cross-tab propagation: writing then removing a localStorage key fires
+    // the browser's native `storage` event in every other same-origin tab.
+    // Other tabs' WalletContext listens for this key and calls
+    // handleSessionInvalidated() below.
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(SESSION_INVALIDATED_KEY, String(Date.now()));
+        localStorage.removeItem(SESSION_INVALIDATED_KEY);
+      } catch {
+        // localStorage may be full or disabled — best-effort.
+      }
+    }
   }, []);
 
   const signAndSubmit = useCallback(
