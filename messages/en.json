@@ -157,7 +157,13 @@
     "processing": "Submitting {count} {count, plural, one {action} other {actions}}…",
     "processing_desc": "Please wait while your queued changes are being submitted.",
     "retry": "Retry now",
-    "retry_aria": "Retry queued actions"
+    "retry_aria": "Retry queued actions",
+    "failed": "{count} {count, plural, one {action} other {actions}} could not be submitted",
+    "failed_desc": "The following actions failed permanently and will not be retried automatically. You can discard them to clear the error.",
+    "failed_action_label": "{type} action (attempted {retryCount} {retryCount, plural, one {time} other {times}})",
+    "discard": "Discard",
+    "discard_aria": "Discard failed action: {type}",
+    "discard_all": "Discard all failed"
   },
   "progress_levels": {
     "level0": "Unverified",

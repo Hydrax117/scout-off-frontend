@@ -41,7 +41,13 @@
     "processing": "Envoi de {count} {count, plural, one {action} other {actions}} en cours…",
     "processing_desc": "Veuillez patienter pendant l'envoi de vos actions en attente.",
     "retry": "Réessayer maintenant",
-    "retry_aria": "Réessayer les actions en attente"
+    "retry_aria": "Réessayer les actions en attente",
+    "failed": "{count} {count, plural, one {action} other {actions}} n'ont pas pu être envoyées",
+    "failed_desc": "Les actions suivantes ont définitivement échoué et ne seront plus réessayées automatiquement. Vous pouvez les supprimer pour effacer l'erreur.",
+    "failed_action_label": "Action {type} (tentée {retryCount} {retryCount, plural, one {fois} other {fois}})",
+    "discard": "Supprimer",
+    "discard_aria": "Supprimer l'action échouée : {type}",
+    "discard_all": "Supprimer toutes les échouées"
   },
   "scout_dashboard": {
     "title": "Tableau de bord des scouts",

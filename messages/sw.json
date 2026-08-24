@@ -85,7 +85,13 @@
     "processing": "Inatuma {count} {count, plural, one {kitendo} other {vitendo}}…",
     "processing_desc": "Tafadhali subiri wakati vitendo vyako vilivyoko foleni vinatumwa.",
     "retry": "Jaribu tena sasa",
-    "retry_aria": "Jaribu tena vitendo vilivyoko foleni"
+    "retry_aria": "Jaribu tena vitendo vilivyoko foleni",
+    "failed": "{count} {count, plural, one {kitendo} other {vitendo}} havikuweza kutumwa",
+    "failed_desc": "Vitendo vifuatavyo vimeshindwa kabisa na havitajaribishwa tena kiotomatiki. Unaweza kuvifuta ili kuondoa hitilafu.",
+    "failed_action_label": "Kitendo cha {type} (kilijaribishwa mara {retryCount})",
+    "discard": "Futa",
+    "discard_aria": "Futa kitendo kilichoshindwa: {type}",
+    "discard_all": "Futa vyote vilivyoshindwa"
   },
   "validator": {
     "title": "Dashibodi ya Mthibitishaji",
