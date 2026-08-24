@@ -16,6 +16,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { validateConfig } from '@/lib/config';
 import { locales, defaultLocale } from '@/lib/locales';
+import { getTextDirection } from '@/lib/rtl';
 
 // Analytics and Web Vitals reporting are disabled in tests to avoid
 // polluting real analytics data and to keep jsdom-based test runs from
@@ -87,7 +88,7 @@ export default async function RootLayout({
   const configWarnings = validateConfig();
 
   return (
-    <html lang={locale} suppressHydrationWarning>
+    <html lang={locale} dir={getTextDirection(locale)} suppressHydrationWarning>
       <head>
         <link
           rel="icon"

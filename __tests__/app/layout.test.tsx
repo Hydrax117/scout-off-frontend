@@ -6,6 +6,17 @@ jest.mock('next-intl/server', () => ({
   getMessages: jest.fn().mockResolvedValue({ app_title: 'ScoutOff' }),
 }));
 
+// The real `@/lib/locales` only lists 'en'/'fr'/'sw' (all LTR). To prove the
+// `<html dir>` wiring actually branches on `lib/rtl.ts` (and not just on a
+// hardcoded 'ltr'), this mock adds a hypothetical 'ar' (RTL) locale to the
+// recognized-locale list used by `getLocale()` in app/layout.tsx, without
+// touching the real `SUPPORTED_LOCALES` in lib/locales.ts (out of scope —
+// see GitHub issue #1008).
+jest.mock('@/lib/locales', () => ({
+  locales: ['en', 'fr', 'sw', 'ar'],
+  defaultLocale: 'en',
+}));
+
 jest.mock('next-intl', () => ({
   NextIntlClientProvider: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="intl-provider">{children}</div>
@@ -128,6 +139,7 @@ describe('RootLayout', () => {
     const { container } = render(<>{element}</>);
 
     expect(container.querySelector('html')).toHaveAttribute('lang', 'fr');
+    expect(container.querySelector('html')).toHaveAttribute('dir', 'ltr');
   });
 
   it('sets html lang to "sw" when x-pathname has /sw/ prefix', async () => {
@@ -141,6 +153,7 @@ describe('RootLayout', () => {
     const { container } = render(<>{element}</>);
 
     expect(container.querySelector('html')).toHaveAttribute('lang', 'sw');
+    expect(container.querySelector('html')).toHaveAttribute('dir', 'ltr');
   });
 
   it('falls back to "en" when x-pathname header is absent', async () => {
@@ -154,6 +167,7 @@ describe('RootLayout', () => {
     const { container } = render(<>{element}</>);
 
     expect(container.querySelector('html')).toHaveAttribute('lang', 'en');
+    expect(container.querySelector('html')).toHaveAttribute('dir', 'ltr');
   });
 
   it('falls back to "en" for unrecognized locale prefix', async () => {
@@ -167,6 +181,39 @@ describe('RootLayout', () => {
     const { container } = render(<>{element}</>);
 
     expect(container.querySelector('html')).toHaveAttribute('lang', 'en');
+    expect(container.querySelector('html')).toHaveAttribute('dir', 'ltr');
+  });
+
+  it('sets html dir to "rtl" for a hypothetical RTL locale (ar) recognized via x-pathname', async () => {
+    // 'ar' is not in the real SUPPORTED_LOCALES (see lib/locales.ts) but is
+    // added to the recognized-locale list by the '@/lib/locales' mock above
+    // so this test can exercise the RTL branch end-to-end without touching
+    // real locale routing.
+    mockPathname = '/ar/scout';
+
+    const element = await RootLayout({
+      children: <p>مرحبا</p>,
+      params: { locale: 'ar' },
+    });
+
+    const { container } = render(<>{element}</>);
+
+    expect(container.querySelector('html')).toHaveAttribute('lang', 'ar');
+    expect(container.querySelector('html')).toHaveAttribute('dir', 'rtl');
+  });
+
+  it('sets html dir to "ltr" for the default "en" locale', async () => {
+    mockPathname = '/en/scout';
+
+    const element = await RootLayout({
+      children: <p>Hello</p>,
+      params: { locale: 'en' },
+    });
+
+    const { container } = render(<>{element}</>);
+
+    expect(container.querySelector('html')).toHaveAttribute('lang', 'en');
+    expect(container.querySelector('html')).toHaveAttribute('dir', 'ltr');
   });
 
   it('exposes SEO metadata for the app', () => {
