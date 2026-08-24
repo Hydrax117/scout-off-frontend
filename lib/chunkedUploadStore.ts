@@ -23,7 +23,7 @@ import * as crypto from 'crypto';
 
 const UPLOAD_DIR = path.join(os.tmpdir(), 'scout-off-chunked-uploads');
 
-/** Abandoned sessions older than this are swept on the next init call. */
+/** Abandoned sessions older than this are swept proactively (see sweepExpired). */
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 interface UploadSession {
@@ -39,6 +39,13 @@ interface UploadSession {
 
 const sessions = new Map<string, UploadSession>();
 
+// Called from every store entry point that already touches `sessions`
+// (init/status/chunk) rather than on a setInterval: a timer would need
+// explicit .unref()/shutdown handling to stay compatible with this
+// module's single-process assumption, whereas piggybacking on requests
+// that already scan/mutate this in-memory Map is free and keeps quiet
+// periods (no uploads at all) from being the only way sweeping is skipped
+// — any request that touches the store is now also an opportunity to sweep.
 function sweepExpired(): void {
   const now = Date.now();
   for (const [id, session] of sessions) {
@@ -89,6 +96,7 @@ export function initSession(params: InitParams): { sessionId: string } {
 
 /** Returns the current status of a session, or null if unknown/expired. */
 export function getSessionStatus(sessionId: string): SessionStatus | null {
+  sweepExpired();
   const session = sessions.get(sessionId);
   if (!session) return null;
   return {
@@ -103,6 +111,7 @@ export async function writeChunk(
   chunkIndex: number,
   data: Buffer,
 ): Promise<SessionStatus> {
+  sweepExpired();
   const session = sessions.get(sessionId);
   if (!session) {
     throw new Error('Upload session not found or expired');

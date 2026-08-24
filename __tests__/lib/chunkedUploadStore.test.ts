@@ -1,4 +1,7 @@
 /** @jest-environment node */
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import {
   initSession,
   getSessionStatus,
@@ -8,8 +11,23 @@ import {
   __resetForTests,
 } from '@/lib/chunkedUploadStore';
 
+const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // must match lib/chunkedUploadStore.ts
+const UPLOAD_DIR = path.join(os.tmpdir(), 'scout-off-chunked-uploads');
+
+/** sweepExpired's fs.rm is fire-and-forget, so poll briefly for removal. */
+async function waitForRemoval(dir: string, timeoutMs = 2000): Promise<void> {
+  const start = Date.now();
+  while (fs.existsSync(dir)) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`${dir} was not removed within ${timeoutMs}ms`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 afterEach(() => {
   __resetForTests();
+  jest.restoreAllMocks();
 });
 
 describe('chunkedUploadStore', () => {
@@ -133,5 +151,69 @@ describe('chunkedUploadStore', () => {
 
   it('cleanupSession on an unknown session is a harmless no-op', () => {
     expect(() => cleanupSession('does-not-exist')).not.toThrow();
+  });
+
+  it('proactively sweeps a session abandoned past its TTL without a new initSession call', async () => {
+    const realNow = Date.now();
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(realNow);
+
+    const { sessionId } = initSession({
+      filename: 'clip.mp4',
+      fileType: 'video/mp4',
+      fileSize: 10,
+      totalChunks: 1,
+    });
+    await writeChunk(sessionId, 0, Buffer.from('abandoned'));
+
+    const dir = path.join(UPLOAD_DIR, sessionId);
+    expect(fs.existsSync(dir)).toBe(true);
+
+    // Advance past the TTL without ever calling initSession again.
+    nowSpy.mockReturnValue(realNow + SESSION_TTL_MS + 1);
+
+    // getSessionStatus is a read-only status check, not a new upload — it
+    // now proactively sweeps as a side effect, same as writeChunk does.
+    expect(getSessionStatus(sessionId)).toBeNull();
+
+    await waitForRemoval(dir);
+    expect(fs.existsSync(dir)).toBe(false);
+  });
+
+  it('writeChunk on an unrelated session also proactively sweeps expired sessions', async () => {
+    const realNow = Date.now();
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(realNow);
+
+    const expired = initSession({
+      filename: 'old.mp4',
+      fileType: 'video/mp4',
+      fileSize: 10,
+      totalChunks: 1,
+    });
+    const expiredDir = path.join(UPLOAD_DIR, expired.sessionId);
+    await writeChunk(expired.sessionId, 0, Buffer.from('stale'));
+
+    // A second session created 1s later, before `expired` has aged out —
+    // both sessions co-exist at this point.
+    nowSpy.mockReturnValue(realNow + 1000);
+    const fresh = initSession({
+      filename: 'new.mp4',
+      fileType: 'video/mp4',
+      fileSize: 10,
+      totalChunks: 1,
+    });
+
+    // Advance past `expired`'s TTL, but not past `fresh`'s (created 1s later).
+    nowSpy.mockReturnValue(realNow + SESSION_TTL_MS + 500);
+
+    // No new initSession call here: writeChunk on the still-fresh session
+    // is what must trigger the sweep of the unrelated expired one.
+    await writeChunk(fresh.sessionId, 0, Buffer.from('active'));
+
+    expect(getSessionStatus(expired.sessionId)).toBeNull();
+    expect(getSessionStatus(fresh.sessionId)).toEqual({
+      receivedChunks: [0],
+      totalChunks: 1,
+    });
+    await waitForRemoval(expiredDir);
   });
 });
