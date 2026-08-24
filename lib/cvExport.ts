@@ -7,6 +7,30 @@ const PAGE_WIDTH = 595.28; // A4, points
 const PAGE_HEIGHT = 841.89;
 const MARGIN = 50;
 
+/**
+ * Above this milestone count, `generatePlayerCvPdf` is a large enough job
+ * that a caller should warn the user before starting rather than let the
+ * "Generating…" state run silently (issue #1011) — pagination itself
+ * (`ensureSpace`) already handles any length correctly, so this is purely
+ * about setting user expectations for how long the wait will be, not a
+ * hard cap: nothing is dropped or truncated at this threshold.
+ */
+export const CV_EXPORT_LARGE_MILESTONE_WARNING_THRESHOLD = 150;
+
+/**
+ * How many milestones `generatePlayerCvPdf` draws before yielding a
+ * macrotask back to the event loop. The synchronous `drawText` loop over a
+ * long milestone list can otherwise block the main thread for one
+ * unbroken stretch; yielding periodically lets the browser process input,
+ * paint the "Generating…" state, etc. in between chunks instead of only
+ * after the whole PDF is built.
+ */
+const PDF_GENERATION_YIELD_INTERVAL = 40;
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 function truncateAddress(address: string): string {
   if (address.length <= 12) return address;
   return `${address.slice(0, 4)}…${address.slice(-4)}`;
@@ -23,10 +47,24 @@ export function buildCvFilename(playerName: string): string {
 }
 
 /**
+ * Caps how many `fetchAcademyForWallet` lookups run concurrently in
+ * `resolveValidatorNames` (issue #1011). A handful — the common case of a
+ * few distinct validators per player — completes in one batch either way;
+ * this only bounds the fan-out for a player with an unusually long,
+ * many-validator milestone history. No existing concurrency-limit
+ * convention exists elsewhere in this codebase to mirror, so 5 is picked
+ * directly: high enough that the common case (a handful of validators)
+ * never waits on an extra batch round trip, low enough to not fire
+ * hundreds of simultaneous requests at the backend for an outlier player.
+ */
+const VALIDATOR_LOOKUP_CONCURRENCY = 5;
+
+/**
  * Resolves each unique validator wallet on the milestone list to a
  * human-readable name via the academy lookup (same source ValidatorChip
  * uses), falling back to a truncated address when a validator isn't
- * registered under an academy.
+ * registered under an academy. Runs in bounded-concurrency batches rather
+ * than firing every lookup at once — see `VALIDATOR_LOOKUP_CONCURRENCY`.
  */
 async function resolveValidatorNames(
   milestones: Milestone[],
@@ -34,12 +72,21 @@ async function resolveValidatorNames(
   const uniqueAddresses = Array.from(
     new Set(milestones.map((m) => m.validator)),
   );
-  const entries = await Promise.all(
-    uniqueAddresses.map(async (address) => {
-      const academy = await fetchAcademyForWallet(address);
-      return [address, academy?.name ?? truncateAddress(address)] as const;
-    }),
-  );
+  const entries: (readonly [string, string])[] = [];
+  for (
+    let i = 0;
+    i < uniqueAddresses.length;
+    i += VALIDATOR_LOOKUP_CONCURRENCY
+  ) {
+    const batch = uniqueAddresses.slice(i, i + VALIDATOR_LOOKUP_CONCURRENCY);
+    const batchEntries = await Promise.all(
+      batch.map(async (address) => {
+        const academy = await fetchAcademyForWallet(address);
+        return [address, academy?.name ?? truncateAddress(address)] as const;
+      }),
+    );
+    entries.push(...batchEntries);
+  }
   return Object.fromEntries(entries);
 }
 
@@ -136,7 +183,8 @@ export async function generatePlayerCvPdf(
     const chronological = [...milestones].sort(
       (a, b) => a.timestamp - b.timestamp,
     );
-    for (const milestone of chronological) {
+    for (let i = 0; i < chronological.length; i++) {
+      const milestone = chronological[i];
       ensureSpace(36);
       drawText(milestone.description, { size: 11, gapAfter: 2 });
       const date = new Date(milestone.timestamp * 1000).toLocaleDateString();
@@ -148,6 +196,14 @@ export async function generatePlayerCvPdf(
         color: MUTED,
         gapAfter: 14,
       });
+
+      if (
+        i > 0 &&
+        i % PDF_GENERATION_YIELD_INTERVAL === 0 &&
+        i < chronological.length - 1
+      ) {
+        await yieldToEventLoop();
+      }
     }
   }
 

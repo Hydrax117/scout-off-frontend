@@ -95,8 +95,17 @@ function PlayerDashboardContent() {
 
     setCvExportStatus('generating');
     try {
-      const { generatePlayerCvPdf, downloadPlayerCvPdf } =
-        await import('@/lib/cvExport');
+      const {
+        generatePlayerCvPdf,
+        downloadPlayerCvPdf,
+        CV_EXPORT_LARGE_MILESTONE_WARNING_THRESHOLD,
+      } = await import('@/lib/cvExport');
+      if (milestones.length > CV_EXPORT_LARGE_MILESTONE_WARNING_THRESHOLD) {
+        showToast({
+          message: `Your CV includes ${milestones.length} milestones and may take a moment to generate.`,
+          variant: 'info',
+        });
+      }
       const bytes = await generatePlayerCvPdf(player, milestones);
       downloadPlayerCvPdf(bytes, player.vitals.name);
       setCvExportStatus('idle');
@@ -104,7 +113,7 @@ function PlayerDashboardContent() {
       setCvExportStatus('error');
       window.setTimeout(() => setCvExportStatus('idle'), 3000);
     }
-  }, [player, milestones]);
+  }, [player, milestones, showToast]);
 
   useEffect(() => {
     if (!loading) {

@@ -25,11 +25,13 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import TransactionStatus from '@/components/ui/TransactionStatus';
 import type { TxStatus } from '@/components/ui/TransactionStatus';
 import TruncatedAddress from '@/components/ui/TruncatedAddress';
+import { useToast } from '@/components/ui/Toast';
 
 export default function PlayerProfile() {
   const { id } = useParams<{ id: string }>();
   const { publicKey } = useWallet();
   const t = useTranslations('player_profile');
+  const { show: showToast } = useToast();
   const { player, loading: playerLoading, refetch } = usePlayer(id ?? null);
   const { unlock, loading: contacting } = usePayToContact(id ?? '');
   const watchlist = useWatchlist(publicKey ?? null);
@@ -151,8 +153,19 @@ export default function PlayerProfile() {
     if (!player) return;
     setCvExportStatus('generating');
     try {
-      const { generatePlayerCvPdf, downloadPlayerCvPdf } =
-        await import('@/lib/cvExport');
+      const {
+        generatePlayerCvPdf,
+        downloadPlayerCvPdf,
+        CV_EXPORT_LARGE_MILESTONE_WARNING_THRESHOLD,
+      } = await import('@/lib/cvExport');
+      if (
+        player.milestones.length > CV_EXPORT_LARGE_MILESTONE_WARNING_THRESHOLD
+      ) {
+        showToast({
+          message: `Your CV includes ${player.milestones.length} milestones and may take a moment to generate.`,
+          variant: 'info',
+        });
+      }
       const bytes = await generatePlayerCvPdf(player, player.milestones);
       downloadPlayerCvPdf(bytes, player.vitals.name);
       setCvExportStatus('idle');

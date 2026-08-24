@@ -150,6 +150,52 @@ describe('generatePlayerCvPdf', () => {
     const loaded = await PDFDocument.load(bytes);
     expect(loaded.getPageCount()).toBeGreaterThan(1);
   });
+
+  it('caps concurrent validator lookups at no more than 5 in flight at once', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    mockFetchAcademyForWallet.mockImplementation(async () => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      inFlight--;
+      return null;
+    });
+
+    const manyValidatorMilestones: Milestone[] = Array.from(
+      { length: 50 },
+      (_, i) => ({
+        id: `m${i}`,
+        description: `Milestone ${i}`,
+        evidenceHash: `QmEvidence${i}`,
+        validator: `GVALIDATOR${i}`, // 50 distinct validators
+        timestamp: 1_700_000_000 + i,
+      }),
+    );
+
+    await generatePlayerCvPdf(PLAYER, manyValidatorMilestones);
+
+    expect(mockFetchAcademyForWallet).toHaveBeenCalledTimes(50);
+    expect(maxInFlight).toBeLessThanOrEqual(5);
+  });
+
+  it('completes for a large synthetic milestone list with many distinct validators without an extended timeout', async () => {
+    const largeMilestoneList: Milestone[] = Array.from(
+      { length: 250 },
+      (_, i) => ({
+        id: `m${i}`,
+        description: `Milestone number ${i} with a reasonably long description text describing what happened`,
+        evidenceHash: `QmEvidence${i}`,
+        validator: `GVALIDATOR${i % 40}`, // 40 distinct validators
+        timestamp: 1_700_000_000 + i,
+      }),
+    );
+
+    const bytes = await generatePlayerCvPdf(PLAYER, largeMilestoneList);
+    const loaded = await PDFDocument.load(bytes);
+    expect(loaded.getPageCount()).toBeGreaterThan(1);
+    expect(mockFetchAcademyForWallet).toHaveBeenCalledTimes(40);
+  });
 });
 
 describe('downloadPlayerCvPdf', () => {
