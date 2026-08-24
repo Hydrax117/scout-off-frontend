@@ -1,6 +1,10 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import useSWR from 'swr';
-import { WalletProvider, useWalletContext } from '@/context/WalletContext';
+import {
+  WalletProvider,
+  useWalletContext,
+  WalletAccountMismatchError,
+} from '@/context/WalletContext';
 import { walletAdapters } from '@/lib/walletAdapters';
 import {
   cacheContactDetails,
@@ -803,5 +807,238 @@ describe('WalletContext', () => {
 
       window.removeEventListener('storage', handler);
     });
+  });
+});
+
+// ── WalletAccountMismatchError verification ───────────────────────────────────
+//
+// These tests cover the acceptance criteria for the account-switch mismatch
+// feature:
+//
+//   AC1 – Mismatch: WalletAccountMismatchError thrown, no session persisted for
+//         the mismatched key, caller receives the distinguishable error class.
+//   AC2 – Match: switch proceeds and succeeds exactly as a regular connect.
+//   AC3 – Ordinary (no expectedPublicKey): first-time connect flow unaffected.
+//   AC4 – Session state (localStorage wallet_session) is NOT set to the
+//         unintended account after a mismatched switch attempt.
+
+const SECOND_KEY =
+  'GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
+
+describe('connectWithProvider — account-switch mismatch verification', () => {
+  const freighter = walletAdapters.freighter as jest.Mocked<
+    typeof walletAdapters.freighter
+  >;
+
+  function wrapper({ children }: { children: ReactNode }) {
+    return <WalletProvider>{children}</WalletProvider>;
+  }
+
+  function setupSep10ForKey(pk: string) {
+    // GET /api/auth/sep10 challenge
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ transaction: CHALLENGE_XDR }),
+    });
+    // POST /api/auth/sep10 auth
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ token: 'jwt-token', maxAge: 86400 }),
+    });
+    freighter.getPublicKey.mockResolvedValue(pk);
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    localStorage.clear();
+    freighter.signTransaction.mockResolvedValue(SIGNED_XDR);
+
+    const { rpc } = jest.requireMock('@/lib/stellar');
+    rpc.getAccount.mockResolvedValue({
+      balances: [{ asset_type: 'native', balance: '100.0000000' }],
+    });
+  });
+
+  // ── AC2: matching key ──────────────────────────────────────────────────────
+
+  it('AC2 – succeeds when the wallet returns the expectedPublicKey (matching switch)', async () => {
+    setupSep10ForKey(PUBLIC_KEY);
+
+    const { result } = renderHook(() => useWalletContext(), { wrapper });
+    await act(async () => {
+      await result.current.connectWithProvider('freighter', false, PUBLIC_KEY);
+    });
+
+    expect(result.current.isAuthenticated).toBe(true);
+    expect(result.current.publicKey).toBe(PUBLIC_KEY);
+    expect(freighter.signTransaction).toHaveBeenCalled();
+  });
+
+  it('AC2 – stores the correct session in localStorage on a matching switch', async () => {
+    setupSep10ForKey(PUBLIC_KEY);
+
+    const { result } = renderHook(() => useWalletContext(), { wrapper });
+    await act(async () => {
+      await result.current.connectWithProvider('freighter', false, PUBLIC_KEY);
+    });
+
+    const stored = localStorage.getItem('wallet_session');
+    expect(stored).not.toBeNull();
+    const session = JSON.parse(stored!);
+    expect(session.publicKey).toBe(PUBLIC_KEY);
+  });
+
+  // ── AC1: mismatch ──────────────────────────────────────────────────────────
+
+  it('AC1 – throws WalletAccountMismatchError when wallet returns a different key than expected', async () => {
+    // Wallet returns PUBLIC_KEY but caller expects SECOND_KEY
+    freighter.getPublicKey.mockResolvedValue(PUBLIC_KEY);
+    // No SEP-10 mocks needed — throw is before the challenge fetch
+
+    const { result } = renderHook(() => useWalletContext(), { wrapper });
+
+    await expect(
+      act(async () => {
+        await result.current.connectWithProvider('freighter', false, SECOND_KEY);
+      }),
+    ).rejects.toThrow(WalletAccountMismatchError);
+  });
+
+  it('AC1 – thrown error carries expectedPublicKey and actualPublicKey fields', async () => {
+    freighter.getPublicKey.mockResolvedValue(PUBLIC_KEY);
+
+    const { result } = renderHook(() => useWalletContext(), { wrapper });
+
+    let caughtError: unknown;
+    try {
+      await act(async () => {
+        await result.current.connectWithProvider('freighter', false, SECOND_KEY);
+      });
+    } catch (err) {
+      caughtError = err;
+    }
+
+    expect(caughtError).toBeInstanceOf(WalletAccountMismatchError);
+    const mismatch = caughtError as WalletAccountMismatchError;
+    expect(mismatch.expectedPublicKey).toBe(SECOND_KEY);
+    expect(mismatch.actualPublicKey).toBe(PUBLIC_KEY);
+  });
+
+  it('AC1 – isAuthenticated remains false after a mismatched switch', async () => {
+    freighter.getPublicKey.mockResolvedValue(PUBLIC_KEY);
+
+    const { result } = renderHook(() => useWalletContext(), { wrapper });
+
+    await expect(
+      act(async () => {
+        await result.current.connectWithProvider('freighter', false, SECOND_KEY);
+      }),
+    ).rejects.toThrow(WalletAccountMismatchError);
+
+    expect(result.current.isAuthenticated).toBe(false);
+    expect(result.current.publicKey).toBeNull();
+  });
+
+  it('AC1 – SEP-10 challenge is never fetched (no network side-effects) on a mismatch', async () => {
+    freighter.getPublicKey.mockResolvedValue(PUBLIC_KEY);
+
+    const { result } = renderHook(() => useWalletContext(), { wrapper });
+
+    await expect(
+      act(async () => {
+        await result.current.connectWithProvider('freighter', false, SECOND_KEY);
+      }),
+    ).rejects.toThrow(WalletAccountMismatchError);
+
+    // fetch should NOT have been called — the error is thrown before the
+    // challenge request.
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  // ── AC4: session state safety ──────────────────────────────────────────────
+
+  it('AC4 – wallet_session in localStorage is NOT set to the unintended key after a mismatch', async () => {
+    freighter.getPublicKey.mockResolvedValue(PUBLIC_KEY);
+
+    const { result } = renderHook(() => useWalletContext(), { wrapper });
+
+    await expect(
+      act(async () => {
+        await result.current.connectWithProvider('freighter', false, SECOND_KEY);
+      }),
+    ).rejects.toThrow(WalletAccountMismatchError);
+
+    const stored = localStorage.getItem('wallet_session');
+    if (stored) {
+      const session = JSON.parse(stored);
+      // The wrong key (PUBLIC_KEY, the actual returned key) must not be stored.
+      expect(session.publicKey).not.toBe(PUBLIC_KEY);
+    }
+    // stored being null is also acceptable — nothing persisted.
+  });
+
+  it('AC4 – scoutoff:remembered_addresses is NOT updated for the unintended key after a mismatch', async () => {
+    freighter.getPublicKey.mockResolvedValue(PUBLIC_KEY);
+
+    const { result } = renderHook(() => useWalletContext(), { wrapper });
+
+    await expect(
+      act(async () => {
+        await result.current.connectWithProvider('freighter', false, SECOND_KEY);
+      }),
+    ).rejects.toThrow(WalletAccountMismatchError);
+
+    const raw = localStorage.getItem('scoutoff:remembered_addresses');
+    if (raw) {
+      const addresses = JSON.parse(raw) as Array<{ publicKey: string }>;
+      const hasUnintended = addresses.some((a) => a.publicKey === PUBLIC_KEY);
+      expect(hasUnintended).toBe(false);
+    }
+  });
+
+  // ── AC3: ordinary connect unaffected ──────────────────────────────────────
+
+  it('AC3 – ordinary connect (no expectedPublicKey) is completely unaffected by the new check', async () => {
+    setupSep10ForKey(PUBLIC_KEY);
+
+    const { result } = renderHook(() => useWalletContext(), { wrapper });
+    await act(async () => {
+      // No third argument — this is the original first-time connect path.
+      await result.current.connectWithProvider('freighter');
+    });
+
+    expect(result.current.isAuthenticated).toBe(true);
+    expect(result.current.publicKey).toBe(PUBLIC_KEY);
+    // The SEP-10 flow ran in full.
+    expect(freighter.signTransaction).toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(2); // challenge GET + auth POST
+  });
+
+  it('AC3 – ordinary connect with rememberMe=true works the same as before', async () => {
+    setupSep10ForKey(PUBLIC_KEY);
+
+    const { result } = renderHook(() => useWalletContext(), { wrapper });
+    await act(async () => {
+      await result.current.connectWithProvider('freighter', true);
+    });
+
+    expect(result.current.isAuthenticated).toBe(true);
+    expect(result.current.publicKey).toBe(PUBLIC_KEY);
+  });
+
+  // ── WalletAccountMismatchError class properties ────────────────────────────
+
+  it('WalletAccountMismatchError is an instance of Error', () => {
+    const err = new WalletAccountMismatchError('A', 'B');
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(WalletAccountMismatchError);
+    expect(err.name).toBe('WalletAccountMismatchError');
+  });
+
+  it('WalletAccountMismatchError message is human-readable', () => {
+    const err = new WalletAccountMismatchError('EXPECTED', 'ACTUAL');
+    expect(err.message).toContain('EXPECTED');
+    expect(err.message).toContain('ACTUAL');
+    expect(err.message.toLowerCase()).toContain('mismatch');
   });
 });
