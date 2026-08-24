@@ -11,7 +11,7 @@
  */
 import { sanitize } from '@/lib/sanitize';
 import { AFRICAN_REGIONS } from '@/lib/regions';
-import { FOOTBALL_POSITIONS } from '@/components/player/PlayerOnboardingWizard';
+import { FOOTBALL_POSITIONS } from '@/lib/positions';
 
 export type BulkImportFileFormat = 'csv' | 'json';
 

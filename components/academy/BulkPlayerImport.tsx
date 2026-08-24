@@ -20,7 +20,7 @@ import {
   type BulkImportRowState,
 } from '@/lib/bulkImportStore';
 import { AFRICAN_REGIONS } from '@/lib/regions';
-import { FOOTBALL_POSITIONS } from '@/components/player/PlayerOnboardingWizard';
+import { FOOTBALL_POSITIONS } from '@/lib/positions';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 import type { PlayerVitals } from '@/types';
