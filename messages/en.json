@@ -345,7 +345,14 @@
     "data_deletion_title": "Request Data Deletion",
     "data_deletion_description": "Request deletion of your personal off-chain data (chat history, profile metadata, analytics). On-chain data (transactions, registrations) is permanent and cannot be deleted.",
     "data_deletion_button": "Request Deletion",
-    "connect_wallet_to_request": "Connect your wallet to request data deletion."
+    "connect_wallet_to_request": "Connect your wallet to request data deletion.",
+    "data_export_title": "Download My Data",
+    "data_export_description": "Download a portable JSON export of the off-chain data ScoutOff holds about your wallet — your watchlist, saved searches, notification preferences and read state, milestone disputes, and any active uploads.",
+    "data_export_button": "Download My Data",
+    "data_export_exporting": "Preparing your export…",
+    "data_export_error": "Failed to prepare your data export. Please try again.",
+    "data_export_success": "Your data export has been downloaded.",
+    "data_export_onchain_note": "On-chain data (transactions, registrations) is not included — it lives permanently on the Stellar network and cannot be exported or deleted."
   },
   "dataDeletion": {
     "modal_title": "Request Data Deletion",

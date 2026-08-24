@@ -96,4 +96,12 @@ export class NotificationPreferencesStore {
       });
     return this.get(wallet);
   }
+
+  /** Removes the preferences row for wallet. Returns the number of rows removed. */
+  clearForWallet(wallet: string): number {
+    const result = this.db
+      .prepare('DELETE FROM notification_preferences WHERE wallet = ?')
+      .run(wallet);
+    return result.changes;
+  }
 }

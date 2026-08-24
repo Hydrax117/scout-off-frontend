@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { initSession } from '@/lib/chunkedUploadStore';
+import { getSessionWallet } from '@/lib/session';
 import { getClientIp, createRateLimiter } from '@/lib/uploadRateLimit';
 
 export const runtime = 'nodejs';
@@ -117,6 +118,7 @@ export async function POST(req: NextRequest) {
     fileType,
     fileSize,
     totalChunks,
+    ownerWallet: getSessionWallet(req),
   });
   return NextResponse.json({ sessionId }, { status: 201 });
 }
