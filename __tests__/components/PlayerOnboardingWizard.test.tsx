@@ -42,6 +42,11 @@ jest.mock('@/lib/contract', () => ({
   buildRegisterPlayer: jest.fn(),
 }));
 
+jest.mock('@/lib/uploadTrackingClient', () => ({
+  trackUploadedCid: jest.fn().mockResolvedValue(undefined),
+  matchTrackedUpload: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('@/components/ui/VideoUpload', () => ({
   __esModule: true,
   default: ({
@@ -55,6 +60,12 @@ jest.mock('@/components/ui/VideoUpload', () => ({
       <button type="button" onClick={() => onUpload('QmTestCID1234567890')}>
         Upload video
       </button>
+      <button
+        type="button"
+        onClick={() => onUpload('QmDifferentCID9999999')}
+      >
+        Upload different video
+      </button>
       {error && <p>{error}</p>}
     </div>
   ),
@@ -65,6 +76,10 @@ const mockedBuildRegisterPlayer = buildRegisterPlayer as jest.MockedFunction<
   typeof buildRegisterPlayer
 >;
 const mockedUsePlayer = require('@/hooks/usePlayer').usePlayer as jest.Mock;
+const {
+  trackUploadedCid: mockedTrackUploadedCid,
+  matchTrackedUpload: mockedMatchTrackedUpload,
+} = require('@/lib/uploadTrackingClient');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -119,6 +134,7 @@ async function fillStep1AndAdvance() {
 describe('PlayerOnboardingWizard', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    sessionStorage.clear();
   });
 
   // ── Initial render ────────────────────────────────────────────────────────
@@ -639,5 +655,96 @@ describe('PlayerOnboardingWizard', () => {
     expect(
       screen.queryByRole('heading', { name: /personal information/i }),
     ).toBeNull();
+  });
+
+  // ── Wizard state persistence & upload tracking (issue #1005) ─────────────
+
+  it('tracks the uploaded CID via the backend as soon as the upload completes', async () => {
+    renderWizard();
+    await act(async () => fillStep1AndAdvance());
+    fireEvent.click(screen.getByRole('button', { name: /upload video/i }));
+
+    expect(mockedTrackUploadedCid).toHaveBeenCalledWith({
+      cid: 'QmTestCID1234567890',
+      wallet: MOCK_PUBLIC_KEY,
+      context: 'player_onboarding_highlight_reel',
+    });
+  });
+
+  it('marks the tracked upload matched with the tx hash after a successful registration', async () => {
+    mockedBuildRegisterPlayer.mockResolvedValue('mock-xdr');
+    renderWizard();
+
+    await act(async () => fillStep1AndAdvance());
+    fireEvent.click(screen.getByRole('button', { name: /upload video/i }));
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: /register as player/i }),
+      );
+    });
+
+    expect(mockedMatchTrackedUpload).toHaveBeenCalledWith({
+      cid: 'QmTestCID1234567890',
+      txHash: 'tx-hash-123',
+    });
+  });
+
+  it('persists progress across a remount and resumes without re-uploading', async () => {
+    const onSuccess = jest.fn();
+    const { unmount } = renderWizard(onSuccess);
+    await act(async () => fillStep1AndAdvance());
+    fireEvent.click(screen.getByRole('button', { name: /upload video/i }));
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+    expect(
+      screen.getByRole('heading', { name: /review & confirm/i }),
+    ).toBeInTheDocument();
+
+    unmount();
+
+    // Simulate a page reload: a fresh mount for the same wallet.
+    renderWizard(onSuccess);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /review & confirm/i }),
+      ).toBeInTheDocument();
+    });
+    // The previously-obtained CID survived the "reload" — no re-upload needed.
+    expect(screen.getByText('John Doe')).toBeInTheDocument();
+    expect(screen.getByText(/QmTestCI/)).toBeInTheDocument();
+  });
+
+  it('shows a reuse notice at step 2 when a CID was already uploaded before a remount', async () => {
+    const { unmount } = renderWizard();
+    await act(async () => fillStep1AndAdvance());
+    fireEvent.click(screen.getByRole('button', { name: /upload video/i }));
+
+    unmount();
+    renderWizard();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/highlight reel already uploaded/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('re-uploading a different file at step 2 supersedes the previous CID, not appends to it', async () => {
+    renderWizard();
+    await act(async () => fillStep1AndAdvance());
+    fireEvent.click(screen.getByRole('button', { name: /upload video/i }));
+    fireEvent.click(screen.getByRole('button', { name: /continue/i })); // -> step 3
+
+    fireEvent.click(screen.getByRole('button', { name: /back/i })); // -> step 2
+    fireEvent.click(
+      screen.getByRole('button', { name: /upload different video/i }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /continue/i })); // -> step 3
+
+    expect(screen.queryByText(/QmTestCI/)).toBeNull();
+    expect(screen.getByText(/QmDiffer/)).toBeInTheDocument();
   });
 });
