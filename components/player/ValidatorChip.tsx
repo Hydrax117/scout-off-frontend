@@ -17,8 +17,25 @@
 
 import { useEffect, useState } from 'react';
 import Tooltip from '@/components/ui/Tooltip';
+import Badge from '@/components/ui/Badge';
 import { checkIsValidator } from '@/lib/contract';
 import { fetchValidatorMilestoneCount, fetchAcademyForWallet } from '@/lib/api';
+
+/** Small institution glyph for the academy-affiliation marker — decorative,
+ * the accessible name comes from the enclosing Badge's aria-label. */
+function AcademyIcon() {
+  return (
+    <svg
+      className="w-3 h-3"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M10 2L1 7l9 5 7-3.89V15h2V7L10 2zM5 10.09V14c0 .35 3 3 5 3s5-2.65 5-3v-3.91l-5 2.78-5-2.78z" />
+    </svg>
+  );
+}
 
 export interface ValidatorChipProps {
   /** Full Stellar public key of the validator. */
@@ -143,6 +160,20 @@ export default function ValidatorChip({
         </span>
       ) : (
         <span className="font-mono">{truncateAddress(address)}</span>
+      )}
+
+      {/* Academy-affiliation marker: on top of the name substitution above,
+          gives a scannable "institution vs. independent" signal that doesn't
+          require reading the full label. Reuses the shared Badge component
+          rather than a bespoke visual for this one spot (issue #1169). */}
+      {displayKind === 'academy' && (
+        <Badge
+          variant="academy"
+          label="Academy-affiliated"
+          size="sm"
+          icon={<AcademyIcon />}
+          className="!px-1.5 !py-0"
+        />
       )}
 
       {status !== 'loading' && status !== 'unknown' && (
