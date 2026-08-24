@@ -114,6 +114,30 @@ jobs:
       - name: Validate docs/pr-bodies/ body-file contract
         run: node scripts/validate-pr-bodies.js
 
+  # PR-diff-scoped guard (issue #1167): flags new/changed hooks/, lib/, or
+  # components/ files that ship without a matching __tests__/ file. Scoped
+  # to the diff against the PR's base branch rather than a full-repo scan,
+  # so it doesn't immediately fail on this repo's pre-existing test gaps —
+  # only new/changed files are checked. Only meaningful on pull_request
+  # events (a push to main has no "base" to diff against).
+  test-coverage-diff:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install
+      - name: Check new/changed files have a matching test
+        env:
+          BASE_REF: origin/${{ github.event.pull_request.base.ref }}
+        run: node scripts/check-test-coverage-diff.js
+
   coverage:
     runs-on: ubuntu-latest
     steps:
