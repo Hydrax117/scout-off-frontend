@@ -8,6 +8,10 @@ import { usePlayer } from '@/hooks/usePlayer';
 import useIsPaused from '@/hooks/useIsPaused';
 import { extractContractErrorKey } from '@/lib/contractErrorMessage';
 import { buildRegisterPlayer } from '@/lib/contract';
+import {
+  trackUploadedCid,
+  matchTrackedUpload,
+} from '@/lib/uploadTrackingClient';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
@@ -32,6 +36,59 @@ interface WizardData {
   position: string;
   bio: string;
   ipfsHash: string;
+}
+
+/**
+ * Persists wizard progress (issue #1005) across a reload within the same
+ * browser tab/session — sessionStorage, not localStorage, since this is
+ * scoped to "resume where you left off in this session," not a
+ * cross-session draft. Keyed per wallet so switching wallets never leaks
+ * one player's in-progress data (including an already-obtained IPFS CID)
+ * into another's form.
+ */
+const WIZARD_STORAGE_PREFIX = 'scoutoff_onboarding_wizard_';
+
+function wizardStorageKey(wallet: string): string {
+  return `${WIZARD_STORAGE_PREFIX}${wallet}`;
+}
+
+interface PersistedWizardState {
+  step: number;
+  data: WizardData;
+}
+
+function loadPersistedWizardState(
+  wallet: string,
+): PersistedWizardState | null {
+  try {
+    const raw = sessionStorage.getItem(wizardStorageKey(wallet));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PersistedWizardState>;
+    if (!parsed.data || typeof parsed.step !== 'number') return null;
+    return parsed as PersistedWizardState;
+  } catch {
+    return null; // Corrupt or unavailable storage — start fresh silently.
+  }
+}
+
+function savePersistedWizardState(
+  wallet: string,
+  state: PersistedWizardState,
+): void {
+  try {
+    sessionStorage.setItem(wizardStorageKey(wallet), JSON.stringify(state));
+  } catch {
+    // Storage unavailable (e.g. private browsing) — resume-on-reload just
+    // won't work this session; the wizard itself still works normally.
+  }
+}
+
+function clearPersistedWizardState(wallet: string): void {
+  try {
+    sessionStorage.removeItem(wizardStorageKey(wallet));
+  } catch {
+    // Nothing to clean up if storage was never usable.
+  }
 }
 
 export interface PlayerOnboardingWizardProps {
@@ -135,6 +192,32 @@ export default function PlayerOnboardingWizard({
     bio: '',
     ipfsHash: '',
   });
+  const [hydratedFromStorage, setHydratedFromStorage] = useState(false);
+
+  // Restore wizard progress (including an already-uploaded CID) once the
+  // wallet is known. Runs once per wallet — a reload at any step, including
+  // after step 2's upload completes, picks up where it left off instead of
+  // forcing a re-upload.
+  useEffect(() => {
+    if (!publicKey) return;
+    const saved = loadPersistedWizardState(publicKey);
+    if (saved) {
+      setData(saved.data);
+      if (saved.step >= 1 && saved.step <= STEPS.length) {
+        setStep(saved.step);
+      }
+    }
+    setHydratedFromStorage(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicKey]);
+
+  // Persist on every change, but only after the restore effect above has
+  // run — otherwise the initial blank state would overwrite (and lose)
+  // whatever was already saved before restore gets a chance to read it.
+  useEffect(() => {
+    if (!publicKey || !hydratedFromStorage) return;
+    savePersistedWizardState(publicKey, { step, data });
+  }, [publicKey, hydratedFromStorage, step, data]);
 
   const updateField = (field: keyof WizardData, value: string) => {
     setData((prev) => ({ ...prev, [field]: value }));
@@ -241,6 +324,22 @@ export default function PlayerOnboardingWizard({
     !validateField('region', data.region) &&
     !validateField('position', data.position);
 
+  // Called when VideoUpload's upload completes. Superseding a previous CID
+  // (re-uploading at step 2) is handled naturally here — `data.ipfsHash` is
+  // overwritten, not appended, so only the latest CID is ever submitted
+  // with registration. The superseded CID's backend tracking record (see
+  // trackUploadedCid below) is left as-is: it's now genuinely orphaned —
+  // this wizard will never reference it again — so leaving it unmatched is
+  // exactly what makes it a correct cleanup candidate later, not a bug.
+  const handleVideoUpload = (cid: string) => {
+    updateField('ipfsHash', cid);
+    trackUploadedCid({
+      cid,
+      wallet: publicKey ?? null,
+      context: 'player_onboarding_highlight_reel',
+    });
+  };
+
   const validateStep2 = (): boolean => {
     if (!data.ipfsHash) {
       setErrors({
@@ -301,6 +400,9 @@ export default function PlayerOnboardingWizard({
       const hash = (result as any)?.hash ?? null;
       setTxHash(hash);
       setTxStatus('success');
+
+      matchTrackedUpload({ cid: data.ipfsHash, txHash: hash });
+      if (publicKey) clearPersistedWizardState(publicKey);
 
       const playerId = (result as any)?.id || publicKey;
       onSuccess({ playerId, vitals, ipfsHash: data.ipfsHash });
@@ -511,10 +613,14 @@ export default function PlayerOnboardingWizard({
             </div>
           )}
 
-          <VideoUpload
-            onUpload={(cid) => updateField('ipfsHash', cid)}
-            error={errors.ipfsHash}
-          />
+          {data.ipfsHash && (
+            <div className="rounded-md border border-brand-green/40 bg-brand-green/10 p-3 text-sm text-brand-green">
+              ✓ Highlight reel already uploaded ({shortCid}). Uploading a new
+              file below will replace it.
+            </div>
+          )}
+
+          <VideoUpload onUpload={handleVideoUpload} error={errors.ipfsHash} />
 
           <div className="flex gap-3">
             <Button
