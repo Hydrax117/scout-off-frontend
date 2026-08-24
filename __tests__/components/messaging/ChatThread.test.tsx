@@ -489,4 +489,39 @@ describe('ChatThread', () => {
 
     visibilitySpy.mockRestore();
   });
+
+  it('renders the correct indicator for each of the three message statuses on the current user’s messages', async () => {
+    mockedFetchThreadMessages.mockResolvedValue([
+      makeMessage({ id: 'm-sent', senderId: 'me', body: 'A', status: 'sent' }),
+      makeMessage({
+        id: 'm-delivered',
+        senderId: 'me',
+        body: 'B',
+        status: 'delivered',
+      }),
+      makeMessage({ id: 'm-read', senderId: 'me', body: 'C', status: 'read' }),
+      makeMessage({
+        id: 'm-theirs',
+        senderId: 'other',
+        body: 'D',
+        status: 'read',
+      }),
+    ]);
+
+    render(<ChatThread threadId={THREAD_ID} currentUserId="me" />);
+    await flushPromises();
+
+    expect(screen.getByText('A')).toBeInTheDocument();
+    expect(screen.getByText('B')).toBeInTheDocument();
+    expect(screen.getByText('C')).toBeInTheDocument();
+    expect(screen.getByText('D')).toBeInTheDocument();
+
+    // 'sent' shows no indicator; 'delivered' and 'read' show their labels.
+    expect(screen.getByLabelText('Delivered')).toBeInTheDocument();
+    expect(screen.getByLabelText('Read')).toBeInTheDocument();
+
+    // Only the current user's delivered/read messages get an indicator; the
+    // sent own message and the other participant's message show none.
+    expect(screen.getAllByLabelText(/Delivered|Read/)).toHaveLength(2);
+  });
 });
