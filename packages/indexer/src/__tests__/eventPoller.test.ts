@@ -7,11 +7,12 @@ import {
   pollOnce,
   startEventPolling,
   loadConfigFromEnv,
+  isRetentionWindowError,
   type PollerConfig,
   type RpcClient,
   type RawEvent,
 } from '../eventPoller';
-import { IndexerMetrics } from '../metrics/IndexerMetrics';
+import { IndexerMetrics, STUCK_CYCLE_THRESHOLD } from '../metrics/IndexerMetrics';
 import { getLastLedgerInfo, resetLedgerState } from '../ledgerTracker';
 import { EventStore } from '../db/eventStore';
 
@@ -269,6 +270,112 @@ describe('pollOnce', () => {
 
     expect(metrics.snapshot().isHealthy).toBe(true);
   });
+
+  // ── Retention window recovery (issue #1000) ──────────────────────────────
+
+  it('skips forward to the network tip when getEvents fails with a retention-window error', async () => {
+    const retentionError = new Error(
+      'startLedger must be within the ledger retention window',
+    );
+    const rpc: jest.Mocked<RpcClient> = {
+      getLatestLedger: jest.fn().mockResolvedValue({ sequence: 9000 }),
+      getEvents: jest.fn().mockRejectedValue(retentionError),
+    };
+    const metrics = IndexerMetrics.getInstance();
+
+    // Cursor is stuck far behind the network tip (simulates long downtime).
+    const nextCursor = await pollOnce(baseConfig(), rpc, metrics, 100, store);
+
+    // Must skip forward to the network tip (not stay at 100).
+    expect(nextCursor).toBe(9000);
+    expect(nextCursor).not.toBe(100);
+  });
+
+  it('records a retention-window gap in metrics when skipping forward', async () => {
+    const retentionError = new Error('start is before oldest ledger');
+    const rpc: jest.Mocked<RpcClient> = {
+      getLatestLedger: jest.fn().mockResolvedValue({ sequence: 5000 }),
+      getEvents: jest.fn().mockRejectedValue(retentionError),
+    };
+    const metrics = IndexerMetrics.getInstance();
+    const gapSpy = jest.spyOn(metrics, 'recordRetentionWindowGap');
+
+    await pollOnce(baseConfig(), rpc, metrics, 200, store);
+
+    expect(gapSpy).toHaveBeenCalledWith(200, 5000);
+    const snap = metrics.snapshot();
+    expect(snap.lastRetentionWindowGap).toMatchObject({
+      fromLedger: 200,
+      toLedger: 5000,
+    });
+  });
+
+  it('resumes indexing new events after a skip-forward recovery', async () => {
+    const retentionError = new Error('start is before oldest ledger');
+    const rpc: jest.Mocked<RpcClient> = {
+      getLatestLedger: jest
+        .fn()
+        .mockResolvedValueOnce({ sequence: 9000 }) // first poll: stuck cursor
+        .mockResolvedValueOnce({ sequence: 9001 }), // second poll: after skip
+      getEvents: jest
+        .fn()
+        .mockRejectedValueOnce(retentionError) // first poll fails with retention error
+        .mockResolvedValueOnce({
+          // second poll succeeds from skipped-to position
+          latestLedger: 9001,
+          events: [
+            makeRawEvent(
+              'player_registered',
+              { player_id: 'p1', wallet: 'G1', ipfs_hash: 'Qm1' },
+              { ledger: 9001 },
+            ),
+          ],
+        }),
+    };
+    const metrics = IndexerMetrics.getInstance();
+
+    // First cycle: stuck → skip to 9000.
+    const cursor1 = await pollOnce(baseConfig(), rpc, metrics, 100, store);
+    expect(cursor1).toBe(9000);
+
+    // Second cycle: successfully indexes from skipped-to position.
+    const cursor2 = await pollOnce(baseConfig(), rpc, metrics, cursor1, store);
+    expect(cursor2).toBe(9002); // advanced past the event at 9001
+
+    const { events } = store.getEvents({ type: 'player_registered' });
+    expect(events).toHaveLength(1);
+    expect(events[0].ledger).toBe(9001);
+  });
+
+  it('retries the same cursor for a generic RPC error (not a retention error)', async () => {
+    const genericError = new Error('Network timeout');
+    const rpc: jest.Mocked<RpcClient> = {
+      getLatestLedger: jest.fn().mockResolvedValue({ sequence: 500 }),
+      getEvents: jest.fn().mockRejectedValue(genericError),
+    };
+    const metrics = IndexerMetrics.getInstance();
+
+    const nextCursor = await pollOnce(baseConfig(), rpc, metrics, 42, store);
+
+    // Must stay at 42, not skip forward.
+    expect(nextCursor).toBe(42);
+    // No gap recorded.
+    expect(metrics.snapshot().lastRetentionWindowGap).toBeNull();
+  });
+
+  it('does not skip forward for a generic getLatestLedger failure', async () => {
+    const rpc: jest.Mocked<RpcClient> = {
+      getLatestLedger: jest.fn().mockRejectedValue(new Error('RPC down')),
+      getEvents: jest.fn(),
+    };
+    const metrics = IndexerMetrics.getInstance();
+
+    const nextCursor = await pollOnce(baseConfig(), rpc, metrics, 42, store);
+
+    expect(nextCursor).toBe(42);
+    expect(rpc.getEvents).not.toHaveBeenCalled();
+    expect(metrics.snapshot().lastRetentionWindowGap).toBeNull();
+  });
 });
 
 // ── startEventPolling ─────────────────────────────────────────────────────────
@@ -303,6 +410,106 @@ describe('startEventPolling', () => {
     handle.stop();
     await jest.advanceTimersByTimeAsync(5000);
     expect(rpc.getEvents).toHaveBeenCalledTimes(3);
+  });
+});
+
+// ── isRetentionWindowError ────────────────────────────────────────────────────
+
+describe('isRetentionWindowError', () => {
+  it('returns true for known retention window error messages', () => {
+    const retentionMessages = [
+      'start is before oldest ledger',
+      'startLedger must be within the ledger retention window',
+      'outside the ledger retention window',
+      'ledger not found',
+      'start ledger is before the node oldest',
+    ];
+    for (const msg of retentionMessages) {
+      expect(isRetentionWindowError(new Error(msg))).toBe(true);
+    }
+  });
+
+  it('returns false for generic network/RPC errors', () => {
+    const nonRetentionErrors = [
+      new Error('Network timeout'),
+      new Error('RPC unreachable'),
+      new Error('Internal server error'),
+      new Error('bad startLedger'),
+    ];
+    for (const err of nonRetentionErrors) {
+      expect(isRetentionWindowError(err)).toBe(false);
+    }
+  });
+
+  it('returns false for non-Error values', () => {
+    expect(isRetentionWindowError('string error')).toBe(false);
+    expect(isRetentionWindowError(null)).toBe(false);
+    expect(isRetentionWindowError(42)).toBe(false);
+  });
+});
+
+// ── Stuck-cursor metrics (issue #1000) ────────────────────────────────────────
+
+describe('IndexerMetrics stuck-cursor detection', () => {
+  it('isStuck becomes true after STUCK_CYCLE_THRESHOLD consecutive same-cursor reports', () => {
+    const metrics = IndexerMetrics.getInstance();
+    for (let i = 0; i < STUCK_CYCLE_THRESHOLD - 1; i++) {
+      metrics.reportCursor(100);
+      expect(metrics.snapshot().isStuck).toBe(false);
+    }
+    metrics.reportCursor(100);
+    expect(metrics.snapshot().isStuck).toBe(true);
+    expect(metrics.snapshot().stuckAtLedger).toBe(100);
+  });
+
+  it('resets isStuck when the cursor advances', () => {
+    const metrics = IndexerMetrics.getInstance();
+    for (let i = 0; i < STUCK_CYCLE_THRESHOLD + 2; i++) {
+      metrics.reportCursor(100);
+    }
+    expect(metrics.snapshot().isStuck).toBe(true);
+
+    metrics.reportCursor(101);
+    expect(metrics.snapshot().isStuck).toBe(false);
+    expect(metrics.snapshot().stuckAtLedger).toBeNull();
+  });
+
+  it('resets stuck-cursor state after a skip-forward gap is recorded', () => {
+    const metrics = IndexerMetrics.getInstance();
+    for (let i = 0; i < STUCK_CYCLE_THRESHOLD + 2; i++) {
+      metrics.reportCursor(100);
+    }
+    expect(metrics.snapshot().isStuck).toBe(true);
+
+    metrics.recordRetentionWindowGap(100, 9000);
+    expect(metrics.snapshot().isStuck).toBe(false);
+    expect(metrics.snapshot().stuckAtLedger).toBeNull();
+    expect(metrics.snapshot().consecutiveStuckCycles).toBe(0);
+  });
+
+  it('polls that advance cursor do not accumulate stuck cycles', async () => {
+    const rpc: jest.Mocked<RpcClient> = {
+      getLatestLedger: jest
+        .fn()
+        .mockResolvedValueOnce({ sequence: 100 })
+        .mockResolvedValueOnce({ sequence: 101 })
+        .mockResolvedValueOnce({ sequence: 102 }),
+      getEvents: jest
+        .fn()
+        .mockResolvedValueOnce({ latestLedger: 100, events: [] })
+        .mockResolvedValueOnce({ latestLedger: 101, events: [] })
+        .mockResolvedValueOnce({ latestLedger: 102, events: [] }),
+    };
+    const metrics = IndexerMetrics.getInstance();
+
+    let cursor = 0;
+    cursor = await pollOnce(baseConfig(), rpc, metrics, cursor, store);
+    cursor = await pollOnce(baseConfig(), rpc, metrics, cursor, store);
+    cursor = await pollOnce(baseConfig(), rpc, metrics, cursor, store);
+
+    // Cursor advanced each cycle — should not be stuck.
+    expect(metrics.snapshot().isStuck).toBe(false);
+    expect(metrics.snapshot().consecutiveStuckCycles).toBe(0);
   });
 });
 
