@@ -85,7 +85,9 @@ describe('GET /api/admin/fraud-flags', () => {
     const res = await GET(makeRequest(ADMIN));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ flags: [], warnings: [] });
+    expect(body.flags).toEqual([]);
+    expect(body.warnings).toEqual([]);
+    expect(typeof body.evaluatedAt).toBe('number');
   });
 
   it('merges and sorts referral and pay-to-contact flags by severity', async () => {

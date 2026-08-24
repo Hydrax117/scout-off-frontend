@@ -59,7 +59,11 @@ describe('FraudFlagsPanel', () => {
   });
 
   it('shows the empty state when there are no flags and no warnings', async () => {
-    mockedFetchFraudFlags.mockResolvedValue({ flags: [], warnings: [] });
+    mockedFetchFraudFlags.mockResolvedValue({
+      flags: [],
+      warnings: [],
+      evaluatedAt: 1_700_000_000_000,
+    });
 
     render(<FraudFlagsPanel />);
 
@@ -75,6 +79,7 @@ describe('FraudFlagsPanel', () => {
     mockedFetchFraudFlags.mockResolvedValue({
       flags: [],
       warnings: ['Fraud detection ran on a partial dataset.'],
+      evaluatedAt: 1_700_000_000_000,
     });
 
     render(<FraudFlagsPanel />);
@@ -89,6 +94,7 @@ describe('FraudFlagsPanel', () => {
     mockedFetchFraudFlags.mockResolvedValue({
       flags: [referralFlag, payToContactFlag],
       warnings: [],
+      evaluatedAt: 1_700_000_000_000,
     });
 
     render(<FraudFlagsPanel />);
@@ -121,7 +127,11 @@ describe('FraudFlagsPanel', () => {
   });
 
   it('does not update state after unmount when the fetch resolves late (no act warning)', async () => {
-    let resolvePromise: (v: { flags: FraudFlag[]; warnings: string[] }) => void;
+    let resolvePromise: (v: {
+      flags: FraudFlag[];
+      warnings: string[];
+      evaluatedAt: number;
+    }) => void;
     mockedFetchFraudFlags.mockReturnValue(
       new Promise((resolve) => {
         resolvePromise = resolve;
@@ -131,7 +141,11 @@ describe('FraudFlagsPanel', () => {
     const { unmount } = render(<FraudFlagsPanel />);
     unmount();
 
-    resolvePromise!({ flags: [referralFlag], warnings: [] });
+    resolvePromise!({
+      flags: [referralFlag],
+      warnings: [],
+      evaluatedAt: 1_700_000_000_000,
+    });
     await Promise.resolve();
   });
 });

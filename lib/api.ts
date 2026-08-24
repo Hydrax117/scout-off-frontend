@@ -223,9 +223,26 @@ export const getReferralOverview = async (): Promise<ReferralOverview> => {
 export const fetchFraudFlags = async (): Promise<{
   flags: FraudFlag[];
   warnings: string[];
+  evaluatedAt: number;
 }> => {
   const res = await fetchWithRetry('/api/admin/fraud-flags');
   if (!res.ok) throw new Error('Failed to fetch fraud flags');
+  return res.json();
+};
+
+/**
+ * Lightweight status of the most recently *persisted* fraud-flag
+ * evaluation (issue #1007) — populated by either an admin panel load or
+ * the scheduled cron trigger, whichever ran most recently. Used to render
+ * a staleness indicator without paying the cost of a full evaluation.
+ */
+export const fetchFraudFlagsStatus = async (): Promise<{
+  evaluatedAt: number | null;
+  highSeverityCount: number;
+  trigger: 'manual' | 'cron' | null;
+}> => {
+  const res = await fetchWithRetry('/api/admin/fraud-flags/status');
+  if (!res.ok) throw new Error('Failed to fetch fraud flags status');
   return res.json();
 };
 
