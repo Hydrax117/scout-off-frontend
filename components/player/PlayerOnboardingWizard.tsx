@@ -14,6 +14,7 @@ import Select from '@/components/ui/Select';
 import VideoUpload from '@/components/ui/VideoUpload';
 import TransactionStatus from '@/components/ui/TransactionStatus';
 import { AFRICAN_REGIONS } from '@/lib/regions';
+import { FOOTBALL_POSITIONS } from '@/lib/positions';
 import type { PlayerVitals } from '@/types';
 import type { TxStatus } from '@/components/ui/TransactionStatus';
 
@@ -22,18 +23,6 @@ const STEPS = [
   { id: 2, label: 'Highlight Reel' },
   { id: 3, label: 'Review & Confirm' },
 ] as const;
-
-export const FOOTBALL_POSITIONS: { value: string; label: string }[] = [
-  { value: 'GK', label: 'Goalkeeper' },
-  { value: 'CB', label: 'Centre-Back' },
-  { value: 'LB', label: 'Left-Back' },
-  { value: 'RB', label: 'Right-Back' },
-  { value: 'CM', label: 'Central Midfielder' },
-  { value: 'CAM', label: 'Attacking Midfielder' },
-  { value: 'LW', label: 'Left Winger' },
-  { value: 'RW', label: 'Right Winger' },
-  { value: 'ST', label: 'Striker' },
-];
 
 interface WizardData {
   name: string;
