@@ -121,6 +121,30 @@ dismissing it") — not just a log line. Individual mismatches are listed by
 description directly in the banner rather than requiring the admin to
 cross-reference the audit table.
 
+## Dispute decisions capture the deciding admin separately (issue #1168)
+
+This document's audit log/reconciliation system covers the four on-chain
+admin actions (validator add/remove, fee withdrawal, pause/unpause) — it
+does not cover milestone dispute decisions, which are a separate off-chain
+moderation record (`lib/milestoneDisputeStore.ts`, issue #562).
+
+Audited as part of #1168: a dispute decision **already** records which
+admin made the call, not just the outcome and timestamp. `PATCH
+/api/disputes/:id/decide` (`app/api/disputes/[id]/decide/route.ts`) resolves
+the caller's identity via `requireAdminWallet(req)` — the same
+session-cookie-verified wallet lookup used throughout `app/api/admin/**` —
+and passes it as `decidedBy` to `MilestoneDisputeStore.decide()`, which
+persists it in the `decided_by` column alongside `decided_at` and `status`.
+It's exposed on `MilestoneDispute.decidedBy` (`types/index.ts`) as
+`string | null` (`null` only for still-`pending` disputes), and
+`__tests__/api/disputes/[id]/decide/route.test.ts` and
+`__tests__/lib/milestoneDisputeStore.test.ts` both assert on it.
+
+This already satisfies the single-super-admin model's forward-looking
+need: once any scoped-admin-role work lands (making `decidedBy` meaningful
+across more than one possible wallet), no retrofit is required — the field
+has been captured since the dispute flow first shipped.
+
 ## What this doesn't do
 
 - No automatic remediation — a detected mismatch is surfaced for a human to
