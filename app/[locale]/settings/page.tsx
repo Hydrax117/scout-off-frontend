@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { ArrowLeft, Trash2, Shield, Bell } from 'lucide-react';
+import { ArrowLeft, Trash2, Shield, Bell, Download } from 'lucide-react';
 import DataDeletionModal from '@/components/player/DataDeletionModal';
 import NotificationPreferencesPanel from '@/components/NotificationPreferencesPanel';
 import { useWallet } from '@/hooks/useWallet';
+import { useToast } from '@/components/ui/Toast';
 
 export default function SettingsPage({
   params,
@@ -16,7 +17,37 @@ export default function SettingsPage({
   const locale = params.locale;
   const t = useTranslations('settings');
   const { isAuthenticated } = useWallet();
+  const { show } = useToast();
   const [showDeletionModal, setShowDeletionModal] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportData = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch('/api/data-export');
+      if (!res.ok) {
+        throw new Error(`Export failed: ${res.status}`);
+      }
+      const blob = await res.blob();
+      const contentDisposition = res.headers.get('Content-Disposition');
+      const filenameMatch = contentDisposition?.match(/filename="?([^"]+)"?/);
+      const filename =
+        filenameMatch?.[1] ?? `scoutoff-data-export-${new Date().toISOString().split('T')[0]}.json`;
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      show({ message: t('data_export_success'), variant: 'success', duration: 6000 });
+    } catch {
+      show({ message: t('data_export_error'), variant: 'error', duration: 6000 });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-10 pb-20">
@@ -96,6 +127,36 @@ export default function SettingsPage({
               <Trash2 size={15} />
               {t('data_deletion_button')}
             </button>
+          </div>
+
+          <div className="mt-6 border-t border-gray-800 pt-6">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-green/10 text-brand-green">
+                  <Download size={18} aria-hidden="true" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-white">
+                    {t('data_export_title')}
+                  </h3>
+                  <p className="mt-1 max-w-lg text-sm leading-relaxed text-gray-400">
+                    {t('data_export_description')}
+                  </p>
+                  <p className="mt-2 text-xs leading-relaxed text-gray-500">
+                    {t('data_export_onchain_note')}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleExportData}
+                disabled={!isAuthenticated || exporting}
+                className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-brand-green/40 bg-brand-green/10 px-5 py-2.5 text-sm font-semibold text-brand-green transition hover:bg-brand-green/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Download size={15} />
+                {exporting ? t('data_export_exporting') : t('data_export_button')}
+              </button>
+            </div>
           </div>
 
           {!isAuthenticated && (

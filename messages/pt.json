@@ -288,7 +288,14 @@
     "data_deletion_title": "Solicitar Exclusão de Dados",
     "data_deletion_description": "Solicite a exclusão de seus dados pessoais off-chain (histórico de bate-papo, metadados de perfil, análises). Dados on-chain (transações, registros) são permanentes e não podem ser excluídos.",
     "data_deletion_button": "Solicitar Exclusão",
-    "connect_wallet_to_request": "Conecte sua carteira para solicitar a exclusão de dados."
+    "connect_wallet_to_request": "Conecte sua carteira para solicitar a exclusão de dados.",
+    "data_export_title": "Baixar Meus Dados",
+    "data_export_description": "Baixe uma exportação JSON portátil dos dados off-chain que o ScoutOff mantém sobre sua carteira — sua lista de observação, buscas salvas, preferências de notificação e estado de leitura, disputas de marcos e qualquer envio ativo.",
+    "data_export_button": "Baixar Meus Dados",
+    "data_export_exporting": "Preparando sua exportação…",
+    "data_export_error": "Falha ao preparar sua exportação de dados. Tente novamente.",
+    "data_export_success": "Sua exportação de dados foi baixada.",
+    "data_export_onchain_note": "Os dados on-chain (transações, registros) não estão incluídos — eles vivem permanentemente na rede Stellar e não podem ser exportados nem excluídos."
   },
   "dataDeletion": {
     "modal_title": "Solicitar Exclusão de Dados",

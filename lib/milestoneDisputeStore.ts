@@ -164,6 +164,14 @@ export class MilestoneDisputeStore {
     return rows.map(rowToDispute);
   }
 
+  /** Deletes every dispute owned by playerWallet. Returns the number of rows removed. */
+  deleteForWallet(playerWallet: string): number {
+    const result = this.db
+      .prepare('DELETE FROM milestone_disputes WHERE player_wallet = ?')
+      .run(playerWallet);
+    return result.changes;
+  }
+
   listAll(status?: MilestoneDisputeStatus): MilestoneDispute[] {
     const rows = status
       ? (this.db

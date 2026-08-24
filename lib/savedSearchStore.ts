@@ -106,6 +106,14 @@ export class SavedSearchStore {
     return result.changes > 0;
   }
 
+  /** Deletes every entry owned by scoutWallet. Returns the number of rows removed. */
+  clearForWallet(scoutWallet: string): number {
+    const result = this.db
+      .prepare('DELETE FROM saved_search WHERE scout_wallet = ?')
+      .run(scoutWallet);
+    return result.changes;
+  }
+
   list(scoutWallet: string): SavedSearch[] {
     const rows = this.db
       .prepare(

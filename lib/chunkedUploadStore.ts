@@ -35,6 +35,8 @@ interface UploadSession {
   receivedChunks: Set<number>;
   createdAt: number;
   dir: string;
+  /** Optional owner wallet, recorded when the upload was initiated by an authenticated session. */
+  ownerWallet: string | null;
 }
 
 const sessions = new Map<string, UploadSession>();
@@ -58,6 +60,8 @@ export interface InitParams {
   fileType: string;
   fileSize: number;
   totalChunks: number;
+  /** Optional owner wallet to associate with the session for data export. */
+  ownerWallet?: string | null;
 }
 
 export interface SessionStatus {
@@ -82,9 +86,50 @@ export function initSession(params: InitParams): { sessionId: string } {
     receivedChunks: new Set(),
     createdAt: Date.now(),
     dir,
+    ownerWallet: params.ownerWallet ?? null,
   });
 
   return { sessionId };
+}
+
+export interface SessionSummary {
+  sessionId: string;
+  filename: string;
+  fileType: string;
+  fileSize: number;
+  totalChunks: number;
+  receivedChunks: number;
+  createdAt: number;
+}
+
+/** Returns summaries of all active sessions owned by the given wallet. */
+export function listSessionsForWallet(wallet: string): SessionSummary[] {
+  const result: SessionSummary[] = [];
+  for (const session of sessions.values()) {
+    if (session.ownerWallet !== wallet) continue;
+    result.push({
+      sessionId: session.sessionId,
+      filename: session.filename,
+      fileType: session.fileType,
+      fileSize: session.fileSize,
+      totalChunks: session.totalChunks,
+      receivedChunks: session.receivedChunks.size,
+      createdAt: session.createdAt,
+    });
+  }
+  return result;
+}
+
+/** Removes every active session owned by the given wallet. Returns the count removed. */
+export function clearSessionsForWallet(wallet: string): number {
+  let removed = 0;
+  for (const [id, session] of sessions) {
+    if (session.ownerWallet !== wallet) continue;
+    fs.rm(session.dir, { recursive: true, force: true }, () => {});
+    sessions.delete(id);
+    removed++;
+  }
+  return removed;
 }
 
 /** Returns the current status of a session, or null if unknown/expired. */

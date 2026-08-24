@@ -345,7 +345,14 @@
     "data_deletion_title": "Omba Ufutaji wa Data",
     "data_deletion_description": "Omba ufutaji wa data yako binafsi ya off-chain (historia ya mazungumzo, metadata ya wasifu, uchambuzi). Data za on-chain (miamala, usajili) ni za kudumu na haziwezi kufutwa.",
     "data_deletion_button": "Omba Ufutaji",
-    "connect_wallet_to_request": "Unganisha pochi yako ili kuomba ufutaji wa data."
+    "connect_wallet_to_request": "Unganisha pochi yako ili kuomba ufutaji wa data.",
+    "data_export_title": "Pakua Data Yangu",
+    "data_export_description": "Pakua uhamishaji wa JSON unaoweza kubeba wa data ya off-chain ambayo ScoutOff inashikilia kuhusu pochi yako — orodha yako ya kufuatilia, utafutaji uliosagwa, mapendeleo ya arifa na hali ya kusoma, mzozo wa hatua muhimu, na upakiaji wowote unaofanya kazi.",
+    "data_export_button": "Pakua Data Yangu",
+    "data_export_exporting": "Inatayarisha uhamishaji wako…",
+    "data_export_error": "Imeshindwa kutayarisha uhamishaji wako wa data. Tafadhali jaribu tena.",
+    "data_export_success": "Uhamishaji wako wa data umepakuliwa.",
+    "data_export_onchain_note": "Data ya on-chain (miamala, usajili) haijajumuishwa — iko kwa kudumu kwenye mtandao wa Stellar na haiwezi kuhamishwa wala kufutwa."
   },
   "dataDeletion": {
     "modal_title": "Omba Ufutaji wa Data",

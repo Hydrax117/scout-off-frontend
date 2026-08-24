@@ -70,4 +70,12 @@ export class NotificationReadStore {
     });
     insertMany(notificationIds);
   }
+
+  /** Deletes every read-state row for wallet. Returns the number of rows removed. */
+  clearForWallet(wallet: string): number {
+    const result = this.db
+      .prepare('DELETE FROM notification_reads WHERE wallet = ?')
+      .run(wallet);
+    return result.changes;
+  }
 }

@@ -345,7 +345,14 @@
     "data_deletion_title": "Demander la suppression des données",
     "data_deletion_description": "Demandez la suppression de vos données personnelles off-chain (historique de chat, métadonnées de profil, analyses). Les données on-chain (transactions, inscriptions) sont permanentes et ne peuvent pas être supprimées.",
     "data_deletion_button": "Demander la suppression",
-    "connect_wallet_to_request": "Connectez votre portefeuille pour demander la suppression des données."
+    "connect_wallet_to_request": "Connectez votre portefeuille pour demander la suppression des données.",
+    "data_export_title": "Télécharger mes données",
+    "data_export_description": "Téléchargez une exportation JSON portable des données hors-chaîne que ScoutOff détient sur votre portefeuille — votre liste de suivi, vos recherches enregistrées, vos préférences de notification et votre état de lecture, vos litiges de jalons et vos téléversements en cours.",
+    "data_export_button": "Télécharger mes données",
+    "data_export_exporting": "Préparation de votre exportation…",
+    "data_export_error": "Échec de la préparation de votre exportation de données. Veuillez réessayer.",
+    "data_export_success": "Votre exportation de données a été téléchargée.",
+    "data_export_onchain_note": "Les données on-chain (transactions, enregistrements) ne sont pas incluses — elles sont stockées de façon permanente sur le réseau Stellar et ne peuvent être exportées ni supprimées."
   },
   "dataDeletion": {
     "modal_title": "Demander la suppression des données",

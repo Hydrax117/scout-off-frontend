@@ -90,6 +90,14 @@ export class WatchlistStore {
     return result.changes > 0;
   }
 
+  /** Deletes every entry owned by scoutWallet. Returns the number of rows removed. */
+  clearForWallet(scoutWallet: string): number {
+    const result = this.db
+      .prepare('DELETE FROM watchlist WHERE scout_wallet = ?')
+      .run(scoutWallet);
+    return result.changes;
+  }
+
   list(scoutWallet: string): WatchlistEntry[] {
     const rows = this.db
       .prepare(
