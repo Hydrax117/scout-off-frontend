@@ -41,7 +41,13 @@
     "processing": "Enviando {count} {count, plural, one {ação} other {ações}}…",
     "processing_desc": "Aguarde enquanto suas ações pendentes são enviadas.",
     "retry": "Tentar novamente",
-    "retry_aria": "Tentar novamente as ações pendentes"
+    "retry_aria": "Tentar novamente as ações pendentes",
+    "failed": "{count} {count, plural, one {ação} other {ações}} não pôde ser enviada",
+    "failed_desc": "As seguintes ações falharam permanentemente e não serão repetidas automaticamente. Você pode descartá-las para limpar o erro.",
+    "failed_action_label": "Ação {type} (tentada {retryCount} {retryCount, plural, one {vez} other {vezes}})",
+    "discard": "Descartar",
+    "discard_aria": "Descartar ação com falha: {type}",
+    "discard_all": "Descartar todas com falha"
   },
   "scout_dashboard": {
     "title": "Painel do Olheiro",
