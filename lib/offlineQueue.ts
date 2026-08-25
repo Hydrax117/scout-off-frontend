@@ -22,6 +22,35 @@
  *   moved to the `failed_actions` dead-letter store and removed from the
  *   active queue. It will never be retried automatically; the user may
  *   discard it via `discardFailedAction` / `discardAllFailedActions`.
+ *
+ * ## Multi-tab / multi-device conflict resolution (issue #1178)
+ *
+ * Two tabs (or devices) can independently queue an update to the *same*
+ * underlying record while offline. Both queues eventually flush after
+ * reconnect, in an undefined order relative to each other. Without any
+ * coordination, the second flush would silently overwrite the first.
+ *
+ * To prevent this:
+ *
+ * - `enqueueAction` accepts an optional `baseVersion` — the version/
+ *   timestamp of the record the action was based on, captured at enqueue
+ *   time (e.g. the record's server-assigned `updatedAt`). It rides along on
+ *   the `QueuedAction` for the handler to send with its write.
+ * - A handler that detects the record changed server-side since
+ *   `baseVersion` (typically because the server responded 409 Conflict)
+ *   throws `OfflineQueueConflictError` instead of a plain `Error`.
+ * - `processQueue` treats a conflict as its own outcome, distinct from
+ *   transient/permanent failure: the action is moved straight to the
+ *   dead-letter store tagged `conflict: true` (with the server's current
+ *   version/value attached, if known) rather than being retried — retrying
+ *   with the same stale `baseVersion` would just fail again, and applying
+ *   it anyway would silently clobber whatever the other tab/device wrote.
+ *   The user is expected to review and decide how to proceed; this module
+ *   does not attempt an automatic three-way merge.
+ *
+ * Actions that don't carry a `baseVersion` (the common single-tab case, or
+ * any action type that isn't version-tracked) are completely unaffected —
+ * there is no extra comparison, round trip, or latency added to that path.
  */
 
 // ── Error classification ─────────────────────────────────────────────────────
@@ -55,6 +84,49 @@ export class OfflineQueueError extends Error {
   }
 }
 
+/**
+ * An error a handler throws when the server rejects a flush because the
+ * record has changed since the action's `baseVersion` was captured — i.e.
+ * an optimistic-concurrency conflict (HTTP 409, or equivalent), most often
+ * caused by another tab or device having already flushed a write against
+ * the same record.
+ *
+ * Unlike `OfflineQueueError`, a conflict is never treated as retryable:
+ * the action's `baseVersion` is stale, so retrying with the same payload
+ * would either fail again or silently overwrite the other write. Instead
+ * `processQueue` moves the action straight to the dead-letter store, tagged
+ * `conflict: true`, for the user to review.
+ *
+ * @example
+ * ```ts
+ * const res = await fetch('/api/thing', { method: 'PUT', body: ... });
+ * if (res.status === 409) {
+ *   const { current, currentVersion } = await res.json();
+ *   throw new OfflineQueueConflictError('Record changed elsewhere', {
+ *     serverVersion: currentVersion,
+ *     serverPayload: current,
+ *   });
+ * }
+ * ```
+ */
+export class OfflineQueueConflictError extends Error {
+  readonly conflict = true as const;
+  /** The record's current version/timestamp on the server, if known. */
+  readonly serverVersion?: number;
+  /** The record's current server-side value, if the server returned one. */
+  readonly serverPayload?: unknown;
+
+  constructor(
+    message: string,
+    options?: { serverVersion?: number; serverPayload?: unknown },
+  ) {
+    super(message);
+    this.name = 'OfflineQueueConflictError';
+    this.serverVersion = options?.serverVersion;
+    this.serverPayload = options?.serverPayload;
+  }
+}
+
 // ── Types ───────────────────────────────────────────────────────────────────
 
 export interface QueuedAction {
@@ -74,6 +146,15 @@ export interface QueuedAction {
    * Set by `markRetry` using exponential backoff with jitter.
    */
   nextRetryAt?: number;
+  /**
+   * Version/timestamp of the underlying record this action was based on,
+   * captured at enqueue time (e.g. the record's server-assigned
+   * `updatedAt`). Opaque to the queue itself — a handler that targets a
+   * versioned record sends this along with its write so the server can
+   * detect a conflict; actions that don't target a versioned record simply
+   * omit it. See "Multi-tab / multi-device conflict resolution" above.
+   */
+  baseVersion?: number;
 }
 
 /**
@@ -85,6 +166,18 @@ export interface FailedAction extends QueuedAction {
   failedAt: number;
   /** The error message that caused the final failure. */
   lastError: string;
+  /**
+   * `true` when this action was dead-lettered because the server detected
+   * an optimistic-concurrency conflict (its `baseVersion` no longer matched
+   * the record on the server) — as opposed to a validation error or
+   * exhausted retries. The UI should surface this distinctly: it means
+   * "this was changed elsewhere, please review", not "this failed".
+   */
+  conflict?: boolean;
+  /** The record's current version on the server. Set only when `conflict` is true and the server reported one. */
+  serverVersion?: number;
+  /** The record's current value on the server. Set only when `conflict` is true and the server reported one. */
+  serverPayload?: unknown;
 }
 
 export type QueueStatus = 'idle' | 'processing' | 'queued';
@@ -154,11 +247,18 @@ async function getDb(): Promise<IDBDatabase> {
  *
  * @param type - A stable string identifying the action type (e.g. `'update_profile'`).
  * @param payload - Arbitrary JSON-serialisable payload.
+ * @param options.baseVersion - Version/timestamp of the record this action was
+ *   based on, if it targets a versioned record. Carried on the queued action
+ *   and available to the handler at flush time so it can detect (and the
+ *   server can reject) a write against a since-changed record. Omit for
+ *   actions that don't target a versioned record — behaviour and processing
+ *   cost are identical to before this option existed.
  * @returns The id of the newly queued action.
  */
 export async function enqueueAction(
   type: string,
   payload: unknown,
+  options?: { baseVersion?: number },
 ): Promise<string> {
   const db = await getDb();
   const action: QueuedAction = {
@@ -167,6 +267,9 @@ export async function enqueueAction(
     retryCount: 0,
     type,
     payload,
+    ...(options?.baseVersion !== undefined
+      ? { baseVersion: options.baseVersion }
+      : {}),
   };
 
   await new Promise<void>((resolve, reject) => {
@@ -335,17 +438,30 @@ export async function discardAllFailedActions(): Promise<void> {
 
 /**
  * Moves an action from the active queue to the dead-letter store.
- * Called internally by `processQueue` when an action is permanently failed.
+ * Called internally by `processQueue` when an action is permanently failed
+ * or conflicted.
  */
 async function deadLetterAction(
   action: QueuedAction,
   error: Error,
+  extra?: {
+    conflict?: boolean;
+    serverVersion?: number;
+    serverPayload?: unknown;
+  },
 ): Promise<void> {
   const db = await getDb();
   const failed: FailedAction = {
     ...action,
     failedAt: Date.now(),
     lastError: error.message,
+    ...(extra?.conflict ? { conflict: true as const } : {}),
+    ...(extra?.serverVersion !== undefined
+      ? { serverVersion: extra.serverVersion }
+      : {}),
+    ...(extra?.serverPayload !== undefined
+      ? { serverPayload: extra.serverPayload }
+      : {}),
   };
 
   await new Promise<void>((resolve, reject) => {
@@ -384,6 +500,10 @@ export function registerHandler(type: string, handler: ActionHandler): void {
  *
  * - If the action's `nextRetryAt` is in the future, it is skipped this pass.
  * - If the handler succeeds, the action is removed from the queue.
+ * - If the handler throws `OfflineQueueConflictError` (the server detected
+ *   the record changed since `baseVersion`), the action is moved to the
+ *   dead-letter store immediately, tagged `conflict: true` — retrying would
+ *   not help, since the client's base state is stale.
  * - If the handler throws a **permanent** `OfflineQueueError`, or the action
  *   has reached `MAX_RETRIES`, it is moved to the dead-letter store.
  * - Otherwise the action's `nextRetryAt` is set for backoff and it remains
@@ -411,6 +531,21 @@ export async function processQueue(): Promise<number> {
       processed++;
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
+
+      if (err instanceof OfflineQueueConflictError) {
+        // The server rejected this write because the record moved on since
+        // `baseVersion` (typically: another tab/device already flushed a
+        // conflicting change). Retrying with the same stale base would
+        // either fail again or silently clobber that other write, so we
+        // dead-letter immediately for the user to review instead.
+        await deadLetterAction(action, error, {
+          conflict: true,
+          serverVersion: err.serverVersion,
+          serverPayload: err.serverPayload,
+        });
+        continue;
+      }
+
       const isPermanent =
         err instanceof OfflineQueueError && err.permanent === true;
 

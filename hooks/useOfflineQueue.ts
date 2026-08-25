@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   enqueueAction,
   processQueue,
@@ -24,7 +24,12 @@ import {
  *   - `pendingCount` — number of actions waiting to be processed
  *   - `failedActions` — dead-lettered actions that need user attention
  *   - `failedCount` — number of dead-lettered actions
- *   - `discardFailed(id)` — remove a single dead-lettered action
+ *   - `conflictActions` — the subset of `failedActions` that were dead-lettered
+ *     because the server detected a conflict (a since-changed record), as
+ *     opposed to a validation or exhausted-retry failure — see issue #1178
+ *   - `conflictCount` — number of conflicted actions
+ *   - `discardFailed(id)` — remove a single dead-lettered action (also used
+ *     to acknowledge/dismiss a conflict once the user has reviewed it)
  *   - `discardAllFailed()` — remove all dead-lettered actions
  *   - `processAll()` — manually trigger queue processing
  *   - `registerHandler(type, fn)` — register a handler for an action type
@@ -39,6 +44,13 @@ export function useOfflineQueue() {
   const [failedCount, setFailedCount] = useState(0);
   const processingRef = useRef(false);
   const mountedRef = useRef(true);
+
+  /** Failed actions that were dead-lettered due to a server-detected conflict (issue #1178). */
+  const conflictActions = useMemo(
+    () => failedActions.filter((action) => action.conflict === true),
+    [failedActions],
+  );
+  const conflictCount = conflictActions.length;
 
   const refreshCounts = useCallback(async () => {
     try {
@@ -82,10 +94,18 @@ export function useOfflineQueue() {
 
   /**
    * Enqueue a new action. If online, attempts to process immediately.
+   *
+   * Pass `options.baseVersion` when the action targets a versioned record
+   * (e.g. its current `updatedAt`) so a conflict can be detected if the
+   * record changes elsewhere before this action flushes — see issue #1178.
    */
   const enqueue = useCallback(
-    async (type: string, payload: unknown): Promise<string> => {
-      const id = await enqueueAction(type, payload);
+    async (
+      type: string,
+      payload: unknown,
+      options?: { baseVersion?: number },
+    ): Promise<string> => {
+      const id = await enqueueAction(type, payload, options);
       await refreshCounts();
 
       // If online, try to process right away
@@ -197,6 +217,8 @@ export function useOfflineQueue() {
     pendingCount,
     failedActions,
     failedCount,
+    conflictActions,
+    conflictCount,
     discardFailed,
     discardAllFailed,
     processAll,

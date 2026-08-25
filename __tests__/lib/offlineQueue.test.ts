@@ -31,9 +31,11 @@ import {
   discardFailedAction,
   discardAllFailedActions,
   OfflineQueueError,
+  OfflineQueueConflictError,
   MAX_RETRIES,
   MAX_DELAY_MS,
   type FailedAction,
+  type QueuedAction,
 } from '@/lib/offlineQueue';
 
 // The module caches its IDBDatabase connection in a module-level variable,
@@ -715,6 +717,164 @@ describe('Ordering: same-type actions process in enqueue order', () => {
     await processQueue();
 
     expect(processed).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
+// ── Acceptance criterion 4 (issue #1178): multi-tab/device conflict resolution ─
+
+describe('Acceptance: conflict resolution for the same record from multiple tabs/devices', () => {
+  /**
+   * A tiny in-memory stand-in for "the backend" — a single versioned record,
+   * shared by the handler across this describe block, mimicking a server
+   * enforcing optimistic concurrency (compare-and-swap on `version`).
+   */
+  function makeFakeServerRecord(initialValue: string) {
+    return { value: initialValue, version: 1 };
+  }
+
+  /**
+   * A handler that behaves like a real optimistic-concurrency-checked API:
+   * accepts the queued action's `baseVersion`, rejects with
+   * `OfflineQueueConflictError` (as if the server had returned 409) when it
+   * no longer matches the record's current version, and otherwise applies
+   * the write and bumps the version — exactly the contract
+   * `lib/notificationPreferencesStore.ts`'s `setWithVersionCheck` /
+   * `app/api/notification-preferences/route.ts` implement for real.
+   */
+  function makeVersionCheckedHandler(record: {
+    value: string;
+    version: number;
+  }) {
+    return async (action: QueuedAction) => {
+      const { value } = action.payload as { value: string };
+      if (
+        action.baseVersion !== undefined &&
+        action.baseVersion !== record.version
+      ) {
+        throw new OfflineQueueConflictError(
+          'Record changed elsewhere since this action was queued',
+          { serverVersion: record.version, serverPayload: record.value },
+        );
+      }
+      record.value = value;
+      record.version += 1;
+    };
+  }
+
+  it('carries baseVersion on the queued action, captured at enqueue time', async () => {
+    const id = await enqueueAction(
+      'versioned_type_carry',
+      { value: 'x' },
+      { baseVersion: 7 },
+    );
+    const [action] = await getQueuedActions();
+    expect(action.id).toBe(id);
+    expect(action.baseVersion).toBe(7);
+  });
+
+  it('does not set baseVersion when the caller omits it (single-tab happy path unaffected)', async () => {
+    await enqueueAction('versioned_type_omit', { value: 'x' });
+    const [action] = await getQueuedActions();
+    expect(action.baseVersion).toBeUndefined();
+  });
+
+  /**
+   * The core acceptance scenario: two tabs (or devices) each queue an
+   * update to the *same* record while offline, both based on the record's
+   * original version. After reconnect, both queues flush. The first flush
+   * to reach the server succeeds and advances the record's version; the
+   * second must be detected as a conflict (its `baseVersion` is now stale)
+   * and rejected — not silently applied on top of the first.
+   */
+  it('detects a conflict when two tabs both flush a queued update to the same record', async () => {
+    const record = makeFakeServerRecord('original');
+    const handlerType = 'update_shared_record';
+    registerHandler(handlerType, makeVersionCheckedHandler(record));
+
+    // Both tabs read the record at version 1 before going offline, then
+    // each queues its own (different) edit based on that same version.
+    const originalVersionSeenByBothTabs = record.version; // 1
+    const tabAActionId = await enqueueAction(
+      handlerType,
+      { value: 'edited-by-tab-A' },
+      { baseVersion: originalVersionSeenByBothTabs },
+    );
+    // Guarantee a distinct queuedAt so processing order is deterministic.
+    await new Promise((r) => setTimeout(r, 1));
+    const tabBActionId = await enqueueAction(
+      handlerType,
+      { value: 'edited-by-tab-B' },
+      { baseVersion: originalVersionSeenByBothTabs },
+    );
+
+    // Reconnect: both queues flush in the same pass (simulating near-
+    // simultaneous 'online' events across tabs/devices).
+    const processed = await processQueue();
+
+    // Tab A's write landed first and applied cleanly.
+    expect(processed).toBe(1);
+    expect(record.value).toBe('edited-by-tab-A');
+    expect(record.version).toBe(2);
+
+    // Tab A's action is gone from both the active queue and dead-letter store.
+    const active = await getQueuedActions();
+    expect(active.find((a) => a.id === tabAActionId)).toBeUndefined();
+
+    // Tab B's action was NOT silently applied on top of Tab A's write —
+    // it was detected as a conflict and dead-lettered instead of
+    // clobbering the record or being blindly retried.
+    expect(active.find((a) => a.id === tabBActionId)).toBeUndefined();
+    expect(record.value).not.toBe('edited-by-tab-B');
+
+    const failed = await getFailedActions();
+    const tabBFailure = failed.find((a) => a.id === tabBActionId);
+    expect(tabBFailure).toBeDefined();
+    expect(tabBFailure!.conflict).toBe(true);
+    expect(tabBFailure!.serverVersion).toBe(2);
+    expect(tabBFailure!.serverPayload).toBe('edited-by-tab-A');
+    expect(tabBFailure!.lastError).toBe(
+      'Record changed elsewhere since this action was queued',
+    );
+  });
+
+  it('does not retry a conflicted action on a later pass (retrying would not help — baseVersion is stale)', async () => {
+    const record = makeFakeServerRecord('original');
+    const handlerType = 'update_shared_record_no_retry';
+    const handler = jest.fn(makeVersionCheckedHandler(record));
+    registerHandler(handlerType, handler);
+
+    await enqueueAction(handlerType, { value: 'first' }, { baseVersion: 1 });
+    await processQueue(); // applies, version -> 2
+
+    await enqueueAction(handlerType, { value: 'stale' }, { baseVersion: 1 });
+    await processQueue(); // conflict, dead-lettered
+    handler.mockClear();
+
+    // A later pass (e.g. the user retries, or another 'online' event fires)
+    // must not re-invoke the handler for the dead-lettered conflict.
+    await processQueue();
+    expect(handler).not.toHaveBeenCalled();
+
+    await expect(getFailedCount()).resolves.toBe(1);
+  });
+
+  it('applies cleanly with no conflict when only one tab has queued a change (single-tab happy path)', async () => {
+    const record = makeFakeServerRecord('original');
+    const handlerType = 'update_shared_record_single_tab';
+    registerHandler(handlerType, makeVersionCheckedHandler(record));
+
+    await enqueueAction(
+      handlerType,
+      { value: 'solo-edit' },
+      { baseVersion: record.version },
+    );
+
+    const processed = await processQueue();
+
+    expect(processed).toBe(1);
+    expect(record.value).toBe('solo-edit');
+    await expect(getQueuedActions()).resolves.toEqual([]);
+    await expect(getFailedCount()).resolves.toBe(0);
   });
 });
 
