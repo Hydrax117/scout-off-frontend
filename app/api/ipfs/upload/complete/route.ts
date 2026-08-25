@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     fileType.toLowerCase().startsWith(prefix),
   );
   if (!mimeAllowed) {
-    cleanupSession(sessionId);
+    await cleanupSession(sessionId);
     return NextResponse.json(
       {
         error: `File type "${fileType}" is not allowed. Only image/* and video/* files are accepted.`,
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
 
   const header = new Uint8Array(buffer.subarray(0, 12));
   if (!hasValidMagicBytes(header)) {
-    cleanupSession(sessionId);
+    await cleanupSession(sessionId);
     log.warn('Rejected spoofed MIME type', {
       type: fileType,
       ip,
@@ -158,6 +158,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  cleanupSession(sessionId);
+  await cleanupSession(sessionId);
   return NextResponse.json({ cid });
 }

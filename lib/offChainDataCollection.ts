@@ -28,7 +28,10 @@ import { SavedSearchStore } from './savedSearchStore';
 import { NotificationPreferencesStore } from './notificationPreferencesStore';
 import { NotificationReadStore } from './notificationReadStore';
 import { MilestoneDisputeStore } from './milestoneDisputeStore';
-import { listSessionsForWallet, clearSessionsForWallet } from './chunkedUploadStore';
+import {
+  listSessionsForWallet,
+  clearSessionsForWallet,
+} from './chunkedUploadStore';
 import type {
   WatchlistEntry,
   SavedSearch,
@@ -92,7 +95,9 @@ function explorerUrlFor(wallet: string): string {
  * stores. Each section is collected independently so a failure in one store
  * surfaces as an `error` marker rather than aborting the whole export.
  */
-export function collectUserData(wallet: string): CollectedUserData {
+export async function collectUserData(
+  wallet: string,
+): Promise<CollectedUserData> {
   const sections: CollectedUserData['sections'] = {
     watchlist: [],
     savedSearches: [],
@@ -107,7 +112,9 @@ export function collectUserData(wallet: string): CollectedUserData {
   try {
     sections.watchlist = WatchlistStore.getInstance().list(wallet);
   } catch (err) {
-    errors.push(`watchlist: ${err instanceof Error ? err.message : String(err)}`);
+    errors.push(
+      `watchlist: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
   try {
     sections.savedSearches = SavedSearchStore.getInstance().list(wallet);
@@ -141,7 +148,7 @@ export function collectUserData(wallet: string): CollectedUserData {
     );
   }
   try {
-    sections.activeUploadSessions = listSessionsForWallet(wallet);
+    sections.activeUploadSessions = await listSessionsForWallet(wallet);
   } catch (err) {
     errors.push(
       `activeUploadSessions: ${err instanceof Error ? err.message : String(err)}`,
@@ -189,9 +196,9 @@ export function collectUserData(wallet: string): CollectedUserData {
  * deletable. Throws if any store fails, so a partial deletion is never
  * reported as success.
  */
-export function deleteUserData(wallet: string): {
+export async function deleteUserData(wallet: string): Promise<{
   removed: Record<string, number>;
-} {
+}> {
   const removed: Record<string, number> = {};
 
   removed.watchlist = WatchlistStore.getInstance().clearForWallet(wallet);
@@ -202,7 +209,7 @@ export function deleteUserData(wallet: string): {
     NotificationReadStore.getInstance().clearForWallet(wallet);
   removed.milestoneDisputes =
     MilestoneDisputeStore.getInstance().deleteForWallet(wallet);
-  removed.activeUploadSessions = clearSessionsForWallet(wallet);
+  removed.activeUploadSessions = await clearSessionsForWallet(wallet);
 
   return { removed };
 }

@@ -27,7 +27,7 @@ describe('GET /api/ipfs/upload/status', () => {
   });
 
   it('reports which chunks have been received, enabling resume', async () => {
-    const { sessionId } = initSession({
+    const { sessionId } = await initSession({
       filename: 'clip.mp4',
       fileType: 'video/mp4',
       fileSize: 30,
