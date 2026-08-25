@@ -425,3 +425,57 @@ describe('POST /api/disputes', () => {
     jest.restoreAllMocks();
   });
 });
+
+describe('POST /api/disputes — server-side inputValidation parity (issue #1143)', () => {
+  it('returns 400 when reason exceeds 2000 characters (max enforced server-side)', async () => {
+    const overlong = 'a'.repeat(2001);
+    const res = await POST(
+      makeRequest('http://localhost/api/disputes', {
+        method: 'POST',
+        cookie: SCOUT,
+        body: {
+          playerId: 'p1',
+          milestoneId: 'm1',
+          reason: overlong,
+        },
+      }),
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/reason/i);
+  });
+
+  it('returns 400 when reason is exactly at the limit (2000 chars) but contains only control chars', async () => {
+    // A string of 2000 null-bytes sanitizes to empty, which is below min=10
+    const controlOnly = '\x00'.repeat(2000);
+    const res = await POST(
+      makeRequest('http://localhost/api/disputes', {
+        method: 'POST',
+        cookie: SCOUT,
+        body: {
+          playerId: 'p1',
+          milestoneId: 'm1',
+          reason: controlOnly,
+        },
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts a reason at exactly the 2000-character limit', async () => {
+    const atLimit = 'a'.repeat(2000);
+    const res = await POST(
+      makeRequest('http://localhost/api/disputes', {
+        method: 'POST',
+        cookie: SCOUT,
+        body: {
+          playerId: 'p1',
+          milestoneId: 'm1',
+          reason: atLimit,
+        },
+      }),
+    );
+    // 201 means the validation passed and the dispute was created
+    expect(res.status).toBe(201);
+  });
+});

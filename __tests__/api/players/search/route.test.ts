@@ -138,3 +138,25 @@ describe('GET /api/players/search', () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe('GET /api/players/search — server-side inputValidation parity (issue #1143)', () => {
+  beforeEach(() => {
+    mockGet.mockReset();
+  });
+
+  it('returns 400 when the name param exceeds 100 characters', async () => {
+    const res = await GET(makeRequest('a'.repeat(101), 'ip-toolong'));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/name/i);
+  });
+
+  it('accepts a name at exactly 100 characters and proxies normally', async () => {
+    mockGet.mockResolvedValueOnce({ data: [] });
+    const res = await GET(makeRequest('a'.repeat(100), 'ip-atlimit'));
+    expect(res.status).toBe(200);
+    expect(mockGet).toHaveBeenCalledWith('/players/search', {
+      params: { name: 'a'.repeat(100) },
+    });
+  });
+});

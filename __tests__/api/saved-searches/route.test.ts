@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { GET, POST, DELETE } from '@/app/api/saved-searches/route';
+import { GET, POST, PATCH, DELETE } from '@/app/api/saved-searches/route';
 import { NextRequest } from 'next/server';
 import { SavedSearchStore } from '@/lib/savedSearchStore';
 import { createSessionToken } from '@/lib/session';
@@ -150,5 +150,95 @@ describe('DELETE /api/saved-searches', () => {
     );
     expect(res.status).toBe(404);
     expect(SavedSearchStore.getInstance().list('GOTHER')).toHaveLength(1);
+  });
+});
+
+// issue #1143 — server-side inputValidation parity
+describe('POST /api/saved-searches — name length validation (issue #1143)', () => {
+  it('returns 400 when name exceeds 100 characters', async () => {
+    const res = await POST(
+      makeRequest('http://localhost/api/saved-searches', {
+        method: 'POST',
+        cookie: SCOUT,
+        body: { name: 'a'.repeat(101), filter: {} },
+      }),
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/name/i);
+  });
+
+  it('accepts a name at exactly 100 characters', async () => {
+    const res = await POST(
+      makeRequest('http://localhost/api/saved-searches', {
+        method: 'POST',
+        cookie: SCOUT,
+        body: { name: 'a'.repeat(100), filter: { region: 'Europe' } },
+      }),
+    );
+    expect(res.status).toBe(201);
+  });
+});
+
+describe('PATCH /api/saved-searches — name length validation (issue #1143)', () => {
+  it('returns 401 without a session cookie', async () => {
+    const res = await PATCH(
+      makeRequest('http://localhost/api/saved-searches', {
+        method: 'PATCH',
+        body: { id: 1, name: 'renamed' },
+      }),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 400 for a missing id', async () => {
+    const res = await PATCH(
+      makeRequest('http://localhost/api/saved-searches', {
+        method: 'PATCH',
+        cookie: SCOUT,
+        body: { name: 'renamed' },
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when name exceeds 100 characters', async () => {
+    const entry = SavedSearchStore.getInstance().add(SCOUT, 'Original', {});
+    const res = await PATCH(
+      makeRequest('http://localhost/api/saved-searches', {
+        method: 'PATCH',
+        cookie: SCOUT,
+        body: { id: entry.id, name: 'a'.repeat(101) },
+      }),
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/name/i);
+  });
+
+  it('accepts a name at exactly 100 characters and renames the entry', async () => {
+    const entry = SavedSearchStore.getInstance().add(SCOUT, 'Original', {});
+    const newName = 'a'.repeat(100);
+    const res = await PATCH(
+      makeRequest('http://localhost/api/saved-searches', {
+        method: 'PATCH',
+        cookie: SCOUT,
+        body: { id: entry.id, name: newName },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.name).toBe(newName);
+  });
+
+  it('returns 404 for a non-existent saved search', async () => {
+    const res = await PATCH(
+      makeRequest('http://localhost/api/saved-searches', {
+        method: 'PATCH',
+        cookie: SCOUT,
+        body: { id: 999, name: 'renamed' },
+      }),
+    );
+    expect(res.status).toBe(404);
   });
 });

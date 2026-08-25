@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminWallet } from '@/lib/adminAuth';
 import { FraudThrottleStore } from '@/lib/fraudThrottleStore';
 import { createRequestLogger } from '@/lib/logger';
+import { sanitizeTextInput } from '@/lib/inputValidation';
+
+// Lift-reason is free-form admin note — cap at 500 characters (same as bio).
+const LIFT_REASON_MAX = 500;
 
 export const runtime = 'nodejs';
 
@@ -27,10 +31,22 @@ export async function POST(
   }
 
   const body = await req.json().catch(() => ({}));
-  const reason =
+  const rawReason =
     body && typeof body === 'object' && typeof (body as any).reason === 'string'
       ? (body as any).reason.trim() || undefined
       : undefined;
+
+  if (rawReason !== undefined) {
+    const sanitizedReason = sanitizeTextInput(rawReason);
+    if (sanitizedReason.length > LIFT_REASON_MAX) {
+      return NextResponse.json(
+        { error: `reason must be at most ${LIFT_REASON_MAX} characters` },
+        { status: 400 },
+      );
+    }
+  }
+
+  const reason = rawReason !== undefined ? sanitizeTextInput(rawReason) : undefined;
 
   const log = createRequestLogger(req);
   try {

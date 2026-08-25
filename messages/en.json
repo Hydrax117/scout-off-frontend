@@ -174,7 +174,10 @@
     "failed_action_label": "{type} action (attempted {retryCount} {retryCount, plural, one {time} other {times}})",
     "discard": "Discard",
     "discard_aria": "Discard failed action: {type}",
-    "discard_all": "Discard all failed"
+    "discard_all": "Discard all failed",
+    "conflict_action_label": "{type} action — changed elsewhere",
+    "conflict_desc": "This was changed elsewhere before your queued update could be sent. Discard your queued change, then refresh to see the current version and reapply your edit if needed.",
+    "conflict_discard_aria": "Discard conflicting action: {type}"
   },
   "progress_levels": {
     "level0": "Unverified",
