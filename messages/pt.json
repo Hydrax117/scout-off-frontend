@@ -47,7 +47,10 @@
     "failed_action_label": "Ação {type} (tentada {retryCount} {retryCount, plural, one {vez} other {vezes}})",
     "discard": "Descartar",
     "discard_aria": "Descartar ação com falha: {type}",
-    "discard_all": "Descartar todas com falha"
+    "discard_all": "Descartar todas com falha",
+    "conflict_action_label": "Ação {type} — alterada em outro lugar",
+    "conflict_desc": "Isso foi alterado em outro lugar antes que sua atualização pendente pudesse ser enviada. Descarte sua alteração pendente e atualize para ver a versão atual e reaplicar sua edição, se necessário.",
+    "conflict_discard_aria": "Descartar ação em conflito: {type}"
   },
   "scout_dashboard": {
     "title": "Painel do Olheiro",

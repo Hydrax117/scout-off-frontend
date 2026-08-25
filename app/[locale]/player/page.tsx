@@ -358,6 +358,9 @@ function PlayerDashboardContent() {
                 pendingCount={offlineQueue.pendingCount}
                 isProcessing={offlineQueue.status === 'processing'}
                 onRetry={offlineQueue.processAll}
+                failedActions={offlineQueue.failedActions}
+                onDiscardFailed={offlineQueue.discardFailed}
+                onDiscardAllFailed={offlineQueue.discardAllFailed}
               />
 
               {isPendingConfirmation && (

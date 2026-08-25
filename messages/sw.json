@@ -91,7 +91,10 @@
     "failed_action_label": "Kitendo cha {type} (kilijaribishwa mara {retryCount})",
     "discard": "Futa",
     "discard_aria": "Futa kitendo kilichoshindwa: {type}",
-    "discard_all": "Futa vyote vilivyoshindwa"
+    "discard_all": "Futa vyote vilivyoshindwa",
+    "conflict_action_label": "Kitendo cha {type} — kimebadilishwa mahali pengine",
+    "conflict_desc": "Hii ilibadilishwa mahali pengine kabla ya sasisho lako lililoko foleni kutumwa. Futa mabadiliko yako yaliyoko foleni, kisha onyesha upya ili kuona toleo la sasa na kurudia mabadiliko yako ikihitajika.",
+    "conflict_discard_aria": "Futa kitendo chenye mgongano: {type}"
   },
   "validator": {
     "title": "Dashibodi ya Mthibitishaji",

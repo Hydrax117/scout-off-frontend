@@ -47,7 +47,10 @@
     "failed_action_label": "Action {type} (tentée {retryCount} {retryCount, plural, one {fois} other {fois}})",
     "discard": "Supprimer",
     "discard_aria": "Supprimer l'action échouée : {type}",
-    "discard_all": "Supprimer toutes les échouées"
+    "discard_all": "Supprimer toutes les échouées",
+    "conflict_action_label": "Action {type} — modifiée ailleurs",
+    "conflict_desc": "Cet élément a été modifié ailleurs avant que votre modification en attente n'ait pu être envoyée. Supprimez votre modification en attente, puis actualisez pour voir la version actuelle et réappliquer votre modification si nécessaire.",
+    "conflict_discard_aria": "Supprimer l'action en conflit : {type}"
   },
   "scout_dashboard": {
     "title": "Tableau de bord des scouts",
