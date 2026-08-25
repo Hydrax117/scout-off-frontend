@@ -1,15 +1,24 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import FraudFlagsPanel from '@/components/admin/FraudFlagsPanel';
-import { fetchFraudFlags } from '@/lib/api';
+import { fetchFraudFlags, fetchFraudThrottles } from '@/lib/api';
 import type { FraudFlag } from '@/types';
 
 jest.mock('@/lib/api', () => ({
   fetchFraudFlags: jest.fn(),
+  fetchFraudThrottles: jest.fn(),
+  liftFraudThrottle: jest.fn(),
+}));
+
+jest.mock('@/components/ui/Toast', () => ({
+  useToast: () => ({ show: jest.fn() }),
 }));
 
 const mockedFetchFraudFlags = fetchFraudFlags as jest.MockedFunction<
   typeof fetchFraudFlags
+>;
+const mockedFetchFraudThrottles = fetchFraudThrottles as jest.MockedFunction<
+  typeof fetchFraudThrottles
 >;
 
 const referralFlag: FraudFlag = {
@@ -38,6 +47,7 @@ const payToContactFlag: FraudFlag = {
 describe('FraudFlagsPanel', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockedFetchFraudThrottles.mockResolvedValue({ throttles: [] });
   });
 
   it('shows a loading message while fetching', () => {

@@ -8,6 +8,7 @@ import {
   getSubscription,
   PLATFORM_CONTACT_FEE_XLM,
 } from '@/lib/contract';
+import { checkFraudThrottle } from '@/lib/api';
 import { parseContractError } from '@/lib/contractErrorMessage';
 import {
   cacheContactDetails,
@@ -63,6 +64,17 @@ export function usePayToContact(playerId: string) {
     setError(null);
 
     try {
+      // ── 0. Throttle gate (issue #1174) ────────────────────────────────────
+      // Admin-gated auto-throttle: never auto-expires, only an explicit
+      // admin action in FraudFlagsPanel.tsx lifts it. Behind
+      // NEXT_PUBLIC_FEATURE_FRAUD_AUTO_THROTTLE — always false while off.
+      if (await checkFraudThrottle(publicKey)) {
+        fail(
+          'This wallet is temporarily unable to unlock contact details while under review. If you believe this is a mistake, please contact support.',
+        );
+        return;
+      }
+
       // ── 1. Subscription gate ──────────────────────────────────────────────
       const subscription = await getSubscription(publicKey);
       const now = Date.now() / 1000;

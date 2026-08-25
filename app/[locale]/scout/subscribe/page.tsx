@@ -10,7 +10,12 @@ import type { TxStatus } from '@/components/ui/TransactionStatus';
 import useIsPaused from '@/hooks/useIsPaused';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useWallet } from '@/hooks/useWallet';
-import { redeemReferralCode } from '@/lib/api';
+import {
+  redeemReferralCode,
+  checkFraudThrottle,
+  REFERRAL_THROTTLE_MESSAGE,
+} from '@/lib/api';
+import { useToast } from '@/components/ui/Toast';
 import { formatXlm } from '@/lib/formatXlm';
 import XlmFiatDisplay from '@/components/ui/XlmFiatDisplay';
 import type { SubscriptionTier } from '@/types';
@@ -75,6 +80,7 @@ function SubscribeContent() {
   const { publicKey } = useWallet();
   const { subscription, isExpired, subscribe, loading, error } =
     useSubscription();
+  const { show: showToast } = useToast();
   const [txStatus, setTxStatus] = useState<TxStatus | null>(null);
   const [feePaid, setFeePaid] = useState<string | undefined>(undefined);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -144,7 +150,12 @@ function SubscribeContent() {
     try {
       await subscribe(tier);
       if (referralCode && publicKey) {
-        redeemReferralCode(referralCode, publicKey).catch(() => {});
+        const throttled = await checkFraudThrottle(publicKey);
+        if (throttled) {
+          showToast({ message: REFERRAL_THROTTLE_MESSAGE, variant: 'error' });
+        } else {
+          redeemReferralCode(referralCode, publicKey).catch(() => {});
+        }
       }
       const plan = TIERS.find((p) => p.tier === tier);
       setFeePaid(plan ? formatXlm(plan.priceXlm) : undefined);
