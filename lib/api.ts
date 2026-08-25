@@ -379,3 +379,5 @@ export const createMilestoneSubmission = (payload: {
   api.post('/milestone-submissions', payload).then((r) => r.data);
 
 export default api;
+
+// #851: duplicate redeemReferralCode removed
