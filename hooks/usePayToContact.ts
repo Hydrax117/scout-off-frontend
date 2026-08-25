@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import useSWR from 'swr';
 import { useWallet } from '@/hooks/useWallet';
 import { useToast } from '@/components/ui/Toast';
+import { useSubmissionGuard } from '@/hooks/useSubmissionGuard';
 import {
   payToContact,
   getSubscription,
@@ -48,55 +49,73 @@ export function usePayToContact(playerId: string) {
     revalidateOnReconnect: false,
   });
 
-  const unlock = useCallback(async (): Promise<ContactDetails | undefined> => {
-    function fail(msg: string): void {
-      setError(msg);
-      show({ message: msg, variant: 'error' });
-    }
+  const submitGuarded = useSubmissionGuard<ContactDetails | undefined>();
 
-    if (!publicKey) {
-      fail('Wallet not connected.');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // ── 1. Subscription gate ──────────────────────────────────────────────
-      const subscription = await getSubscription(publicKey);
-      const now = Date.now() / 1000;
-      if (!subscription || subscription.expiresAt < now) {
-        fail(
-          'An active subscription is required to contact players. Please subscribe or renew.',
-        );
-        return;
+  // Wraps the entire build/sign/submit attempt in useSubmissionGuard's
+  // in-flight mutex (issue #1177) — a fast double-click or any re-invocation
+  // of unlock() while one is already pending returns the SAME in-flight
+  // promise instead of building/signing/submitting a second payToContact
+  // transaction. See docs/payment-idempotency.md for what this does and
+  // doesn't guarantee.
+  const unlock = useCallback((): Promise<ContactDetails | undefined> => {
+    return submitGuarded(async () => {
+      function fail(msg: string): void {
+        setError(msg);
+        show({ message: msg, variant: 'error' });
       }
 
-      // ── 2. Balance gate ───────────────────────────────────────────────────
-      const balance = parseFloat(xlmBalance ?? '0');
-      if (balance < PLATFORM_CONTACT_FEE_XLM) {
-        fail(
-          `Insufficient XLM. You need at least ${PLATFORM_CONTACT_FEE_XLM} XLM to contact this player.`,
-        );
-        return;
+      if (!publicKey) {
+        fail('Wallet not connected.');
+        return undefined;
       }
 
-      // ── 3. Sign, submit, and cache the result ─────────────────────────────
-      const details = await payToContact(publicKey, playerId, signOnly);
-      await refreshBalance();
-      await cacheContactDetails(
-        contactDetailsKey(playerId, publicKey),
-        details,
-      );
-      return details;
-    } catch (e: any) {
-      fail(parseContractError(e));
-      throw e;
-    } finally {
-      setLoading(false);
-    }
-  }, [publicKey, playerId, xlmBalance, signOnly, refreshBalance, show]);
+      setLoading(true);
+      setError(null);
+
+      try {
+        // ── 1. Subscription gate ────────────────────────────────────────────
+        const subscription = await getSubscription(publicKey);
+        const now = Date.now() / 1000;
+        if (!subscription || subscription.expiresAt < now) {
+          fail(
+            'An active subscription is required to contact players. Please subscribe or renew.',
+          );
+          return undefined;
+        }
+
+        // ── 2. Balance gate ─────────────────────────────────────────────────
+        const balance = parseFloat(xlmBalance ?? '0');
+        if (balance < PLATFORM_CONTACT_FEE_XLM) {
+          fail(
+            `Insufficient XLM. You need at least ${PLATFORM_CONTACT_FEE_XLM} XLM to contact this player.`,
+          );
+          return undefined;
+        }
+
+        // ── 3. Sign, submit, and cache the result ───────────────────────────
+        const details = await payToContact(publicKey, playerId, signOnly);
+        await refreshBalance();
+        await cacheContactDetails(
+          contactDetailsKey(playerId, publicKey),
+          details,
+        );
+        return details;
+      } catch (e: any) {
+        fail(parseContractError(e));
+        throw e;
+      } finally {
+        setLoading(false);
+      }
+    });
+  }, [
+    submitGuarded,
+    publicKey,
+    playerId,
+    xlmBalance,
+    signOnly,
+    refreshBalance,
+    show,
+  ]);
 
   /** Purges this player's cached contact details immediately. */
   const clear = useCallback(() => {
