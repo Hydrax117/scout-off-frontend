@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const status = getSessionStatus(sessionId);
+  const status = await getSessionStatus(sessionId);
   if (!status) {
     return NextResponse.json(
       { error: 'Upload session not found or expired' },
