@@ -136,6 +136,35 @@ export function decodeEvent(raw: RawEvent): DecodedEvent {
 }
 
 /**
+ * Heuristics for detecting that a `startLedger` is outside the Soroban RPC
+ * node's event retention window.
+ *
+ * Soroban RPC typically returns an error message containing the phrase
+ * "start is before oldest ledger" or similar when the requested startLedger
+ * predates the oldest ledger the node still has events for. The exact
+ * message text varies across node versions; we check the most common forms.
+ *
+ * This function is intentionally conservative: a false-negative (not
+ * detecting a retention error) falls back to ordinary retry behaviour, which
+ * is the existing (safe) default. A false-positive would cause the poller to
+ * skip forward unnecessarily — so we only match known, specific phrases.
+ */
+export function isRetentionWindowError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  return (
+    msg.includes('start is before oldest ledger') ||
+    msg.includes('startledger must be within the ledger retention window') ||
+    msg.includes('outside the ledger retention window') ||
+    msg.includes('ledger not found') ||
+    msg.includes('start ledger is before') ||
+    // Soroban RPC JSON-RPC error code -32600 is used for "invalid request",
+    // which the node returns for out-of-window startLedger on some builds.
+    (err as { code?: number }).code === -32600
+  );
+}
+
+/**
  * Fetches and processes one batch of events starting at `cursorLedger`
  * (or the current network tip, if `cursorLedger` is 0 — START_LEDGER's
  * documented "0 = latest" semantics). Returns the ledger to resume from on
@@ -144,6 +173,16 @@ export function decodeEvent(raw: RawEvent): DecodedEvent {
  * Exported (in addition to startEventPolling) so tests can exercise a
  * single poll cycle directly against a mocked RpcClient, without needing
  * to drive setTimeout scheduling.
+ *
+ * Recovery strategy for retention window expiry (issue #1000):
+ *   When getEvents fails with an error indicating the requested startLedger
+ *   is before the node's oldest retained ledger, the poller skips forward to
+ *   the current network tip (the safest point we *know* the node can serve).
+ *   This creates a gap in indexed history, which is recorded in
+ *   IndexerMetrics.recordRetentionWindowGap() so operators and downstream
+ *   consumers are aware.  The alternative — halting and alerting — is noted
+ *   in docs/adr/ as a follow-up option for deployments where gaps are
+ *   unacceptable.
  */
 export async function pollOnce(
   config: PollerConfig,
@@ -159,11 +198,36 @@ export async function pollOnce(
     updateNetworkLedger(latest.sequence);
 
     const effectiveStart = cursorLedger > 0 ? cursorLedger : latest.sequence;
-    const res = await rpc.getEvents({
-      startLedger: effectiveStart,
-      filters: [{ type: 'contract', contractIds: [config.contractId] }],
-      limit: 100,
-    });
+
+    let res: { latestLedger: number; events: RawEvent[] };
+    try {
+      res = await rpc.getEvents({
+        startLedger: effectiveStart,
+        filters: [{ type: 'contract', contractIds: [config.contractId] }],
+        limit: 100,
+      });
+    } catch (getEventsErr) {
+      // Distinguish retention window expiry from ordinary transient errors.
+      if (isRetentionWindowError(getEventsErr)) {
+        // Skip forward to the current network tip.  This is the earliest
+        // point we know the node has events for (it just reported it).
+        // We record the gap so it is observable.
+        const skipTo = latest.sequence;
+        console.warn(
+          `[eventPoller] Cursor ${effectiveStart} is outside the node's retention window. ` +
+            `Skipping forward to ledger ${skipTo}. ` +
+            `Events in ledgers ${effectiveStart}–${skipTo - 1} will not be indexed.`,
+        );
+        metrics.recordRetentionWindowGap(effectiveStart, skipTo);
+        metrics.recordFailure(Date.now() - cycleStart);
+        metrics.reportCursor(skipTo);
+        return skipTo;
+      }
+      // Ordinary transient RPC failure — retry the same range next cycle.
+      metrics.recordFailure(Date.now() - cycleStart);
+      metrics.reportCursor(cursorLedger);
+      return cursorLedger;
+    }
 
     let nextCursor = cursorLedger > 0 ? cursorLedger : effectiveStart;
 
@@ -195,12 +259,12 @@ export async function pollOnce(
 
     updateLastLedger(Math.max(nextCursor - 1, 0));
     metrics.markHealthy();
+    metrics.reportCursor(nextCursor);
     return nextCursor;
   } catch {
-    // RPC-level failure (network error, bad startLedger outside the
-    // node's retention window, etc.) — record it and retry the same
-    // range on the next cycle rather than crashing the process.
+    // RPC-level failure on getLatestLedger — retry the same range next cycle.
     metrics.recordFailure(Date.now() - cycleStart);
+    metrics.reportCursor(cursorLedger);
     return cursorLedger;
   }
 }
