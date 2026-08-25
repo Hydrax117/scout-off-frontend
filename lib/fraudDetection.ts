@@ -41,6 +41,38 @@ export const MIN_SUBSCRIPTIONS_FOR_CYCLING_CHECK = 3;
 /** Average contacts per subscription at/below this looks like buying access just to churn. */
 export const CYCLING_MAX_CONTACTS_PER_SUBSCRIPTION = 1.5;
 
+// ── Threshold bundle ──────────────────────────────────────────────────────────
+// A single object capturing every tunable threshold above. Passing a partial
+// override into the `analyze*` entry points lets callers (e.g. the offline
+// backtesting harness in lib/fraudBacktest.ts) replay data at arbitrary
+// threshold values WITHOUT editing this file — see issue #1183.
+export interface FraudThresholds {
+  FAST_REDEMPTION_MS: number;
+  MIN_REDEMPTIONS_FOR_SPEED_CHECK: number;
+  FAST_REDEMPTION_RATIO_THRESHOLD: number;
+  MIN_REDEMPTIONS_FOR_CONCENTRATION_CHECK: number;
+  CONCENTRATION_RATIO_THRESHOLD: number;
+  RING_MIN_DISTINCT_SCOUTS: number;
+  CONTACT_BURST_WINDOW_MS: number;
+  CONTACT_BURST_MIN_COUNT: number;
+  MIN_SUBSCRIPTIONS_FOR_CYCLING_CHECK: number;
+  CYCLING_MAX_CONTACTS_PER_SUBSCRIPTION: number;
+}
+
+/** The shipped defaults — every threshold constant above, bundled. */
+export const DEFAULT_THRESHOLDS: FraudThresholds = {
+  FAST_REDEMPTION_MS,
+  MIN_REDEMPTIONS_FOR_SPEED_CHECK,
+  FAST_REDEMPTION_RATIO_THRESHOLD,
+  MIN_REDEMPTIONS_FOR_CONCENTRATION_CHECK,
+  CONCENTRATION_RATIO_THRESHOLD,
+  RING_MIN_DISTINCT_SCOUTS,
+  CONTACT_BURST_WINDOW_MS,
+  CONTACT_BURST_MIN_COUNT,
+  MIN_SUBSCRIPTIONS_FOR_CYCLING_CHECK,
+  CYCLING_MAX_CONTACTS_PER_SUBSCRIPTION,
+};
+
 function makeFlag(
   category: FraudFlag['category'],
   heuristic: string,
@@ -112,6 +144,7 @@ function detectSelfRedemption(codes: ReferralCode[]): FraudFlag[] {
  */
 function detectFastRedemptionPattern(
   codesByScout: Map<string, ReferralCode[]>,
+  t: FraudThresholds,
 ): FraudFlag[] {
   const flags: FraudFlag[] = [];
   for (const [scoutWallet, codes] of codesByScout) {
@@ -119,13 +152,13 @@ function detectFastRedemptionPattern(
       (c): c is ReferralCode & { usedBy: string; usedAt: number } =>
         c.usedBy !== null && c.usedAt !== null,
     );
-    if (redeemed.length < MIN_REDEMPTIONS_FOR_SPEED_CHECK) continue;
+    if (redeemed.length < t.MIN_REDEMPTIONS_FOR_SPEED_CHECK) continue;
 
     const fast = redeemed.filter(
-      (c) => c.usedAt - c.createdAt <= FAST_REDEMPTION_MS,
+      (c) => c.usedAt - c.createdAt <= t.FAST_REDEMPTION_MS,
     );
     const ratio = fast.length / redeemed.length;
-    if (ratio < FAST_REDEMPTION_RATIO_THRESHOLD) continue;
+    if (ratio < t.FAST_REDEMPTION_RATIO_THRESHOLD) continue;
 
     flags.push(
       makeFlag(
@@ -157,11 +190,12 @@ function detectFastRedemptionPattern(
  */
 function detectConcentratedRedeemer(
   codesByScout: Map<string, ReferralCode[]>,
+  t: FraudThresholds,
 ): FraudFlag[] {
   const flags: FraudFlag[] = [];
   for (const [scoutWallet, codes] of codesByScout) {
     const redeemed = codes.filter((c) => c.usedBy !== null);
-    if (redeemed.length < MIN_REDEMPTIONS_FOR_CONCENTRATION_CHECK) continue;
+    if (redeemed.length < t.MIN_REDEMPTIONS_FOR_CONCENTRATION_CHECK) continue;
 
     const byRedeemer = groupBy(redeemed, (c) => c.usedBy as string);
     let topRedeemer = '';
@@ -173,7 +207,7 @@ function detectConcentratedRedeemer(
       }
     }
     const ratio = topCount / redeemed.length;
-    if (ratio < CONCENTRATION_RATIO_THRESHOLD) continue;
+    if (ratio < t.CONCENTRATION_RATIO_THRESHOLD) continue;
 
     flags.push(
       makeFlag(
@@ -206,14 +240,17 @@ function detectConcentratedRedeemer(
  * an organic power-redeemer (e.g. someone who signed up via a few different
  * friends' links) would plausibly hit.
  */
-function detectCrossScoutRedeemerRing(codes: ReferralCode[]): FraudFlag[] {
+function detectCrossScoutRedeemerRing(
+  codes: ReferralCode[],
+  t: FraudThresholds,
+): FraudFlag[] {
   const redeemed = codes.filter((c) => c.usedBy !== null);
   const scoutsByRedeemer = groupBy(redeemed, (c) => c.usedBy as string);
 
   const flags: FraudFlag[] = [];
   for (const [redeemer, list] of scoutsByRedeemer) {
     const distinctScouts = new Set(list.map((c) => c.scoutWallet));
-    if (distinctScouts.size < RING_MIN_DISTINCT_SCOUTS) continue;
+    if (distinctScouts.size < t.RING_MIN_DISTINCT_SCOUTS) continue;
 
     flags.push(
       makeFlag(
@@ -232,13 +269,16 @@ function detectCrossScoutRedeemerRing(codes: ReferralCode[]): FraudFlag[] {
   return flags;
 }
 
-export function analyzeReferralAbuse(codes: ReferralCode[]): FraudFlag[] {
+export function analyzeReferralAbuse(
+  codes: ReferralCode[],
+  thresholds: FraudThresholds = DEFAULT_THRESHOLDS,
+): FraudFlag[] {
   const codesByScout = groupBy(codes, (c) => c.scoutWallet);
   return [
     ...detectSelfRedemption(codes),
-    ...detectFastRedemptionPattern(codesByScout),
-    ...detectConcentratedRedeemer(codesByScout),
-    ...detectCrossScoutRedeemerRing(codes),
+    ...detectFastRedemptionPattern(codesByScout, thresholds),
+    ...detectConcentratedRedeemer(codesByScout, thresholds),
+    ...detectCrossScoutRedeemerRing(codes, thresholds),
   ];
 }
 
@@ -261,10 +301,11 @@ function toMs(event: ActivityEvent): number {
  */
 function detectRapidContactBursts(
   contactsByScout: Map<string, ActivityEvent[]>,
+  t: FraudThresholds,
 ): FraudFlag[] {
   const flags: FraudFlag[] = [];
   for (const [scoutWallet, events] of contactsByScout) {
-    if (events.length < CONTACT_BURST_MIN_COUNT) continue;
+    if (events.length < t.CONTACT_BURST_MIN_COUNT) continue;
 
     const timestamps = events.map(toMs).sort((a, b) => a - b);
     let maxInWindow = 1;
@@ -272,13 +313,13 @@ function detectRapidContactBursts(
     for (let i = 0; i < timestamps.length; i++) {
       while (
         timestamps[i] - timestamps[windowStart] >
-        CONTACT_BURST_WINDOW_MS
+        t.CONTACT_BURST_WINDOW_MS
       ) {
         windowStart++;
       }
       maxInWindow = Math.max(maxInWindow, i - windowStart + 1);
     }
-    if (maxInWindow < CONTACT_BURST_MIN_COUNT) continue;
+    if (maxInWindow < t.CONTACT_BURST_MIN_COUNT) continue;
 
     flags.push(
       makeFlag(
@@ -319,14 +360,17 @@ function detectRapidContactBursts(
 function detectSubscriptionCycling(
   subscriptionsByScout: Map<string, ActivityEvent[]>,
   contactsByScout: Map<string, ActivityEvent[]>,
+  t: FraudThresholds,
 ): FraudFlag[] {
   const flags: FraudFlag[] = [];
   for (const [scoutWallet, subs] of subscriptionsByScout) {
-    if (subs.length < MIN_SUBSCRIPTIONS_FOR_CYCLING_CHECK) continue;
+    if (subs.length < t.MIN_SUBSCRIPTIONS_FOR_CYCLING_CHECK) continue;
 
     const contacts = contactsByScout.get(scoutWallet) ?? [];
     const avgContactsPerSubscription = contacts.length / subs.length;
-    if (avgContactsPerSubscription > CYCLING_MAX_CONTACTS_PER_SUBSCRIPTION) {
+    if (
+      avgContactsPerSubscription > t.CYCLING_MAX_CONTACTS_PER_SUBSCRIPTION
+    ) {
       continue;
     }
 
@@ -359,7 +403,10 @@ function detectSubscriptionCycling(
   return flags;
 }
 
-export function analyzePayToContactAbuse(events: ActivityEvent[]): FraudFlag[] {
+export function analyzePayToContactAbuse(
+  events: ActivityEvent[],
+  thresholds: FraudThresholds = DEFAULT_THRESHOLDS,
+): FraudFlag[] {
   const contactsByScout = groupBy(
     events.filter((e) => e.type === 'player_contacted'),
     (e) => e.actor,
@@ -370,7 +417,7 @@ export function analyzePayToContactAbuse(events: ActivityEvent[]): FraudFlag[] {
   );
 
   return [
-    ...detectRapidContactBursts(contactsByScout),
-    ...detectSubscriptionCycling(subscriptionsByScout, contactsByScout),
+    ...detectRapidContactBursts(contactsByScout, thresholds),
+    ...detectSubscriptionCycling(subscriptionsByScout, contactsByScout, thresholds),
   ];
 }
