@@ -3,6 +3,9 @@ import axios from 'axios';
 import { createRequestLogger } from '@/lib/logger';
 import { getClientIp, checkRateLimit } from '@/lib/rateLimit';
 
+// Search names longer than this are likely abuse or mistake; never forward them.
+const PLAYER_SEARCH_NAME_MAX = 100;
+
 /**
  * GET /api/players/search?name=...
  *
@@ -47,6 +50,13 @@ export async function GET(req: NextRequest) {
   }
 
   const name = req.nextUrl.searchParams.get('name') ?? '';
+
+  if (name.length > PLAYER_SEARCH_NAME_MAX) {
+    return NextResponse.json(
+      { error: `name must be at most ${PLAYER_SEARCH_NAME_MAX} characters` },
+      { status: 400 },
+    );
+  }
 
   try {
     const res = await backend.get('/players/search', { params: { name } });

@@ -177,3 +177,31 @@ describe('PATCH /api/disputes/:id/decide', () => {
     jest.restoreAllMocks();
   });
 });
+
+describe('PATCH /api/disputes/:id/decide — server-side inputValidation parity (issue #1143)', () => {
+  it('returns 400 when resolutionNote exceeds 2000 characters', async () => {
+    const dispute = createPendingDispute();
+    const res = await PATCH(
+      makeRequest({
+        cookie: ADMIN,
+        body: { status: 'upheld', resolutionNote: 'a'.repeat(2001) },
+      }),
+      { params: { id: String(dispute.id) } },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/resolutionNote/i);
+  });
+
+  it('accepts a resolutionNote at exactly 2000 characters', async () => {
+    const dispute = createPendingDispute();
+    const res = await PATCH(
+      makeRequest({
+        cookie: ADMIN,
+        body: { status: 'upheld', resolutionNote: 'a'.repeat(2000) },
+      }),
+      { params: { id: String(dispute.id) } },
+    );
+    expect(res.status).toBe(200);
+  });
+});

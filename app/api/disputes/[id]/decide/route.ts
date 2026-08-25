@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminWallet } from '@/lib/adminAuth';
 import { MilestoneDisputeStore } from '@/lib/milestoneDisputeStore';
 import { createRequestLogger } from '@/lib/logger';
+import { sanitizeTextInput, TEXT_FIELD_LIMITS } from '@/lib/inputValidation';
 
 export const runtime = 'nodejs';
 
@@ -56,6 +57,23 @@ export async function PATCH(
     );
   }
 
+  // Validate free-text resolutionNote length server-side.
+  const rawNote =
+    typeof resolutionNote === 'string' && resolutionNote.trim()
+      ? resolutionNote
+      : null;
+  if (rawNote !== null) {
+    const sanitizedNote = sanitizeTextInput(rawNote);
+    if (sanitizedNote.length > TEXT_FIELD_LIMITS.disputeReason.max) {
+      return NextResponse.json(
+        {
+          error: `resolutionNote must be at most ${TEXT_FIELD_LIMITS.disputeReason.max} characters`,
+        },
+        { status: 400 },
+      );
+    }
+  }
+
   const store = MilestoneDisputeStore.getInstance();
   const existing = store.findById(id);
   if (!existing) {
@@ -72,10 +90,7 @@ export async function PATCH(
     const updated = store.decide(id, {
       status,
       decidedBy: adminWallet,
-      resolutionNote:
-        typeof resolutionNote === 'string' && resolutionNote.trim()
-          ? resolutionNote.trim()
-          : null,
+      resolutionNote: rawNote !== null ? sanitizeTextInput(rawNote) : null,
       revokeTxHash: typeof revokeTxHash === 'string' ? revokeTxHash : null,
     });
     return NextResponse.json(updated);
