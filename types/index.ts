@@ -212,6 +212,31 @@ export interface FraudFlag {
   evidence: Record<string, number | string | string[]>;
 }
 
+// ── Admin-gated auto-throttling (issue #1174) ──────────────────────────────
+
+export type FraudThrottleStatus = 'throttled' | 'lifted';
+
+/**
+ * A wallet placed in a throttled state by an auto-throttle-eligible
+ * FraudFlag (see lib/fraudFlagsRunner.ts's applyAutoThrottles). Never
+ * auto-expires — `status` only ever moves to 'lifted' via an explicit
+ * admin action (POST /api/admin/fraud-flags/throttles/:id/lift).
+ */
+export interface FraudThrottle {
+  id: number;
+  wallet: string;
+  heuristic: string;
+  category: FraudFlagCategory;
+  flagId: string;
+  reason: string;
+  evidence: Record<string, unknown>;
+  status: FraudThrottleStatus;
+  throttledAt: number;
+  liftedAt: number | null;
+  liftedBy: string | null;
+  liftReason: string | null;
+}
+
 // ── Contract call helpers ─────────────────────────────────────────────────────
 export interface ContractCallResult<T = unknown> {
   success: boolean;

@@ -27,6 +27,10 @@ jest.mock('@/components/ui/ErrorBoundary', () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+jest.mock('@/components/ui/Toast', () => ({
+  useToast: () => ({ show: jest.fn() }),
+}));
+
 import ScoutSubscribePage from '@/app/[locale]/scout/subscribe/page';
 import { useSubscription } from '@/hooks/useSubscription';
 

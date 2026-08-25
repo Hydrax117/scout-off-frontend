@@ -7,7 +7,53 @@ import {
   analyzeReferralAbuse,
   analyzePayToContactAbuse,
 } from '@/lib/fraudDetection';
+import { isFeatureEnabled } from '@/lib/featureFlags';
+import { FraudThrottleStore } from '@/lib/fraudThrottleStore';
 import type { FraudFlag } from '@/types';
+
+/**
+ * Heuristics the doc explicitly names as safe auto-throttle candidates —
+ * see docs/fraud-detection.md's "What would change this" section.
+ * subscription_cycling is explicitly excluded: it has "the highest genuine
+ * false-positive rate" of any heuristic here and must stay alert-only.
+ */
+const AUTO_THROTTLE_HEURISTICS = new Set([
+  'cross_scout_redeemer_ring',
+  'self_redemption',
+]);
+
+/**
+ * Places a wallet in a throttled state for any flag matching one of the two
+ * named heuristics at 'high' severity (the documented confidence bar —
+ * self_redemption is always 'high' since it has no false-positive risk;
+ * cross_scout_redeemer_ring only reaches 'high' at double its base distinct-
+ * scout threshold). Behind NEXT_PUBLIC_FEATURE_FRAUD_AUTO_THROTTLE so this
+ * can be enabled only once thresholds have actually been validated against
+ * real traffic, per the doc's own caution against auto-enforcement on
+ * untuned thresholds. A throttle never auto-expires — only an explicit
+ * admin action (FraudFlagsPanel.tsx) lifts it; see lib/fraudThrottleStore.ts.
+ */
+function applyAutoThrottles(flags: FraudFlag[]): void {
+  if (!isFeatureEnabled('FRAUD_AUTO_THROTTLE')) return;
+
+  const store = FraudThrottleStore.getInstance();
+  for (const flag of flags) {
+    if (!AUTO_THROTTLE_HEURISTICS.has(flag.heuristic)) continue;
+    if (flag.severity !== 'high') continue;
+
+    const wallet = flag.wallets[0];
+    if (!wallet) continue;
+
+    store.placeThrottle({
+      wallet,
+      heuristic: flag.heuristic,
+      category: flag.category,
+      flagId: flag.id,
+      reason: flag.reason,
+      evidence: flag.evidence,
+    });
+  }
+}
 
 /**
  * Bounds how much of the activity feed a single evaluation will pull before
@@ -80,6 +126,8 @@ export async function runFraudFlagEvaluation(): Promise<FraudFlagEvaluationResul
     const severityRank = { high: 0, medium: 1, low: 2 } as const;
     return severityRank[a.severity] - severityRank[b.severity];
   });
+
+  applyAutoThrottles(flags);
 
   return { flags, warnings };
 }

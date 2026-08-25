@@ -9,6 +9,7 @@ import {
   getSubscription,
   PLATFORM_CONTACT_FEE_XLM,
 } from '@/lib/contract';
+import { checkFraudThrottle } from '@/lib/api';
 import { parseContractError } from '@/lib/contractErrorMessage';
 import {
   cacheContactDetails,

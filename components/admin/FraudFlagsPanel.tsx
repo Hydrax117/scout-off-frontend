@@ -1,9 +1,14 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { fetchFraudFlags } from '@/lib/api';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  fetchFraudFlags,
+  fetchFraudThrottles,
+  liftFraudThrottle,
+} from '@/lib/api';
 import EmptyState from '@/components/ui/EmptyState';
 import TruncatedAddress from '@/components/ui/TruncatedAddress';
-import type { FraudFlag, FraudFlagSeverity } from '@/types';
+import { useToast } from '@/components/ui/Toast';
+import type { FraudFlag, FraudFlagSeverity, FraudThrottle } from '@/types';
 
 const SEVERITY_STYLES: Record<FraudFlagSeverity, string> = {
   high: 'border-red-500 bg-red-950/30 text-red-400',
@@ -70,10 +75,71 @@ function FlagCard({ flag }: { flag: FraudFlag }) {
   );
 }
 
+function ThrottleCard({
+  throttle,
+  onLift,
+  lifting,
+}: {
+  throttle: FraudThrottle;
+  onLift: (id: number) => void;
+  lifting: boolean;
+}) {
+  const isActive = throttle.status === 'throttled';
+  return (
+    <li className="rounded-lg border border-gray-800 bg-gray-900/40 p-4 flex flex-col gap-3">
+      <div className="flex items-center gap-2 flex-wrap justify-between">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span
+            className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
+              isActive
+                ? 'border-red-500 bg-red-950/30 text-red-400'
+                : 'border-gray-600 bg-gray-900 text-gray-400'
+            }`}
+          >
+            {isActive ? 'Throttled' : 'Lifted'}
+          </span>
+          <span className="text-xs text-gray-600 font-mono">
+            {throttle.heuristic}
+          </span>
+        </div>
+        {isActive && (
+          <button
+            type="button"
+            disabled={lifting}
+            onClick={() => onLift(throttle.id)}
+            className="text-xs font-medium rounded-md border border-gray-700 px-3 py-1 text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+          >
+            {lifting ? 'Lifting…' : 'Lift throttle'}
+          </button>
+        )}
+      </div>
+
+      <TruncatedAddress address={throttle.wallet} className="text-gray-400" />
+      <p className="text-sm text-gray-200">{throttle.reason}</p>
+      <p className="text-xs text-gray-500">
+        Throttled {new Date(throttle.throttledAt).toLocaleString()}
+        {throttle.liftedAt && (
+          <>
+            {' · Lifted '}
+            {new Date(throttle.liftedAt).toLocaleString()}
+            {throttle.liftedBy && ` by ${throttle.liftedBy}`}
+            {throttle.liftReason && `: "${throttle.liftReason}"`}
+          </>
+        )}
+      </p>
+    </li>
+  );
+}
+
 /**
- * Surfaces the output of lib/fraudDetection.ts to admins. Alert-only by
- * design (see docs/fraud-detection.md) — nothing here blocks or throttles
- * anything; it's a worklist for investigation, not an enforcement action.
+ * Surfaces the output of lib/fraudDetection.ts to admins. The flag list
+ * itself remains alert-only by design (see docs/fraud-detection.md) — a
+ * flag alone never blocks anything. The one exception is issue #1174's
+ * admin-gated auto-throttling: when NEXT_PUBLIC_FEATURE_FRAUD_AUTO_THROTTLE
+ * is on, cross_scout_redeemer_ring and self_redemption flags at 'high'
+ * severity place a wallet in a throttled state automatically, and this is
+ * the ONLY surface that can lift it — there is no automatic expiry anywhere
+ * in this codebase.
  */
 export default function FraudFlagsPanel() {
   const [flags, setFlags] = useState<FraudFlag[]>([]);
@@ -81,6 +147,24 @@ export default function FraudFlagsPanel() {
   const [evaluatedAt, setEvaluatedAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+
+  const [throttles, setThrottles] = useState<FraudThrottle[]>([]);
+  const [throttlesLoading, setThrottlesLoading] = useState(true);
+  const [liftingId, setLiftingId] = useState<number | null>(null);
+  const { show: showToast } = useToast();
+
+  const loadThrottles = useCallback(() => {
+    setThrottlesLoading(true);
+    fetchFraudThrottles()
+      .then(({ throttles }) => setThrottles(throttles))
+      .catch(() => {
+        // No feature-specific error surface here — an admin who never
+        // enables NEXT_PUBLIC_FEATURE_FRAUD_AUTO_THROTTLE just sees an
+        // empty throttle list, which is indistinguishable from "no store
+        // rows yet" and requires no separate messaging.
+      })
+      .finally(() => setThrottlesLoading(false));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,57 +183,141 @@ export default function FraudFlagsPanel() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+    loadThrottles();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadThrottles]);
 
+  async function handleLift(id: number) {
+    setLiftingId(id);
+    try {
+      await liftFraudThrottle(id);
+      showToast({ message: 'Throttle lifted.', variant: 'success' });
+      loadThrottles();
+    } catch {
+      showToast({ message: 'Failed to lift throttle.', variant: 'error' });
+    } finally {
+      setLiftingId(null);
+    }
+  }
+
+  const activeThrottles = throttles.filter((t) => t.status === 'throttled');
+  const liftedThrottles = throttles.filter((t) => t.status === 'lifted');
+
+  return (
+    <>
+      <section className="bg-brand-card border border-gray-800 rounded-xl p-6 flex flex-col gap-4">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Flagged Activity</h2>
+          <p className="text-sm text-gray-400 mt-1">
+            Suspicious referral and pay-to-contact patterns detected across all
+            wallets. Alert-only — review and investigate manually.
+          </p>
+          {evaluatedAt !== null && (
+            <p className="text-xs text-gray-500 mt-2">
+              As of {new Date(evaluatedAt).toLocaleString()}
+            </p>
+          )}
+        </div>
+
+        {loading ? (
+          <p className="text-sm text-gray-400">Loading…</p>
+        ) : error ? (
+          <p role="alert" className="text-sm text-red-400">
+            Failed to load flagged activity.
+          </p>
+        ) : (
+          <>
+            {warnings.map((warning) => (
+              <p
+                key={warning}
+                role="status"
+                className="text-xs text-yellow-400 bg-yellow-950/30 border border-yellow-800 rounded-md px-3 py-2"
+              >
+                {warning}
+              </p>
+            ))}
+
+            {flags.length === 0 ? (
+              <EmptyState
+                title="No flags"
+                description="No suspicious referral or pay-to-contact patterns detected."
+              />
+            ) : (
+              <ul className="flex flex-col gap-3">
+                {flags.map((flag) => (
+                  <FlagCard key={flag.id} flag={flag} />
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </section>
+
+      {!throttlesLoading && throttles.length > 0 && (
+        <ThrottlesSection
+          activeThrottles={activeThrottles}
+          liftedThrottles={liftedThrottles}
+          liftingId={liftingId}
+          onLift={handleLift}
+        />
+      )}
+    </>
+  );
+}
+
+function ThrottlesSection({
+  activeThrottles,
+  liftedThrottles,
+  liftingId,
+  onLift,
+}: {
+  activeThrottles: FraudThrottle[];
+  liftedThrottles: FraudThrottle[];
+  liftingId: number | null;
+  onLift: (id: number) => void;
+}) {
   return (
     <section className="bg-brand-card border border-gray-800 rounded-xl p-6 flex flex-col gap-4">
       <div>
-        <h2 className="text-lg font-semibold text-white">Flagged Activity</h2>
+        <h2 className="text-lg font-semibold text-white">Wallet Throttles</h2>
         <p className="text-sm text-gray-400 mt-1">
-          Suspicious referral and pay-to-contact patterns detected across all
-          wallets. Alert-only — review and investigate manually.
+          Wallets automatically blocked from further redemptions and
+          pay-to-contact by a high-confidence fraud heuristic. Throttles never
+          expire on their own — only an explicit lift below clears one.
         </p>
-        {evaluatedAt !== null && (
-          <p className="text-xs text-gray-500 mt-2">
-            As of {new Date(evaluatedAt).toLocaleString()}
-          </p>
-        )}
       </div>
 
-      {loading ? (
-        <p className="text-sm text-gray-400">Loading…</p>
-      ) : error ? (
-        <p role="alert" className="text-sm text-red-400">
-          Failed to load flagged activity.
-        </p>
-      ) : (
-        <>
-          {warnings.map((warning) => (
-            <p
-              key={warning}
-              role="status"
-              className="text-xs text-yellow-400 bg-yellow-950/30 border border-yellow-800 rounded-md px-3 py-2"
-            >
-              {warning}
-            </p>
-          ))}
-
-          {flags.length === 0 ? (
-            <EmptyState
-              title="No flags"
-              description="No suspicious referral or pay-to-contact patterns detected."
+      {activeThrottles.length > 0 && (
+        <ul className="flex flex-col gap-3">
+          {activeThrottles.map((t) => (
+            <ThrottleCard
+              key={t.id}
+              throttle={t}
+              onLift={onLift}
+              lifting={liftingId === t.id}
             />
-          ) : (
-            <ul className="flex flex-col gap-3">
-              {flags.map((flag) => (
-                <FlagCard key={flag.id} flag={flag} />
-              ))}
-            </ul>
-          )}
-        </>
+          ))}
+        </ul>
+      )}
+
+      {liftedThrottles.length > 0 && (
+        <details className="text-xs text-gray-400">
+          <summary className="cursor-pointer select-none hover:text-gray-300">
+            Lift history ({liftedThrottles.length})
+          </summary>
+          <ul className="flex flex-col gap-3 mt-3">
+            {liftedThrottles.map((t) => (
+              <ThrottleCard
+                key={t.id}
+                throttle={t}
+                onLift={onLift}
+                lifting={false}
+              />
+            ))}
+          </ul>
+        </details>
       )}
     </section>
   );
