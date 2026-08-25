@@ -1,12 +1,19 @@
 import { WebAuth, Networks, Keypair } from '@stellar/stellar-sdk';
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
 import { createRequestLogger, withRequestId } from '@/lib/logger';
 import {
   createSessionToken,
+  verifySessionToken,
   ACCESS_TOKEN_TTL_SEC,
   DEFAULT_REFRESH_TTL_SEC,
   REMEMBER_ME_REFRESH_TTL_SEC,
 } from '@/lib/session';
+import { SessionStore } from '@/lib/sessionStore';
+
+// better-sqlite3 (via lib/sessionStore.ts) is a native addon and needs the
+// Node.js runtime, not edge.
+export const runtime = 'nodejs';
 
 // Returns the set of origins this route will accept requests from. This is
 // derived ONLY from server-controlled configuration (env vars) — never from
@@ -108,14 +115,30 @@ export async function POST(req: NextRequest) {
       : DEFAULT_REFRESH_TTL_SEC;
     const isProd = process.env.NODE_ENV === 'production';
 
+    // A single session id ties this login's access and refresh tokens
+    // together (and is carried forward across every future refresh
+    // rotation of them — see app/api/auth/refresh/route.ts) so the whole
+    // login can be revoked as one unit server-side (see #1179), rather
+    // than a signed-but-unrevocable token being the only thing that
+    // stands between a stolen cookie and continued access.
+    const sid = randomUUID();
     const accessToken = createSessionToken(
       publicKey,
       'access',
       ACCESS_TOKEN_TTL_SEC,
+      { sid },
     );
     const refreshToken = createSessionToken(publicKey, 'refresh', maxAge, {
       remember: !!rememberMe,
+      sid,
     });
+
+    SessionStore.getInstance().create(
+      sid,
+      publicKey,
+      Date.now() + maxAge * 1000,
+      req.headers.get('user-agent'),
+    );
 
     const response = NextResponse.json({ success: true, maxAge });
     response.cookies.set('session', accessToken, {
@@ -202,7 +225,38 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function DELETE() {
+/**
+ * DELETE /api/auth/sep10
+ *
+ * Logs the caller out: clears both session cookies AND revokes the
+ * session's row server-side (see #1179), so a copy of the cookie captured
+ * before this call (a stale browser tab, a proxy log, XSS exfiltration)
+ * stops working immediately instead of remaining valid until its natural
+ * `exp`. Called by context/WalletContext.tsx's disconnect().
+ *
+ * The `sid` is read from whichever of the two cookies still verifies —
+ * `session` (access token) is usually present, but a caller whose access
+ * token already expired and hasn't refreshed yet still has a chance to
+ * revoke via `session_refresh`. Best-effort: an unreadable/absent sid just
+ * means there's nothing server-side left to revoke, but the cookies are
+ * still cleared either way.
+ */
+export async function DELETE(req: NextRequest) {
+  const accessToken = req.cookies.get('session')?.value;
+  const refreshToken = req.cookies.get('session_refresh')?.value;
+  const sid =
+    (accessToken && verifySessionToken(accessToken, 'access')?.sid) ||
+    (refreshToken && verifySessionToken(refreshToken, 'refresh')?.sid) ||
+    null;
+
+  if (sid) {
+    try {
+      SessionStore.getInstance().revoke(sid);
+    } catch {
+      // Best-effort — cookies are still cleared below regardless.
+    }
+  }
+
   const response = NextResponse.json({ success: true });
   response.cookies.delete('session');
   response.cookies.delete({ name: 'session_refresh', path: '/api/auth' });

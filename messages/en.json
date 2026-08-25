@@ -352,7 +352,13 @@
     "data_export_exporting": "Preparing your export…",
     "data_export_error": "Failed to prepare your data export. Please try again.",
     "data_export_success": "Your data export has been downloaded.",
-    "data_export_onchain_note": "On-chain data (transactions, registrations) is not included — it lives permanently on the Stellar network and cannot be exported or deleted."
+    "data_export_onchain_note": "On-chain data (transactions, registrations) is not included — it lives permanently on the Stellar network and cannot be exported or deleted.",
+    "logout_all_title": "Log Out of All Devices",
+    "logout_all_description": "Immediately revoke every active session for your wallet, including this one. Any other browser or device where you're signed in will be logged out and need to reconnect.",
+    "logout_all_button": "Log Out Everywhere",
+    "logout_all_in_progress": "Logging out…",
+    "logout_all_success": "You've been logged out of all devices.",
+    "logout_all_error": "Failed to log out of all devices. Please try again."
   },
   "dataDeletion": {
     "modal_title": "Request Data Deletion",

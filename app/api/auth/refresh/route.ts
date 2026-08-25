@@ -7,6 +7,11 @@ import {
   DEFAULT_REFRESH_TTL_SEC,
   REMEMBER_ME_REFRESH_TTL_SEC,
 } from '@/lib/session';
+import { SessionStore } from '@/lib/sessionStore';
+
+// better-sqlite3 (via lib/sessionStore.ts) is a native addon and needs the
+// Node.js runtime, not edge.
+export const runtime = 'nodejs';
 
 /**
  * POST /api/auth/refresh
@@ -36,7 +41,11 @@ export async function POST(req: NextRequest) {
   }
 
   const payload = verifySessionToken(refreshCookie.value, 'refresh');
-  if (!payload) {
+  // See #1179: a signature-valid, unexpired refresh token is no longer
+  // sufficient by itself — its underlying session must still be active
+  // server-side too (not revoked via disconnect() or "log out of all
+  // devices"). A revoked session must not be silently renewed.
+  if (!payload || !SessionStore.getInstance().isActive(payload.sid)) {
     const response = NextResponse.json(
       { error: 'Refresh session invalid or expired' },
       { status: 401 },
@@ -52,17 +61,22 @@ export async function POST(req: NextRequest) {
     : DEFAULT_REFRESH_TTL_SEC;
   const isProd = process.env.NODE_ENV === 'production';
 
+  // The rotated tokens keep the SAME sid as the token being rotated — the
+  // underlying session (and its revocation state) is what persists across
+  // a refresh, even though the token strings themselves are brand new.
   const accessToken = createSessionToken(
     payload.sub,
     'access',
     ACCESS_TOKEN_TTL_SEC,
+    { sid: payload.sid },
   );
   const rotatedRefreshToken = createSessionToken(
     payload.sub,
     'refresh',
     refreshTtl,
-    { remember },
+    { remember, sid: payload.sid },
   );
+  SessionStore.getInstance().touch(payload.sid, Date.now() + refreshTtl * 1000);
 
   const response = NextResponse.json({
     success: true,

@@ -352,7 +352,13 @@
     "data_export_exporting": "Préparation de votre exportation…",
     "data_export_error": "Échec de la préparation de votre exportation de données. Veuillez réessayer.",
     "data_export_success": "Votre exportation de données a été téléchargée.",
-    "data_export_onchain_note": "Les données on-chain (transactions, enregistrements) ne sont pas incluses — elles sont stockées de façon permanente sur le réseau Stellar et ne peuvent être exportées ni supprimées."
+    "data_export_onchain_note": "Les données on-chain (transactions, enregistrements) ne sont pas incluses — elles sont stockées de façon permanente sur le réseau Stellar et ne peuvent être exportées ni supprimées.",
+    "logout_all_title": "Se déconnecter de tous les appareils",
+    "logout_all_description": "Révoquez immédiatement toutes les sessions actives de votre portefeuille, y compris celle-ci. Tout autre navigateur ou appareil sur lequel vous êtes connecté sera déconnecté et devra se reconnecter.",
+    "logout_all_button": "Se déconnecter partout",
+    "logout_all_in_progress": "Déconnexion…",
+    "logout_all_success": "Vous avez été déconnecté de tous les appareils.",
+    "logout_all_error": "Échec de la déconnexion de tous les appareils. Veuillez réessayer."
   },
   "dataDeletion": {
     "modal_title": "Demander la suppression des données",

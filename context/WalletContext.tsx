@@ -693,6 +693,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [doConnect, openWalletModal]);
 
   const disconnect = useCallback(() => {
+    // DELETE /api/auth/sep10 clears the session cookies AND revokes the
+    // session row server-side (see #1179), so a copy of the cookie
+    // captured before this call stops working immediately rather than
+    // remaining valid until its natural expiry. Fire-and-forget: the
+    // client-side cleanup below must not wait on (or be blocked by) the
+    // network round trip.
     Promise.resolve(fetch('/api/auth/sep10', { method: 'DELETE' })).catch(
       () => {},
     );

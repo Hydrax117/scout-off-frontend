@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { ArrowLeft, Trash2, Shield, Bell, Download } from 'lucide-react';
+import { ArrowLeft, Trash2, Shield, Bell, Download, LogOut } from 'lucide-react';
 import DataDeletionModal from '@/components/player/DataDeletionModal';
 import NotificationPreferencesPanel from '@/components/NotificationPreferencesPanel';
 import { useWallet } from '@/hooks/useWallet';
@@ -16,10 +16,42 @@ export default function SettingsPage({
 }) {
   const locale = params.locale;
   const t = useTranslations('settings');
-  const { isAuthenticated } = useWallet();
+  const { isAuthenticated, disconnect } = useWallet();
   const { show } = useToast();
   const [showDeletionModal, setShowDeletionModal] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [loggingOutAll, setLoggingOutAll] = useState(false);
+
+  // "Log out of all devices" (see #1179): revokes every active
+  // server-side session for the connected wallet, not just this browser's.
+  // The server-side sweep in POST /api/auth/logout-all necessarily
+  // includes the caller's own session, so this also runs the normal
+  // client-side disconnect() to clear local state and cookies right away
+  // rather than leaving the UI showing a now-dead session until the next
+  // periodic reconciliation notices.
+  const handleLogoutAllDevices = async () => {
+    setLoggingOutAll(true);
+    try {
+      const res = await fetch('/api/auth/logout-all', { method: 'POST' });
+      if (!res.ok) {
+        throw new Error(`Logout failed: ${res.status}`);
+      }
+      disconnect();
+      show({
+        message: t('logout_all_success'),
+        variant: 'success',
+        duration: 6000,
+      });
+    } catch {
+      show({
+        message: t('logout_all_error'),
+        variant: 'error',
+        duration: 6000,
+      });
+    } finally {
+      setLoggingOutAll(false);
+    }
+  };
 
   const handleExportData = async () => {
     setExporting(true);
@@ -98,6 +130,44 @@ export default function SettingsPage({
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Session Security section */}
+      <section className="px-1 sm:px-0">
+        <div className="rounded-2xl border border-gray-800 bg-brand-card/70 p-6 sm:p-8">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-500/10 text-red-500">
+                <LogOut size={18} aria-hidden="true" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-white">
+                  {t('logout_all_title')}
+                </h2>
+                <p className="mt-1 max-w-lg text-sm leading-relaxed text-gray-400">
+                  {t('logout_all_description')}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleLogoutAllDevices}
+              disabled={!isAuthenticated || loggingOutAll}
+              className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-5 py-2.5 text-sm font-semibold text-red-400 transition hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <LogOut size={15} />
+              {loggingOutAll
+                ? t('logout_all_in_progress')
+                : t('logout_all_button')}
+            </button>
+          </div>
+
+          {!isAuthenticated && (
+            <p className="mt-4 text-xs text-gray-500">
+              {t('connect_wallet_to_request')}
+            </p>
+          )}
         </div>
       </section>
 
