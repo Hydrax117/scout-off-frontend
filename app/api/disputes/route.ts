@@ -4,9 +4,11 @@ import { requireAdminWallet } from '@/lib/adminAuth';
 import {
   MilestoneDisputeStore,
   DuplicateDisputeError,
+  MilestoneNotFoundError,
 } from '@/lib/milestoneDisputeStore';
+import { getPlayer, getMilestoneHistory } from '@/lib/contract';
 import { createRequestLogger } from '@/lib/logger';
-import type { MilestoneDisputeStatus } from '@/types';
+import type { Milestone, MilestoneDisputeStatus, Player } from '@/types';
 
 export const runtime = 'nodejs';
 
@@ -64,7 +66,11 @@ export async function GET(req: NextRequest) {
  * POST /api/disputes
  *
  * Files a new dispute for one of the caller's own milestones.
- * Body: { playerId, milestoneId, milestoneDescription, reason }.
+ * Body: { playerId, milestoneId, reason, milestoneDescription? }.
+ * Confirms against on-chain contract state that the player exists, the session
+ * wallet is the player's registered wallet, and the milestoneId exists in the
+ * player's on-chain history. The stored milestoneDescription is pulled from
+ * the on-chain milestone record rather than untrusted client input.
  */
 export async function POST(req: NextRequest) {
   const wallet = getSessionWallet(req);
@@ -86,31 +92,97 @@ export async function POST(req: NextRequest) {
     !playerId.trim() ||
     typeof milestoneId !== 'string' ||
     !milestoneId.trim() ||
-    typeof milestoneDescription !== 'string' ||
+    (milestoneDescription !== undefined &&
+      typeof milestoneDescription !== 'string') ||
     typeof reason !== 'string' ||
     reason.trim().length < 10
   ) {
     return NextResponse.json(
       {
         error:
-          'playerId, milestoneId, and milestoneDescription are required, and reason must be at least 10 characters',
+          'playerId and milestoneId are required, and reason must be at least 10 characters',
       },
       { status: 400 },
     );
   }
 
+  const trimmedPlayerId = playerId.trim();
+  const trimmedMilestoneId = milestoneId.trim();
+
   try {
+    let player: Player | null = null;
+    try {
+      player = await getPlayer(trimmedPlayerId);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (
+        errMsg.toLowerCase().includes('not found') ||
+        errMsg.includes('PlayerNotFound')
+      ) {
+        return NextResponse.json(
+          { error: 'Player not found' },
+          { status: 404 },
+        );
+      }
+      throw err;
+    }
+
+    if (!player) {
+      return NextResponse.json({ error: 'Player not found' }, { status: 404 });
+    }
+
+    if (player.wallet !== wallet) {
+      return NextResponse.json(
+        {
+          error:
+            'Forbidden: player does not belong to the authenticated wallet',
+        },
+        { status: 403 },
+      );
+    }
+
+    let history: Milestone[] = [];
+    try {
+      history = await getMilestoneHistory(trimmedPlayerId);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (
+        errMsg.toLowerCase().includes('not found') ||
+        errMsg.includes('PlayerNotFound')
+      ) {
+        return NextResponse.json(
+          { error: 'Player not found' },
+          { status: 404 },
+        );
+      }
+      throw err;
+    }
+
+    const milestone = history?.find((m) => String(m.id) === trimmedMilestoneId);
+
+    if (!milestone) {
+      return NextResponse.json(
+        {
+          error: `Milestone ${trimmedMilestoneId} not found for this player`,
+        },
+        { status: 404 },
+      );
+    }
+
     const dispute = MilestoneDisputeStore.getInstance().create({
-      playerId,
+      playerId: trimmedPlayerId,
       playerWallet: wallet,
-      milestoneId,
-      milestoneDescription,
+      milestoneId: trimmedMilestoneId,
+      milestoneDescription: milestone.description,
       reason: reason.trim(),
     });
     return NextResponse.json(dispute, { status: 201 });
   } catch (err) {
     if (err instanceof DuplicateDisputeError) {
       return NextResponse.json({ error: err.message }, { status: 409 });
+    }
+    if (err instanceof MilestoneNotFoundError) {
+      return NextResponse.json({ error: err.message }, { status: 404 });
     }
     log.error('Failed to create dispute', {
       reason: err instanceof Error ? err.message : String(err),
