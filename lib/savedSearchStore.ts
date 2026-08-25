@@ -1,24 +1,16 @@
 /**
  * savedSearchStore — SQLite-backed persistence for scouts' saved player
- * searches. Mirrors lib/adminAuditStore.ts's conventions: one table with
- * idempotent `CREATE TABLE IF NOT EXISTS` DDL run on construction, a
- * process-wide singleton, DB bootstrap shared via lib/sqliteDb.ts. `filter`
- * is stored as a JSON column, same pattern as adminAuditStore's `data` field.
+ * searches. Mirrors lib/adminAuditStore.ts's conventions: a process-wide
+ * singleton, DB bootstrap and schema shared via lib/sqliteDb.ts's
+ * openSqliteDb, with schema applied through lib/sqliteMigrations.ts's
+ * versioned migration runner (see lib/migrations/savedSearchMigrations.ts).
+ * `filter` is stored as a JSON column, same pattern as adminAuditStore's
+ * `data` field.
  */
 import type Database from 'better-sqlite3';
 import { openSqliteDb } from './sqliteDb';
+import { savedSearchMigrations } from './migrations/savedSearchMigrations';
 import type { PlayerFilter, SavedSearch } from '@/types';
-
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS saved_search (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  scout_wallet TEXT NOT NULL,
-  name TEXT NOT NULL,
-  filter TEXT NOT NULL,
-  created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_saved_search_scout_wallet ON saved_search(scout_wallet);
-`;
 
 interface SavedSearchRow {
   id: number;
@@ -45,13 +37,16 @@ export class SavedSearchStore {
 
   private constructor(db: Database.Database) {
     this.db = db;
-    this.db.exec(SCHEMA);
   }
 
   static getInstance(): SavedSearchStore {
     if (!SavedSearchStore._instance) {
       SavedSearchStore._instance = new SavedSearchStore(
-        openSqliteDb('saved-search.db', 'SAVED_SEARCH_DB_PATH'),
+        openSqliteDb(
+          'saved-search.db',
+          'SAVED_SEARCH_DB_PATH',
+          savedSearchMigrations,
+        ),
       );
     }
     return SavedSearchStore._instance;
