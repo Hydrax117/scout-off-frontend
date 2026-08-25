@@ -8,6 +8,7 @@ import {
 } from '@/lib/milestoneDisputeStore';
 import { getPlayer, getMilestoneHistory } from '@/lib/contract';
 import { createRequestLogger } from '@/lib/logger';
+import { validateTextField } from '@/lib/inputValidation';
 import type { Milestone, MilestoneDisputeStatus, Player } from '@/types';
 
 export const runtime = 'nodejs';
@@ -93,15 +94,25 @@ export async function POST(req: NextRequest) {
     typeof milestoneId !== 'string' ||
     !milestoneId.trim() ||
     (milestoneDescription !== undefined &&
-      typeof milestoneDescription !== 'string') ||
-    typeof reason !== 'string' ||
-    reason.trim().length < 10
+      typeof milestoneDescription !== 'string')
   ) {
     return NextResponse.json(
-      {
-        error:
-          'playerId and milestoneId are required, and reason must be at least 10 characters',
-      },
+      { error: 'playerId and milestoneId are required' },
+      { status: 400 },
+    );
+  }
+
+  if (typeof reason !== 'string') {
+    return NextResponse.json(
+      { error: 'reason is required' },
+      { status: 400 },
+    );
+  }
+
+  const reasonValidation = validateTextField('disputeReason', reason);
+  if (!reasonValidation.valid) {
+    return NextResponse.json(
+      { error: `reason: ${reasonValidation.error}` },
       { status: 400 },
     );
   }

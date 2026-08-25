@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWallet } from '@/lib/session';
 import { SavedSearchStore } from '@/lib/savedSearchStore';
 import { createRequestLogger } from '@/lib/logger';
+import { sanitizeTextInput } from '@/lib/inputValidation';
 import type { PlayerFilter } from '@/types';
+
+// Saved-search name is a short user-authored label — cap at 100 characters.
+const SAVED_SEARCH_NAME_MAX = 100;
 
 export const runtime = 'nodejs';
 
@@ -63,10 +67,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const sanitizedName = sanitizeTextInput(name);
+  if (sanitizedName.length > SAVED_SEARCH_NAME_MAX) {
+    return NextResponse.json(
+      { error: `name must be at most ${SAVED_SEARCH_NAME_MAX} characters` },
+      { status: 400 },
+    );
+  }
+
   try {
     const entry = SavedSearchStore.getInstance().add(
       scoutWallet,
-      name.trim(),
+      sanitizedName,
       filter as PlayerFilter,
     );
     return NextResponse.json(entry, { status: 201 });
@@ -109,11 +121,19 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
+  const sanitizedName = sanitizeTextInput(name);
+  if (sanitizedName.length > SAVED_SEARCH_NAME_MAX) {
+    return NextResponse.json(
+      { error: `name must be at most ${SAVED_SEARCH_NAME_MAX} characters` },
+      { status: 400 },
+    );
+  }
+
   try {
     const updated = SavedSearchStore.getInstance().rename(
       scoutWallet,
       id,
-      name.trim(),
+      sanitizedName,
     );
     if (!updated) {
       return NextResponse.json(
