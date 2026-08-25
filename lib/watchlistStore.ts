@@ -1,23 +1,14 @@
 /**
  * watchlistStore — SQLite-backed persistence for scouts' player watchlists.
- * Mirrors lib/adminAuditStore.ts's conventions: one table with idempotent
- * `CREATE TABLE IF NOT EXISTS` DDL run on construction, a process-wide
- * singleton, DB bootstrap shared via lib/sqliteDb.ts.
+ * Mirrors lib/adminAuditStore.ts's conventions: a process-wide singleton,
+ * DB bootstrap and schema shared via lib/sqliteDb.ts's openSqliteDb, with
+ * schema applied through lib/sqliteMigrations.ts's versioned migration
+ * runner (see lib/migrations/watchlistMigrations.ts).
  */
 import type Database from 'better-sqlite3';
 import { openSqliteDb } from './sqliteDb';
+import { watchlistMigrations } from './migrations/watchlistMigrations';
 import type { WatchlistEntry } from '@/types';
-
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS watchlist (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  scout_wallet TEXT NOT NULL,
-  player_id TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  UNIQUE(scout_wallet, player_id)
-);
-CREATE INDEX IF NOT EXISTS idx_watchlist_scout_wallet ON watchlist(scout_wallet);
-`;
 
 interface WatchlistRow {
   id: number;
@@ -42,13 +33,12 @@ export class WatchlistStore {
 
   private constructor(db: Database.Database) {
     this.db = db;
-    this.db.exec(SCHEMA);
   }
 
   static getInstance(): WatchlistStore {
     if (!WatchlistStore._instance) {
       WatchlistStore._instance = new WatchlistStore(
-        openSqliteDb('watchlist.db', 'WATCHLIST_DB_PATH'),
+        openSqliteDb('watchlist.db', 'WATCHLIST_DB_PATH', watchlistMigrations),
       );
     }
     return WatchlistStore._instance;

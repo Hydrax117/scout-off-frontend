@@ -22,9 +22,25 @@ resolves with a transaction hash, it calls
 `recordAuditEntry({ actionType, target?, amountStroops?, txHash, status: 'submitted' })`,
 which `POST`s to `/api/admin/audit-log` and is persisted in
 `lib/adminAuditStore.ts` (a `better-sqlite3` table, mirroring
-`packages/indexer/src/db/eventStore.ts`'s conventions — see that file's own
-doc comment for why: no separate migration tool, conservative
-column-vs-JSON-blob schema, singleton store, keyset pagination).
+`packages/indexer/src/db/eventStore.ts`'s conventions for the parts that
+still apply: conservative column-vs-JSON-blob schema, singleton store,
+keyset pagination).
+
+As of issue #1176, schema is no longer a bare `CREATE TABLE IF NOT EXISTS`
+run unconditionally on open — `adminAuditStore.ts` was the first store
+migrated onto `lib/sqliteMigrations.ts`'s shared, versioned migration
+runner (see `lib/migrations/adminAuditMigrations.ts`), applied via
+`lib/sqliteDb.ts`'s `openSqliteDb`. Applied versions are tracked in a
+`schema_version` table in the same database file, so a future schema change
+(a new column, a new index) is added as a new migration rather than a
+one-off manual script or a destructive drop-and-recreate. Migration 1 for
+every store reproduces that store's already-shipped schema with
+`IF NOT EXISTS` DDL, so opening an existing production database applies
+zero destructive changes — it only records that version 1 is present.
+`watchlistStore.ts` and `savedSearchStore.ts` (the other two
+`openSqliteDb`-backed stores) have been migrated onto the same runner;
+`packages/indexer/src/db/eventStore.ts` is a separate package with its own
+bootstrap and has not been (it doesn't use `lib/sqliteDb.ts`).
 
 This call is fire-and-forget (`.catch(() => {})`) — a failure to _log_ an
 action must never block, delay, or roll back the action itself, which has

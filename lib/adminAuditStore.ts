@@ -5,15 +5,16 @@
  * POST /api/admin/audit-log, and read back for the audit view and for
  * reconciliation (GET /api/admin/audit-log/reconcile).
  *
- * Mirrors packages/indexer/src/db/eventStore.ts's conventions: better-sqlite3
- * (already a root dependency), one table with idempotent
- * `CREATE TABLE IF NOT EXISTS` DDL run on construction (no separate
- * migration tool exists in this repo), a process-wide singleton, and keyset
- * pagination rather than OFFSET.
+ * DB bootstrap and schema are shared via lib/sqliteDb.ts's openSqliteDb,
+ * with schema applied through lib/sqliteMigrations.ts's versioned migration
+ * runner (see lib/migrations/adminAuditMigrations.ts) rather than a bare
+ * `CREATE TABLE IF NOT EXISTS` — a process-wide singleton and keyset
+ * pagination rather than OFFSET otherwise unchanged.
  */
 import Database from 'better-sqlite3';
-import * as fs from 'fs';
-import * as path from 'path';
+import { openSqliteDb } from './sqliteDb';
+import { applyMigrations } from './sqliteMigrations';
+import { adminAuditMigrations } from './migrations/adminAuditMigrations';
 import type {
   AdminAuditEntry,
   AdminAuditQueryFilter,
@@ -21,26 +22,6 @@ import type {
   AdminAuditStatus,
 } from './adminAudit';
 import type { AdminAuditActionType } from './adminAudit';
-
-const DEFAULT_DB_PATH = path.join(process.cwd(), 'data', 'admin-audit.db');
-
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS admin_audit_log (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  action_type TEXT NOT NULL,
-  admin_wallet TEXT NOT NULL,
-  target TEXT,
-  amount_stroops INTEGER,
-  tx_hash TEXT,
-  status TEXT NOT NULL,
-  timestamp INTEGER NOT NULL,
-  data TEXT NOT NULL,
-  inserted_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_admin_audit_action_ts ON admin_audit_log(action_type, timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_admin_audit_ts ON admin_audit_log(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_admin_audit_tx_hash ON admin_audit_log(tx_hash);
-`;
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -87,25 +68,28 @@ export class AdminAuditStore {
 
   private db: Database.Database;
 
-  private constructor(dbPath: string) {
-    if (dbPath !== ':memory:') {
-      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-    }
-    this.db = new Database(dbPath);
-    if (dbPath !== ':memory:') {
-      this.db.pragma('journal_mode = WAL');
-    }
-    this.db.exec(SCHEMA);
+  private constructor(db: Database.Database) {
+    this.db = db;
   }
 
   /** Returns the process-wide singleton, matching EventStore's pattern. */
   static getInstance(dbPath?: string): AdminAuditStore {
     if (!AdminAuditStore._instance) {
-      const resolvedPath =
-        dbPath ??
-        process.env.ADMIN_AUDIT_DB_PATH ??
-        (process.env.NODE_ENV === 'test' ? ':memory:' : DEFAULT_DB_PATH);
-      AdminAuditStore._instance = new AdminAuditStore(resolvedPath);
+      let db: Database.Database;
+      if (dbPath) {
+        db = new Database(dbPath);
+        if (dbPath !== ':memory:') {
+          db.pragma('journal_mode = WAL');
+        }
+        applyMigrations(db, adminAuditMigrations);
+      } else {
+        db = openSqliteDb(
+          'admin-audit.db',
+          'ADMIN_AUDIT_DB_PATH',
+          adminAuditMigrations,
+        );
+      }
+      AdminAuditStore._instance = new AdminAuditStore(db);
     }
     return AdminAuditStore._instance;
   }
