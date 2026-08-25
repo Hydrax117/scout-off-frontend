@@ -1,6 +1,8 @@
 /** @jest-environment node */
 import { POST, DELETE } from '../../../../app/api/auth/sep10/route';
+import { GET as SESSION_GET } from '../../../../app/api/auth/session/route';
 import { NextRequest } from 'next/server';
+import { SessionStore } from '@/lib/sessionStore';
 
 // Mock stellar-sdk so tests don't need real Stellar keys or network access.
 // Keypair.fromSecret is mocked to return the secret itself as the "public
@@ -50,6 +52,7 @@ function makeRequest(
 
 beforeEach(() => {
   jest.clearAllMocks();
+  SessionStore.resetInstance();
   process.env.NEXT_PUBLIC_BASE_URL = ALLOWED_ORIGIN;
   process.env.SEP10_SERVER_KEY =
     'GBSERVERKEY0000000000000000000000000000000000000000000000000';
@@ -61,6 +64,7 @@ afterEach(() => {
   delete process.env.NEXT_PUBLIC_BASE_URL;
   delete process.env.SEP10_SERVER_KEY;
   delete process.env.SEP10_HOME_DOMAIN;
+  SessionStore.resetInstance();
 });
 
 describe('POST /api/auth/sep10 — origin validation', () => {
@@ -347,8 +351,17 @@ describe('POST /api/auth/sep10 — production fails closed with no allow-list co
 });
 
 describe('DELETE /api/auth/sep10 — logout', () => {
+  function deleteRequest(cookieHeader?: string): NextRequest {
+    const headers: Record<string, string> = {};
+    if (cookieHeader) headers['cookie'] = cookieHeader;
+    return new NextRequest('http://localhost:3000/api/auth/sep10', {
+      method: 'DELETE',
+      headers,
+    });
+  }
+
   test('clears both the access and refresh session cookies', async () => {
-    const res = await DELETE();
+    const res = await DELETE(deleteRequest());
     expect(res.status).toBe(200);
 
     const cleared = res.cookies.get('session');
@@ -356,5 +369,42 @@ describe('DELETE /api/auth/sep10 — logout', () => {
     // NextResponse represents a deleted cookie as an empty-value Set-Cookie.
     expect(cleared?.value).toBe('');
     expect(refreshCleared?.value).toBe('');
+  });
+
+  // See #1179's core acceptance criterion: revoking a session must reject
+  // its cookie on the very next request, not just clear it client-side.
+  test('revokes the session server-side so the same cookie is rejected by a subsequent authenticated request', async () => {
+    mockVerify.mockReturnValueOnce(undefined);
+
+    const loginRes = await POST(makeRequest(ALLOWED_ORIGIN));
+    expect(loginRes.status).toBe(200);
+    const accessToken = loginRes.cookies.get('session')!.value;
+    const refreshToken = loginRes.cookies.get('session_refresh')!.value;
+
+    // Sanity check: the freshly-issued cookie authenticates before logout.
+    const beforeRes = await SESSION_GET(
+      new NextRequest('http://localhost:3000/api/auth/session', {
+        headers: { cookie: `session=${accessToken}` },
+      }),
+    );
+    expect(beforeRes.status).toBe(200);
+
+    const logoutRes = await DELETE(
+      deleteRequest(
+        `session=${accessToken}; session_refresh=${refreshToken}`,
+      ),
+    );
+    expect(logoutRes.status).toBe(200);
+
+    // The exact same still-unexpired, still correctly-signed cookie must
+    // now be rejected with 401 — proof that revocation is enforced
+    // server-side, not merely by clearing the cookie in the response.
+    const afterRes = await SESSION_GET(
+      new NextRequest('http://localhost:3000/api/auth/session', {
+        headers: { cookie: `session=${accessToken}` },
+      }),
+    );
+    expect(afterRes.status).toBe(401);
+    expect(await afterRes.json()).toEqual({ authenticated: false });
   });
 });

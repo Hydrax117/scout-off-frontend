@@ -295,7 +295,13 @@
     "data_export_exporting": "Preparando sua exportação…",
     "data_export_error": "Falha ao preparar sua exportação de dados. Tente novamente.",
     "data_export_success": "Sua exportação de dados foi baixada.",
-    "data_export_onchain_note": "Os dados on-chain (transações, registros) não estão incluídos — eles vivem permanentemente na rede Stellar e não podem ser exportados nem excluídos."
+    "data_export_onchain_note": "Os dados on-chain (transações, registros) não estão incluídos — eles vivem permanentemente na rede Stellar e não podem ser exportados nem excluídos.",
+    "logout_all_title": "Sair de Todos os Dispositivos",
+    "logout_all_description": "Revogue imediatamente todas as sessões ativas da sua carteira, incluindo esta. Qualquer outro navegador ou dispositivo em que você esteja conectado será desconectado e precisará se reconectar.",
+    "logout_all_button": "Sair de Todos os Lugares",
+    "logout_all_in_progress": "Saindo…",
+    "logout_all_success": "Você saiu de todos os dispositivos.",
+    "logout_all_error": "Falha ao sair de todos os dispositivos. Tente novamente."
   },
   "dataDeletion": {
     "modal_title": "Solicitar Exclusão de Dados",

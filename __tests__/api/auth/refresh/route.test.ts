@@ -3,6 +3,7 @@ import { POST as REFRESH } from '../../../../app/api/auth/refresh/route';
 import { POST as SEP10_POST } from '../../../../app/api/auth/sep10/route';
 import { NextRequest } from 'next/server';
 import { createSessionToken, verifySessionToken } from '@/lib/session';
+import { SessionStore } from '@/lib/sessionStore';
 
 // Mock stellar-sdk so the lifecycle test below (which goes through the real
 // POST /api/auth/sep10 handler to mint a genuine refresh cookie) doesn't
@@ -38,8 +39,30 @@ function makeRefreshRequest(refreshCookieValue?: string): NextRequest {
   });
 }
 
+let sidCounter = 0;
+
+// Mints a refresh token AND registers its `sid` as an active session in
+// the store — i.e. what a real SEP-10 login does. See #1179: the refresh
+// route now checks the store (not just the token's signature) before
+// rotating, so a bare createSessionToken() call with no matching row would
+// no longer be treated as a valid, rotatable session.
+function issueActiveRefreshToken(
+  publicKey: string,
+  ttlSec: number,
+  opts: { remember?: boolean } = {},
+): string {
+  const sid = `sid-${sidCounter++}`;
+  const token = createSessionToken(publicKey, 'refresh', ttlSec, {
+    ...opts,
+    sid,
+  });
+  SessionStore.getInstance().create(sid, publicKey, Date.now() + ttlSec * 1000);
+  return token;
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
+  SessionStore.resetInstance();
   process.env.NEXT_PUBLIC_BASE_URL = ALLOWED_ORIGIN;
   process.env.SEP10_SERVER_KEY = 'GBSERVERKEY0000000000000000000000000000000';
   process.env.SEP10_HOME_DOMAIN = 'scoutoff.com';
@@ -50,6 +73,7 @@ afterEach(() => {
   delete process.env.NEXT_PUBLIC_BASE_URL;
   delete process.env.SEP10_SERVER_KEY;
   delete process.env.SEP10_HOME_DOMAIN;
+  SessionStore.resetInstance();
 });
 
 describe('POST /api/auth/refresh', () => {
@@ -78,11 +102,7 @@ describe('POST /api/auth/refresh', () => {
   });
 
   it('rotates the session: issues a fresh access token and a fresh refresh token', async () => {
-    const validRefresh = createSessionToken(
-      PUBLIC_KEY,
-      'refresh',
-      60 * 60 * 24,
-    );
+    const validRefresh = issueActiveRefreshToken(PUBLIC_KEY, 60 * 60 * 24);
     const res = await REFRESH(makeRefreshRequest(validRefresh));
 
     expect(res.status).toBe(200);
@@ -105,9 +125,8 @@ describe('POST /api/auth/refresh', () => {
   });
 
   it('reissues a 30-day refresh token when the original was a "remember me" session', async () => {
-    const rememberedRefresh = createSessionToken(
+    const rememberedRefresh = issueActiveRefreshToken(
       PUBLIC_KEY,
-      'refresh',
       60 * 60 * 24 * 30,
       { remember: true },
     );

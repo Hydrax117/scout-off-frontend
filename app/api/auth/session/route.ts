@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySessionToken } from '@/lib/session';
+import { getSessionWallet } from '@/lib/session';
+
+// better-sqlite3 (via lib/session.ts's SessionStore lookup) is a native
+// addon and needs the Node.js runtime, not edge.
+export const runtime = 'nodejs';
 
 /**
  * GET /api/auth/session
  *
  * Returns the caller's authentication state based on the `session` cookie.
- * The cookie is a signed, time-bound access token (see lib/session.ts) —
- * this route verifies it rather than trusting its value, so a caller can no
- * longer authenticate as an arbitrary address just by setting
- * `session=<any-address>` by hand (see #778).
+ * The cookie is a signed, time-bound access token (see lib/session.ts).
+ * This route delegates to getSessionWallet() rather than trusting the
+ * cookie's value directly, so a caller can no longer authenticate as an
+ * arbitrary address just by setting `session=<any-address>` by hand (see
+ * #778) — and, per #1179, a revoked session is reported as unauthenticated
+ * even before its cookie's natural expiry, since getSessionWallet checks
+ * the server-side session store in addition to the token's signature.
  *
  * Rate limiting: max 30 requests per IP per 10 seconds. This is a cheap,
  * low-risk read (it just echoes back a cookie), so the limit is generous
@@ -77,15 +84,14 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const session = req.cookies.get('session');
-  const payload = session ? verifySessionToken(session.value, 'access') : null;
+  const wallet = getSessionWallet(req);
 
-  if (!payload) {
+  if (!wallet) {
     return NextResponse.json({ authenticated: false }, { status: 401 });
   }
 
   return NextResponse.json({
     authenticated: true,
-    publicKey: payload.sub,
+    publicKey: wallet,
   });
 }
