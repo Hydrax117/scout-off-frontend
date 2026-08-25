@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createHmac, timingSafeEqual, randomUUID } from 'crypto';
+import { SessionStore } from './sessionStore';
 
 // See #778: the `session` cookie used to hold the caller's own plaintext
 // public key with no signature and no server-side expiry — any HTTP client
@@ -7,6 +8,14 @@ import { createHmac, timingSafeEqual, randomUUID } from 'crypto';
 // authenticated as that address, without ever producing a signed SEP-10
 // challenge transaction. Tokens below are HMAC-signed and time-bound so a
 // cookie can only carry an identity this server actually issued.
+//
+// See #1179: a valid signature and an unexpired `exp` were still not
+// enough to let the server invalidate one specific session before it
+// naturally expired (e.g. "log out of all devices"). Every access/refresh
+// token pair minted for a login now carries a shared `sid` claim, which
+// lib/sessionStore.ts tracks server-side — getSessionWallet below checks
+// that store, not just the token's signature, so revoking a `sid` rejects
+// its cookie on the very next request.
 
 /** How long an access token (the `session` cookie) is valid for. */
 export const ACCESS_TOKEN_TTL_SEC = 20 * 60; // 20 minutes
@@ -34,6 +43,13 @@ interface SessionTokenPayload {
   jti: string;
   /** Only set on refresh tokens; carries the "remember me" TTL class through rotation. */
   remember?: boolean;
+  /**
+   * Session id (see lib/sessionStore.ts). Shared by an access token and its
+   * paired refresh token, and carried forward across refresh rotations, so
+   * the underlying server-side session row — and therefore its revocation
+   * state — persists even as the tokens themselves rotate.
+   */
+  sid: string;
 }
 
 function getSessionSecret(): string {
@@ -63,7 +79,7 @@ export function createSessionToken(
   publicKey: string,
   type: SessionTokenType,
   ttlSec: number,
-  opts: { remember?: boolean } = {},
+  opts: { remember?: boolean; sid?: string } = {},
 ): string {
   const now = Math.floor(Date.now() / 1000);
   const payload: SessionTokenPayload = {
@@ -72,6 +88,13 @@ export function createSessionToken(
     iat: now,
     exp: now + ttlSec,
     jti: randomUUID(),
+    // Callers that mint an access/refresh pair for the same login (or that
+    // rotate an existing session) pass the shared `sid` explicitly so both
+    // tokens — and every token that follows from rotating them — resolve
+    // to the same lib/sessionStore.ts row. A bare, sid-less call (e.g. in
+    // tests exercising the token format alone) still gets a valid, unique
+    // sid rather than an error.
+    sid: opts.sid ?? randomUUID(),
     ...(type === 'refresh' ? { remember: !!opts.remember } : {}),
   };
   const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -136,14 +159,20 @@ export function verifySessionToken(
 /**
  * Returns the authenticated wallet's public key from `req`'s signed
  * `session` cookie, or null if it's missing, malformed, tampered with, of
- * the wrong token type, or expired. This is the ONLY sanctioned way for a
- * route to read caller identity from the `session` cookie — routes that
- * used to read `req.cookies.get('session')?.value` directly were trusting
- * whatever string the client sent, with no proof it came from a completed
- * SEP-10 flow (see #778).
+ * the wrong token type, expired, OR belongs to a session that's been
+ * revoked server-side (see #1179 — a still-unexpired, still
+ * correctly-signed token is no longer sufficient on its own; its `sid`
+ * must also still be active in lib/sessionStore.ts). This is the ONLY
+ * sanctioned way for a route to read caller identity from the `session`
+ * cookie — routes that used to read `req.cookies.get('session')?.value`
+ * directly were trusting whatever string the client sent, with no proof it
+ * came from a completed SEP-10 flow (see #778).
  */
 export function getSessionWallet(req: NextRequest): string | null {
   const token = req.cookies.get('session')?.value;
   if (!token) return null;
-  return verifySessionToken(token, 'access')?.sub ?? null;
+  const payload = verifySessionToken(token, 'access');
+  if (!payload) return null;
+  if (!SessionStore.getInstance().isActive(payload.sid)) return null;
+  return payload.sub;
 }

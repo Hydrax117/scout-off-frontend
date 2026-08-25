@@ -178,6 +178,40 @@ describe('usePayToContact', () => {
     expect(result.current.error).toBe('Contract is paused. Try again later.');
   });
 
+  test('a rapid double-click on unlock() builds/signs/submits only one transaction (issue #1177)', async () => {
+    let resolvePayToContact: (details: unknown) => void;
+    mockPayToContact.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePayToContact = resolve;
+      }),
+    );
+
+    const { result } = renderHook(() => usePayToContact('p1'), { wrapper });
+
+    let first: Promise<unknown>;
+    let second: Promise<unknown>;
+    act(() => {
+      // Both calls fire before payToContact's promise ever resolves —
+      // simulates a fast double-click before the disabled state visually
+      // registers.
+      first = result.current.unlock();
+      second = result.current.unlock();
+    });
+
+    await act(async () => {
+      resolvePayToContact!({
+        email: 'p@example.com',
+        phone: null,
+        telegram: null,
+      });
+      await Promise.all([first, second]);
+    });
+
+    expect(mockPayToContact).toHaveBeenCalledTimes(1);
+    expect(mockCacheContactDetails).toHaveBeenCalledTimes(1);
+    expect(mockRefreshBalance).toHaveBeenCalledTimes(1);
+  });
+
   test('clear() calls purgeContactDetails with the same key unlock() targeted', async () => {
     const { result } = renderHook(() => usePayToContact('p1'), { wrapper });
 

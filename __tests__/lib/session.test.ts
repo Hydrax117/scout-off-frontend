@@ -8,8 +8,17 @@ import {
   DEFAULT_REFRESH_TTL_SEC,
   REMEMBER_ME_REFRESH_TTL_SEC,
 } from '@/lib/session';
+import { SessionStore } from '@/lib/sessionStore';
 
 const PUBLIC_KEY = 'GTESTKEY0000000000000000000000000000000000000000000000000';
+
+beforeEach(() => {
+  SessionStore.resetInstance();
+});
+
+afterEach(() => {
+  SessionStore.resetInstance();
+});
 
 describe('createSessionToken / verifySessionToken', () => {
   it('round-trips a valid access token', () => {
@@ -107,19 +116,40 @@ describe('getSessionWallet', () => {
     return new NextRequest('http://localhost:3000/', { headers });
   }
 
+  /**
+   * Mints an access token AND registers its `sid` in the session store as
+   * an active session — i.e. what POST /api/auth/sep10 does for a real
+   * login. Plain createSessionToken() alone (no store row) now models a
+   * signed-but-never-issued-through-login token, which getSessionWallet
+   * must reject just as it rejects an unsigned one (see #1179).
+   */
+  function issueActiveAccessToken(
+    publicKey: string,
+    ttlSec = ACCESS_TOKEN_TTL_SEC,
+  ): string {
+    const sid = `sid-${Math.random().toString(36).slice(2)}`;
+    const token = createSessionToken(publicKey, 'access', ttlSec, { sid });
+    SessionStore.getInstance().create(sid, publicKey, Date.now() + 60_000);
+    return token;
+  }
+
   it('returns null when there is no session cookie', () => {
     expect(getSessionWallet(requestWithCookie())).toBeNull();
   });
 
-  it('returns the public key for a valid access token', () => {
-    const token = createSessionToken(
-      PUBLIC_KEY,
-      'access',
-      ACCESS_TOKEN_TTL_SEC,
-    );
+  it('returns the public key for a valid access token backed by an active session', () => {
+    const token = issueActiveAccessToken(PUBLIC_KEY);
     expect(getSessionWallet(requestWithCookie(`session=${token}`))).toBe(
       PUBLIC_KEY,
     );
+  });
+
+  it('returns null for a signature-valid access token with no matching session row (see #1179)', () => {
+    // Same as before #1179's store was added: a well-formed, correctly
+    // signed, unexpired token whose sid was never registered (or whose
+    // session has since been pruned) must not be trusted.
+    const token = createSessionToken(PUBLIC_KEY, 'access', ACCESS_TOKEN_TTL_SEC);
+    expect(getSessionWallet(requestWithCookie(`session=${token}`))).toBeNull();
   });
 
   it('returns null for a forged raw-address cookie (see #778)', () => {
@@ -142,5 +172,29 @@ describe('getSessionWallet', () => {
     expect(
       getSessionWallet(requestWithCookie(`session=${refreshToken}`)),
     ).toBeNull();
+  });
+
+  it('rejects a previously-valid session cookie once its session has been revoked (see #1179)', () => {
+    const sid = 'sid-revocation-test';
+    const token = createSessionToken(PUBLIC_KEY, 'access', ACCESS_TOKEN_TTL_SEC, {
+      sid,
+    });
+    const store = SessionStore.getInstance();
+    store.create(sid, PUBLIC_KEY, Date.now() + 60_000);
+
+    const req = requestWithCookie(`session=${token}`);
+
+    // The cookie authenticates before revocation...
+    expect(getSessionWallet(req)).toBe(PUBLIC_KEY);
+
+    // ...revoking the session server-side (what disconnect() and "log out
+    // of all devices" both do)...
+    expect(store.revoke(sid)).toBe(true);
+
+    // ...rejects the exact same still-unexpired, still correctly-signed
+    // cookie on the very next request — this is the core acceptance
+    // criterion of #1179: server-side revocation, not just cookie
+    // presence/signature.
+    expect(getSessionWallet(req)).toBeNull();
   });
 });

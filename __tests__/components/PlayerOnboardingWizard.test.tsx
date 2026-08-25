@@ -42,6 +42,11 @@ jest.mock('@/lib/contract', () => ({
   buildRegisterPlayer: jest.fn(),
 }));
 
+jest.mock('@/lib/sorobanRpc', () => ({
+  ...jest.requireActual('@/lib/sorobanRpc'),
+  submitSignedTransaction: jest.fn(),
+}));
+
 jest.mock('@/lib/uploadTrackingClient', () => ({
   trackUploadedCid: jest.fn().mockResolvedValue(undefined),
   matchTrackedUpload: jest.fn().mockResolvedValue(undefined),
@@ -80,6 +85,8 @@ const {
   trackUploadedCid: mockedTrackUploadedCid,
   matchTrackedUpload: mockedMatchTrackedUpload,
 } = require('@/lib/uploadTrackingClient');
+const mockedSubmitSignedTransaction =
+  require('@/lib/sorobanRpc').submitSignedTransaction as jest.Mock;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -93,6 +100,7 @@ function setupWallet(overrides: Partial<ReturnType<typeof useWallet>> = {}) {
     connect: jest.fn(),
     disconnect: jest.fn(),
     signAndSubmit: jest.fn().mockResolvedValue({ hash: 'tx-hash-123' }),
+    signOnly: jest.fn().mockResolvedValue('SIGNED_XDR_MOCK'),
     ...overrides,
   } as any);
 }
@@ -135,6 +143,10 @@ describe('PlayerOnboardingWizard', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     sessionStorage.clear();
+    mockedSubmitSignedTransaction.mockResolvedValue({
+      hash: 'tx-hash-123',
+      status: 'PENDING',
+    });
   });
 
   // ── Initial render ────────────────────────────────────────────────────────

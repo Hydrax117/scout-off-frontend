@@ -6,8 +6,10 @@ import { sanitize } from '@/lib/sanitize';
 import { useWallet } from '@/hooks/useWallet';
 import { usePlayer } from '@/hooks/usePlayer';
 import useIsPaused from '@/hooks/useIsPaused';
+import { useOnboardingSync } from '@/hooks/useOnboardingSync';
 import { extractContractErrorKey } from '@/lib/contractErrorMessage';
 import { buildRegisterPlayer } from '@/lib/contract';
+import { submitSignedTransaction, isNetworkError } from '@/lib/sorobanRpc';
 import {
   trackUploadedCid,
   matchTrackedUpload,
@@ -156,10 +158,16 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
 export default function PlayerOnboardingWizard({
   onSuccess,
 }: PlayerOnboardingWizardProps) {
-  const { publicKey, signAndSubmit } = useWallet();
+  const { publicKey, signOnly } = useWallet();
   const { player, loading: playerLoading } = usePlayer(publicKey);
   const isPaused = useIsPaused();
   const tErrors = useTranslations('contractErrors');
+
+  // Background sync for the final submit step (issue #1181): if signing
+  // succeeds but broadcasting the transaction fails for a network reason,
+  // the signed submission is queued here instead of being lost — see
+  // hooks/useOnboardingSync.ts for how it gets resubmitted automatically.
+  const onboardingSync = useOnboardingSync(publicKey);
 
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -218,6 +226,36 @@ export default function PlayerOnboardingWizard({
     if (!publicKey || !hydratedFromStorage) return;
     savePersistedWizardState(publicKey, { step, data });
   }, [publicKey, hydratedFromStorage, step, data]);
+
+  // A background sync (issue #1181) may have completed while this tab — or
+  // the whole app — was closed. On mount/wallet-change, if IndexedDB says
+  // this wallet's queued submission finished, treat it exactly like a
+  // just-finished in-tab submission: hand it to onSuccess (so the parent
+  // shows the registered profile instead of a stale pending state) and
+  // clear the record so this doesn't fire again on a later remount.
+  const onboardingSyncSubmission = onboardingSync.submission;
+  useEffect(() => {
+    if (!onboardingSync.loaded || !onboardingSyncSubmission) return;
+    if (onboardingSyncSubmission.status === 'complete') {
+      onSuccess({
+        playerId: onboardingSyncSubmission.wallet,
+        vitals: onboardingSyncSubmission.vitals,
+        ipfsHash: onboardingSyncSubmission.ipfsHash,
+      });
+      onboardingSync.discard();
+    } else if (!playerLoading && player) {
+      // A profile already exists (e.g. this wallet registered through some
+      // other path) but a stale queued/failed record is still sitting in
+      // IndexedDB — nothing left for it to do.
+      onboardingSync.discard();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    onboardingSync.loaded,
+    onboardingSyncSubmission,
+    playerLoading,
+    player,
+  ]);
 
   const updateField = (field: keyof WizardData, value: string) => {
     setData((prev) => ({ ...prev, [field]: value }));
@@ -395,17 +433,43 @@ export default function PlayerOnboardingWizard({
       };
 
       const xdr = await buildRegisterPlayer(publicKey, vitals, data.ipfsHash);
-      const result = await signAndSubmit(xdr);
 
-      const hash = (result as any)?.hash ?? null;
+      // Signing happens locally via the wallet extension and needs no
+      // network — only the broadcast below can fail due to connectivity.
+      // Splitting the two (rather than one combined sign-and-submit call)
+      // is what makes it possible to queue the *signed* transaction for
+      // background sync when broadcasting is what actually drops.
+      const signedXdr = await signOnly(xdr);
+
+      let hash: string;
+      try {
+        const result = await submitSignedTransaction(signedXdr);
+        hash = result.hash;
+      } catch (broadcastError) {
+        if (isNetworkError(broadcastError)) {
+          // Connectivity dropped between signing and broadcasting — the
+          // signed transaction is durable now (IndexedDB), and a
+          // background sync (or the in-tab fallback) will finish
+          // submitting it automatically. Nothing more to do here.
+          await onboardingSync.queueSubmission({
+            vitals,
+            ipfsHash: data.ipfsHash,
+            signedXdr,
+          });
+          setTxStatus(null);
+          clearPersistedWizardState(publicKey);
+          return;
+        }
+        throw broadcastError;
+      }
+
       setTxHash(hash);
       setTxStatus('success');
 
       matchTrackedUpload({ cid: data.ipfsHash, txHash: hash });
-      if (publicKey) clearPersistedWizardState(publicKey);
+      clearPersistedWizardState(publicKey);
 
-      const playerId = (result as any)?.id || publicKey;
-      onSuccess({ playerId, vitals, ipfsHash: data.ipfsHash });
+      onSuccess({ playerId: publicKey, vitals, ipfsHash: data.ipfsHash });
     } catch (error) {
       setTxStatus('error');
       const rawMessage = error instanceof Error ? error.message : null;
@@ -442,6 +506,78 @@ export default function PlayerOnboardingWizard({
         <p className="text-sm text-yellow-400 font-medium">
           A profile already exists for this wallet. You cannot register again.
         </p>
+      </div>
+    );
+  }
+
+  // A signed submission is queued for background sync — the multi-step
+  // form no longer applies (there's nothing left to edit; it's already
+  // signed) so show its status instead. 'complete' isn't handled here: the
+  // effect above hands it to onSuccess and clears the record on the same
+  // render pass it appears, so this component typically never paints it.
+  if (
+    onboardingSyncSubmission &&
+    (onboardingSyncSubmission.status === 'pending' ||
+      onboardingSyncSubmission.status === 'syncing')
+  ) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 p-4 space-y-3 text-center"
+      >
+        <p className="text-sm text-yellow-300 font-medium">
+          Your registration is signed and queued for submission.
+        </p>
+        <p className="text-sm text-gray-400">
+          It will finish automatically once you&apos;re back online — even
+          if you close this tab or the app.
+        </p>
+        <div className="flex gap-3 justify-center">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onboardingSync.retryNow}
+            disabled={onboardingSyncSubmission.status === 'syncing'}
+          >
+            Try now
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onboardingSync.discard}
+          >
+            Discard and start over
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (onboardingSyncSubmission?.status === 'failed') {
+    return (
+      <div
+        role="alert"
+        className="rounded-xl border border-red-500 bg-red-950/30 p-4 space-y-3 text-center"
+      >
+        <p className="text-sm text-red-400 font-medium">
+          Registration could not be completed
+          {onboardingSyncSubmission.lastError
+            ? `: ${onboardingSyncSubmission.lastError}`
+            : '.'}
+        </p>
+        <div className="flex gap-3 justify-center">
+          <Button type="button" onClick={onboardingSync.retryNow}>
+            Retry
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onboardingSync.discard}
+          >
+            Discard and start over
+          </Button>
+        </div>
       </div>
     );
   }

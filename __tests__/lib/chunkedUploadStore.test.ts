@@ -1,29 +1,16 @@
 /** @jest-environment node */
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
 import {
   initSession,
   getSessionStatus,
   writeChunk,
   assembleFile,
   cleanupSession,
+  listSessionsForWallet,
+  clearSessionsForWallet,
   __resetForTests,
 } from '@/lib/chunkedUploadStore';
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // must match lib/chunkedUploadStore.ts
-const UPLOAD_DIR = path.join(os.tmpdir(), 'scout-off-chunked-uploads');
-
-/** sweepExpired's fs.rm is fire-and-forget, so poll briefly for removal. */
-async function waitForRemoval(dir: string, timeoutMs = 2000): Promise<void> {
-  const start = Date.now();
-  while (fs.existsSync(dir)) {
-    if (Date.now() - start > timeoutMs) {
-      throw new Error(`${dir} was not removed within ${timeoutMs}ms`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-}
 
 afterEach(() => {
   __resetForTests();
@@ -31,8 +18,8 @@ afterEach(() => {
 });
 
 describe('chunkedUploadStore', () => {
-  it('starts a session and reports zero received chunks', () => {
-    const { sessionId } = initSession({
+  it('starts a session and reports zero received chunks', async () => {
+    const { sessionId } = await initSession({
       filename: 'clip.mp4',
       fileType: 'video/mp4',
       fileSize: 30,
@@ -40,18 +27,18 @@ describe('chunkedUploadStore', () => {
     });
 
     expect(sessionId).toBeTruthy();
-    expect(getSessionStatus(sessionId)).toEqual({
+    expect(await getSessionStatus(sessionId)).toEqual({
       receivedChunks: [],
       totalChunks: 3,
     });
   });
 
-  it('returns null status for an unknown session', () => {
-    expect(getSessionStatus('does-not-exist')).toBeNull();
+  it('returns null status for an unknown session', async () => {
+    expect(await getSessionStatus('does-not-exist')).toBeNull();
   });
 
   it('writes chunks and tracks which indices have been received', async () => {
-    const { sessionId } = initSession({
+    const { sessionId } = await initSession({
       filename: 'clip.mp4',
       fileType: 'video/mp4',
       fileSize: 30,
@@ -65,7 +52,7 @@ describe('chunkedUploadStore', () => {
   });
 
   it('re-uploading the same chunk index overwrites it (idempotent retry)', async () => {
-    const { sessionId } = initSession({
+    const { sessionId } = await initSession({
       filename: 'clip.mp4',
       fileType: 'video/mp4',
       fileSize: 10,
@@ -80,7 +67,7 @@ describe('chunkedUploadStore', () => {
   });
 
   it('rejects a chunk index outside [0, totalChunks)', async () => {
-    const { sessionId } = initSession({
+    const { sessionId } = await initSession({
       filename: 'clip.mp4',
       fileType: 'video/mp4',
       fileSize: 10,
@@ -102,7 +89,7 @@ describe('chunkedUploadStore', () => {
   });
 
   it('assembles chunks in index order regardless of upload order', async () => {
-    const { sessionId } = initSession({
+    const { sessionId } = await initSession({
       filename: 'clip.mp4',
       fileType: 'video/mp4',
       fileSize: 6,
@@ -120,7 +107,7 @@ describe('chunkedUploadStore', () => {
   });
 
   it('refuses to assemble an incomplete upload', async () => {
-    const { sessionId } = initSession({
+    const { sessionId } = await initSession({
       filename: 'clip.mp4',
       fileType: 'video/mp4',
       fileSize: 20,
@@ -133,7 +120,7 @@ describe('chunkedUploadStore', () => {
   });
 
   it('cleanupSession removes the session so it can no longer be used', async () => {
-    const { sessionId } = initSession({
+    const { sessionId } = await initSession({
       filename: 'clip.mp4',
       fileType: 'video/mp4',
       fileSize: 2,
@@ -141,61 +128,53 @@ describe('chunkedUploadStore', () => {
     });
     await writeChunk(sessionId, 0, Buffer.from('aa'));
 
-    cleanupSession(sessionId);
+    await cleanupSession(sessionId);
 
-    expect(getSessionStatus(sessionId)).toBeNull();
+    expect(await getSessionStatus(sessionId)).toBeNull();
     await expect(assembleFile(sessionId)).rejects.toThrow(
       /not found or expired/i,
     );
   });
 
-  it('cleanupSession on an unknown session is a harmless no-op', () => {
-    expect(() => cleanupSession('does-not-exist')).not.toThrow();
+  it('cleanupSession on an unknown session is a harmless no-op', async () => {
+    await expect(cleanupSession('does-not-exist')).resolves.not.toThrow();
   });
 
   it('proactively sweeps a session abandoned past its TTL without a new initSession call', async () => {
     const realNow = Date.now();
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(realNow);
 
-    const { sessionId } = initSession({
+    const { sessionId } = await initSession({
       filename: 'clip.mp4',
       fileType: 'video/mp4',
       fileSize: 10,
       totalChunks: 1,
     });
     await writeChunk(sessionId, 0, Buffer.from('abandoned'));
-
-    const dir = path.join(UPLOAD_DIR, sessionId);
-    expect(fs.existsSync(dir)).toBe(true);
+    expect(await getSessionStatus(sessionId)).not.toBeNull();
 
     // Advance past the TTL without ever calling initSession again.
     nowSpy.mockReturnValue(realNow + SESSION_TTL_MS + 1);
 
-    // getSessionStatus is a read-only status check, not a new upload — it
-    // now proactively sweeps as a side effect, same as writeChunk does.
-    expect(getSessionStatus(sessionId)).toBeNull();
-
-    await waitForRemoval(dir);
-    expect(fs.existsSync(dir)).toBe(false);
+    expect(await getSessionStatus(sessionId)).toBeNull();
   });
 
   it('writeChunk on an unrelated session also proactively sweeps expired sessions', async () => {
     const realNow = Date.now();
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(realNow);
 
-    const expired = initSession({
+    const expired = await initSession({
       filename: 'old.mp4',
       fileType: 'video/mp4',
       fileSize: 10,
       totalChunks: 1,
     });
-    const expiredDir = path.join(UPLOAD_DIR, expired.sessionId);
     await writeChunk(expired.sessionId, 0, Buffer.from('stale'));
 
     // A second session created 1s later, before `expired` has aged out —
     // both sessions co-exist at this point.
     nowSpy.mockReturnValue(realNow + 1000);
-    const fresh = initSession({
+    const fresh = await initSession({
       filename: 'new.mp4',
       fileType: 'video/mp4',
       fileSize: 10,
@@ -209,11 +188,94 @@ describe('chunkedUploadStore', () => {
     // is what must trigger the sweep of the unrelated expired one.
     await writeChunk(fresh.sessionId, 0, Buffer.from('active'));
 
-    expect(getSessionStatus(expired.sessionId)).toBeNull();
-    expect(getSessionStatus(fresh.sessionId)).toEqual({
+    expect(await getSessionStatus(expired.sessionId)).toBeNull();
+    expect(await getSessionStatus(fresh.sessionId)).toEqual({
       receivedChunks: [0],
       totalChunks: 1,
     });
-    await waitForRemoval(expiredDir);
+  });
+
+  it('listSessionsForWallet returns only sessions owned by that wallet', async () => {
+    const a = await initSession({
+      filename: 'mine.mp4',
+      fileType: 'video/mp4',
+      fileSize: 10,
+      totalChunks: 1,
+      ownerWallet: 'GWALLETA',
+    });
+    await initSession({
+      filename: 'theirs.mp4',
+      fileType: 'video/mp4',
+      fileSize: 10,
+      totalChunks: 1,
+      ownerWallet: 'GWALLETB',
+    });
+    await writeChunk(a.sessionId, 0, Buffer.from('x'));
+
+    const summaries = await listSessionsForWallet('GWALLETA');
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]).toMatchObject({
+      sessionId: a.sessionId,
+      filename: 'mine.mp4',
+      receivedChunks: 1,
+      totalChunks: 1,
+    });
+  });
+
+  it("clearSessionsForWallet removes only that wallet's sessions and returns the count", async () => {
+    await initSession({
+      filename: 'mine.mp4',
+      fileType: 'video/mp4',
+      fileSize: 10,
+      totalChunks: 1,
+      ownerWallet: 'GWALLETA',
+    });
+    const other = await initSession({
+      filename: 'theirs.mp4',
+      fileType: 'video/mp4',
+      fileSize: 10,
+      totalChunks: 1,
+      ownerWallet: 'GWALLETB',
+    });
+
+    const removed = await clearSessionsForWallet('GWALLETA');
+
+    expect(removed).toBe(1);
+    expect(await listSessionsForWallet('GWALLETA')).toEqual([]);
+    expect(await getSessionStatus(other.sessionId)).not.toBeNull();
+  });
+
+  it('a resumed upload works correctly regardless of which "instance" received earlier chunks (issue #1175)', async () => {
+    // Simulates two different serverless instances sharing metadata/chunk
+    // storage: initSession + first chunk happen against one handle to the
+    // store, then a fresh call — modeling a resume request landing on a
+    // different instance — must see exactly the same state, because both
+    // the session metadata and the chunk bytes live in shared storage
+    // (Redis/SQLite when configured, or this single in-memory process in
+    // tests) rather than a given instance's local memory/disk.
+    const { sessionId } = await initSession({
+      filename: 'clip.mp4',
+      fileType: 'video/mp4',
+      fileSize: 30,
+      totalChunks: 3,
+    });
+    await writeChunk(sessionId, 0, Buffer.from('aa'));
+
+    // "Resume" landing elsewhere: checks status, then submits the remaining
+    // chunks purely by sessionId, with no dependency on prior in-process state.
+    const resumeStatus = await getSessionStatus(sessionId);
+    expect(resumeStatus).toEqual({ receivedChunks: [0], totalChunks: 3 });
+
+    const missing = Array.from(
+      { length: resumeStatus!.totalChunks },
+      (_, i) => i,
+    ).filter((i) => !resumeStatus!.receivedChunks.includes(i));
+    expect(missing).toEqual([1, 2]);
+
+    await writeChunk(sessionId, 1, Buffer.from('bb'));
+    await writeChunk(sessionId, 2, Buffer.from('cc'));
+
+    const { buffer } = await assembleFile(sessionId);
+    expect(buffer.toString()).toBe('aabbcc');
   });
 });

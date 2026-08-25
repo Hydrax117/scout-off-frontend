@@ -2,8 +2,12 @@
  * Server-side store tracking IPFS CIDs that have been superseded by a newer
  * upload and are candidates for unpinning.
  *
- * In-memory (single-process) — same deployment assumption as chunkedUploadStore.
- * In a multi-instance deployment, move to the SQLite store already used elsewhere.
+ * In-memory (single-process) — the same deployment assumption
+ * lib/chunkedUploadStore.ts used to make before issue #1175 moved it to
+ * shared storage. In a multi-instance deployment, this store would need the
+ * same fix: Redis (lib/rateLimit.ts's pattern) for the small candidate
+ * records, no SQLite/blob storage needed since there are no large payloads
+ * here.
  *
  * Grace period: CDN cache TTL is 1 year (immutable, max-age=31536000 in
  * app/api/media/[cid]/route.ts). However, unpinning after a full year would
@@ -34,7 +38,10 @@ export interface SupersededCidRecord {
 const records = new Map<string, SupersededCidRecord>();
 
 /** Records a CID as superseded. Returns the created record. */
-export function recordSupersededCid(cid: string, playerId: string): SupersededCidRecord {
+export function recordSupersededCid(
+  cid: string,
+  playerId: string,
+): SupersededCidRecord {
   const id = crypto.randomUUID();
   const record: SupersededCidRecord = {
     id,
@@ -51,7 +58,8 @@ export function recordSupersededCid(cid: string, playerId: string): SupersededCi
 export function getEligibleForUnpin(): SupersededCidRecord[] {
   const now = Date.now();
   return Array.from(records.values()).filter(
-    (r) => r.unpinnedAt === null && now - r.supersededAt >= UNPIN_GRACE_PERIOD_MS,
+    (r) =>
+      r.unpinnedAt === null && now - r.supersededAt >= UNPIN_GRACE_PERIOD_MS,
   );
 }
 

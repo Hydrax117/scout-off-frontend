@@ -26,7 +26,7 @@ function makeRequest(body: unknown, ip = 'ip-complete-default'): NextRequest {
 }
 
 async function seedSession(header: Uint8Array, ip: string) {
-  const { sessionId } = initSession({
+  const { sessionId } = await initSession({
     filename: 'photo.jpg',
     fileType: 'image/jpeg',
     fileSize: header.length,
@@ -76,7 +76,7 @@ describe('POST /api/ipfs/upload/complete', () => {
   });
 
   it('returns 400 for an incomplete upload (missing chunks)', async () => {
-    const { sessionId } = initSession({
+    const { sessionId } = await initSession({
       filename: 'clip.mp4',
       fileType: 'video/mp4',
       fileSize: 20,
@@ -96,7 +96,7 @@ describe('POST /api/ipfs/upload/complete', () => {
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/does not match/i);
     // Session should be cleaned up on rejection.
-    expect(getSessionStatus(sessionId)).toBeNull();
+    expect(await getSessionStatus(sessionId)).toBeNull();
   });
 
   it('assembles the file and uploads it to Pinata, returning the CID', async () => {
@@ -121,7 +121,7 @@ describe('POST /api/ipfs/upload/complete', () => {
       }),
     );
     // Successful completion cleans up the session.
-    expect(getSessionStatus(sessionId)).toBeNull();
+    expect(await getSessionStatus(sessionId)).toBeNull();
   });
 
   it('returns 502 and preserves the session when the Pinata upload fails, so a retry can skip re-uploading chunks', async () => {
@@ -131,7 +131,7 @@ describe('POST /api/ipfs/upload/complete', () => {
     const res = await POST(makeRequest({ sessionId }, 'ip-pinatafail'));
 
     expect(res.status).toBe(502);
-    expect(getSessionStatus(sessionId)).not.toBeNull();
+    expect(await getSessionStatus(sessionId)).not.toBeNull();
   });
 
   describe('post-upload integrity verification (issue #699)', () => {
@@ -149,7 +149,7 @@ describe('POST /api/ipfs/upload/complete', () => {
       expect(res.status).toBe(502);
       const body = await res.json();
       expect(body.error).toMatch(/failed integrity verification/i);
-      expect(getSessionStatus(sessionId)).not.toBeNull();
+      expect(await getSessionStatus(sessionId)).not.toBeNull();
     });
 
     it('returns 502 with a retryable error when the gateway cannot be reached for verification', async () => {
@@ -166,7 +166,7 @@ describe('POST /api/ipfs/upload/complete', () => {
       expect(res.status).toBe(502);
       const body = await res.json();
       expect(body.error).toMatch(/could not verify the upload/i);
-      expect(getSessionStatus(sessionId)).not.toBeNull();
+      expect(await getSessionStatus(sessionId)).not.toBeNull();
     });
   });
 });

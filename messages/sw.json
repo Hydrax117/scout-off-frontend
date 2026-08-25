@@ -352,7 +352,13 @@
     "data_export_exporting": "Inatayarisha uhamishaji wako…",
     "data_export_error": "Imeshindwa kutayarisha uhamishaji wako wa data. Tafadhali jaribu tena.",
     "data_export_success": "Uhamishaji wako wa data umepakuliwa.",
-    "data_export_onchain_note": "Data ya on-chain (miamala, usajili) haijajumuishwa — iko kwa kudumu kwenye mtandao wa Stellar na haiwezi kuhamishwa wala kufutwa."
+    "data_export_onchain_note": "Data ya on-chain (miamala, usajili) haijajumuishwa — iko kwa kudumu kwenye mtandao wa Stellar na haiwezi kuhamishwa wala kufutwa.",
+    "logout_all_title": "Toka Kwenye Vifaa Vyote",
+    "logout_all_description": "Batilisha mara moja kila kikao amilifu cha pochi yako, ikiwa ni pamoja na hiki. Kivinjari au kifaa kingine chochote ulichoingia kitatolewa nje na kitahitaji kuunganishwa upya.",
+    "logout_all_button": "Toka Kila Mahali",
+    "logout_all_in_progress": "Inatoka…",
+    "logout_all_success": "Umetoka kwenye vifaa vyote.",
+    "logout_all_error": "Imeshindwa kutoka kwenye vifaa vyote. Tafadhali jaribu tena."
   },
   "dataDeletion": {
     "modal_title": "Omba Ufutaji wa Data",

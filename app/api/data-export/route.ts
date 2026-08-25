@@ -25,10 +25,10 @@ export async function GET(req: NextRequest) {
 
   const log = createRequestLogger(req);
   try {
-    const payload = collectUserData(wallet);
-    const filename = `scoutoff-data-export-${wallet}-${new Date()
-      .toISOString()
-      .split('T')[0]}.json`;
+    const payload = await collectUserData(wallet);
+    const filename = `scoutoff-data-export-${wallet}-${
+      new Date().toISOString().split('T')[0]
+    }.json`;
 
     return new NextResponse(JSON.stringify(payload, null, 2), {
       status: 200,

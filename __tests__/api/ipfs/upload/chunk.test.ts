@@ -19,7 +19,7 @@ afterEach(() => __resetForTests());
 
 describe('POST /api/ipfs/upload/chunk', () => {
   it('writes a chunk and returns the updated received-chunk status', async () => {
-    const { sessionId } = initSession({
+    const { sessionId } = await initSession({
       filename: 'clip.mp4',
       fileType: 'video/mp4',
       fileSize: 20,
@@ -35,7 +35,7 @@ describe('POST /api/ipfs/upload/chunk', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ receivedChunks: [0], totalChunks: 2 });
-    expect(getSessionStatus(sessionId)?.receivedChunks).toEqual([0]);
+    expect((await getSessionStatus(sessionId))?.receivedChunks).toEqual([0]);
   });
 
   it('returns 400 when sessionId is missing', async () => {
@@ -48,7 +48,7 @@ describe('POST /api/ipfs/upload/chunk', () => {
   });
 
   it('returns 400 when chunkIndex is not a non-negative integer', async () => {
-    const { sessionId } = initSession({
+    const { sessionId } = await initSession({
       filename: 'clip.mp4',
       fileType: 'video/mp4',
       fileSize: 10,
@@ -64,7 +64,7 @@ describe('POST /api/ipfs/upload/chunk', () => {
   });
 
   it('returns 400 when chunk is missing', async () => {
-    const { sessionId } = initSession({
+    const { sessionId } = await initSession({
       filename: 'clip.mp4',
       fileType: 'video/mp4',
       fileSize: 10,
@@ -89,7 +89,7 @@ describe('POST /api/ipfs/upload/chunk', () => {
   });
 
   it('re-uploading the same chunk index (a client retry) succeeds and does not duplicate it', async () => {
-    const { sessionId } = initSession({
+    const { sessionId } = await initSession({
       filename: 'clip.mp4',
       fileType: 'video/mp4',
       fileSize: 10,
@@ -105,6 +105,6 @@ describe('POST /api/ipfs/upload/chunk', () => {
       expect(res.status).toBe(200);
     }
 
-    expect(getSessionStatus(sessionId)?.receivedChunks).toEqual([0]);
+    expect((await getSessionStatus(sessionId))?.receivedChunks).toEqual([0]);
   });
 });

@@ -59,14 +59,29 @@ Browser                          Next.js app                      Pinata
   in every chunk. Both checks are the same logic `app/api/ipfs/upload`
   already used (extracted to `lib/fileSignature.ts` so it isn't duplicated).
   Client-side `validateFile` in `VideoUpload.tsx` is unchanged.
-- **Chunk-store persistence**: `lib/chunkedUploadStore.ts` keeps an
-  in-memory session map (mirroring the existing in-memory rate-limit Map in
-  `app/api/ipfs/upload`) and writes each chunk to `os.tmpdir()`. This
-  assumes a single, long-running Node process — consistent with what
-  already exists in this app — not a stateless multi-instance/serverless
-  deployment. If that ever changes, this store is the piece that would need
-  to move to shared storage (e.g. one of the SQLite services already used
-  elsewhere in this repo) so a chunk request can land on any instance.
+- **Chunk-store persistence (fixed in issue #1175)**: `lib/chunkedUploadStore.ts`
+  used to keep an in-memory session map and write each chunk to a given
+  instance's own `os.tmpdir()` — correct only for a single, long-running
+  Node process, not a stateless multi-instance/serverless deployment. It now
+  splits into two shared-storage pieces, mirroring `lib/rateLimit.ts`'s
+  Redis-with-in-memory-fallback pattern for the metadata half:
+  - **Session metadata** (which chunks a session has received, its expiry)
+    is backed by Upstash Redis when `UPSTASH_REDIS_REST_URL` /
+    `UPSTASH_REDIS_REST_TOKEN` are configured, with an in-memory,
+    single-instance-only fallback when they're not — same tradeoff
+    `lib/rateLimit.ts` documents for its own counter.
+  - **Chunk bytes** are larger binary payloads than a Redis counter, so
+    they go to `lib/chunkedUploadChunkStore.ts` — a `better-sqlite3` table
+    with a `BLOB` column, following this repo's existing SQLite-store
+    convention (`lib/sqliteDb.ts`). This requires the SQLite database file
+    itself to live on storage reachable from every instance (a shared
+    volume) — see `CHUNKED_UPLOAD_DB_PATH` in `.env.example`. On a
+    stateless serverless deployment with no shared volume at all, this
+    would need to move to object storage instead; that's an explicit,
+    documented gap, not a silent one.
+  Either way, `GET /api/ipfs/upload/status` and a chunk landing on any
+  instance now answer correctly regardless of which instance received an
+  earlier chunk in the same session.
 - **Rate limiting**: `/init` and `/complete` share the whole-file route's
   scale (20/min); `/chunk` gets a much higher ceiling (600/min) since one
   legitimate upload issues many small chunk requests — sized generously

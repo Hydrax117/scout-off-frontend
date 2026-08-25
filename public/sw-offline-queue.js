@@ -2,16 +2,18 @@
  * Service worker — offline queue background sync handler.
  *
  * NOTE: next-pwa (workbox) generates the actual service worker at build
- * time. This file is a reference implementation and is NOT automatically
- * loaded by the generated SW. To wire it up, you would need to configure
- * the workbox `importScripts` option in next.config.js or inject it into
- * the SW build pipeline.
+ * time. This file is now loaded by the generated SW via `worker/index.js`
+ * — next-pwa's "custom worker" convention — which calls
+ * `self.importScripts('/sw-offline-queue.js')` (see worker/index.js's
+ * header comment for how that wiring works and why this file previously
+ * wasn't reachable at all).
  *
- * Without this wiring, the feature still works via the `online` event
- * listener in `useOfflineQueue.ts` — queued actions are retried when
- * the browser detects connectivity. The background-sync path is an
- * additional optimisation for cases where the `online` event doesn't
- * fire (e.g. waking from sleep with connectivity already restored).
+ * The `online` event listener in `useOfflineQueue.ts` remains the primary
+ * path — queued actions are retried as soon as the browser detects
+ * connectivity while a tab is open. The background-sync path below is an
+ * additional path for cases the `online` event misses (e.g. waking from
+ * sleep with connectivity already restored, or connectivity returning
+ * while no tab is open at all).
  *
  * When the browser fires a 'sync' event for 'offline-queue-sync', it
  * posts a message to the client (the main thread) telling it to process

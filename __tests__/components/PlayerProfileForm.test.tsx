@@ -42,6 +42,11 @@ jest.mock('@/lib/contract', () => ({
   buildRegisterPlayer: jest.fn(),
 }));
 
+jest.mock('@/lib/sorobanRpc', () => ({
+  ...jest.requireActual('@/lib/sorobanRpc'),
+  submitSignedTransaction: jest.fn(),
+}));
+
 jest.mock('@/components/ui/VideoUpload', () => ({
   __esModule: true,
   default: ({
@@ -67,6 +72,8 @@ const mockedUseIPFSUpload = useIPFSUpload as jest.MockedFunction<
 const mockedBuildRegisterPlayer = buildRegisterPlayer as jest.MockedFunction<
   typeof buildRegisterPlayer
 >;
+const mockedSubmitSignedTransaction =
+  require('@/lib/sorobanRpc').submitSignedTransaction as jest.Mock;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -80,6 +87,7 @@ function setupWallet(overrides: Partial<ReturnType<typeof useWallet>> = {}) {
     connect: jest.fn(),
     disconnect: jest.fn(),
     signAndSubmit: jest.fn().mockResolvedValue({ hash: 'tx-hash-123' }),
+    signOnly: jest.fn().mockResolvedValue('SIGNED_XDR_MOCK'),
     ...overrides,
   } as any);
 }
@@ -127,6 +135,10 @@ async function fillStep1AndAdvance() {
 describe('PlayerProfileForm', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockedSubmitSignedTransaction.mockResolvedValue({
+      hash: 'tx-hash-123',
+      status: 'PENDING',
+    });
   });
 
   // ── Render required fields ───────────────────────────────────────────────────
@@ -300,11 +312,7 @@ describe('PlayerProfileForm', () => {
   it('calls onSuccess callback with playerId, vitals and ipfsHash on successful registration', async () => {
     mockedBuildRegisterPlayer.mockResolvedValue('mock-xdr');
     const onSuccess = jest.fn();
-    const mockSignAndSubmit = jest.fn().mockResolvedValue({
-      hash: 'tx-hash-123',
-      id: 'player-123',
-    });
-    setupWallet({ signAndSubmit: mockSignAndSubmit });
+    setupWallet();
     setupIPFSUpload();
 
     render(<PlayerProfileForm onSuccess={onSuccess} />);
@@ -322,7 +330,7 @@ describe('PlayerProfileForm', () => {
     expect(onSuccess).toHaveBeenCalledTimes(1);
     expect(onSuccess).toHaveBeenCalledWith(
       expect.objectContaining({
-        playerId: 'player-123',
+        playerId: MOCK_PUBLIC_KEY,
         vitals: expect.objectContaining({
           name: 'John Doe',
           age: 22,

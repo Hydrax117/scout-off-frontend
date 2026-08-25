@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { sessionId } = initSession({
+  const { sessionId } = await initSession({
     filename,
     fileType,
     fileSize,

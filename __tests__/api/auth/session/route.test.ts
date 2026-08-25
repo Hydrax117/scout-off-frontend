@@ -2,6 +2,7 @@
 import { GET } from '../../../../app/api/auth/session/route';
 import { NextRequest } from 'next/server';
 import { createSessionToken } from '@/lib/session';
+import { SessionStore } from '@/lib/sessionStore';
 
 function makeRequest(cookieHeader?: string, ip?: string): NextRequest {
   const headers: Record<string, string> = {};
@@ -13,9 +14,28 @@ function makeRequest(cookieHeader?: string, ip?: string): NextRequest {
   });
 }
 
+let sidCounter = 0;
+
+// Builds a `session=<token>` cookie header for an access token whose `sid`
+// is also registered in the session store as active — i.e. what a real
+// SEP-10 login produces. See #1179: getSessionWallet (which this route now
+// delegates to) checks the store in addition to the token's signature, so
+// a cookie with no matching store row is correctly treated the same as an
+// unsigned one by every test below that expects success.
 function accessCookie(publicKey: string, ttlSec = 20 * 60): string {
-  return `session=${createSessionToken(publicKey, 'access', ttlSec)}`;
+  const sid = `sid-${sidCounter++}`;
+  const token = createSessionToken(publicKey, 'access', ttlSec, { sid });
+  SessionStore.getInstance().create(sid, publicKey, Date.now() + 60 * 60 * 1000);
+  return `session=${token}`;
 }
+
+beforeEach(() => {
+  SessionStore.resetInstance();
+});
+
+afterEach(() => {
+  SessionStore.resetInstance();
+});
 
 describe('GET /api/auth/session', () => {
   it('returns 401 and authenticated: false when there is no session cookie', async () => {
