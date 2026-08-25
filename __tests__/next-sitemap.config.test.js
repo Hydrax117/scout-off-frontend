@@ -1,14 +1,41 @@
 /**
  * Unit tests for next-sitemap.config.js
  *
- * Ensures the sitemap config correctly excludes /admin and /api routes for all
- * configured locale prefixes. This test guards against regressions where a
- * future edit accidentally removes a critical exclusion pattern.
+ * Ensures the sitemap config correctly excludes all private, wallet-gated, and
+ * admin-only routes for every configured locale prefix. This test guards against
+ * regressions where a future edit accidentally removes a critical exclusion pattern.
  *
- * Issue #532
+ * Issue #532; updated to cover /scout/watchlist, /settings, /recovery,
+ * /academy/bulk-import, and /scout/compare added after the initial list.
  */
 
 const config = require('../next-sitemap.config');
+
+// ── Canonical list of all known private routes ───────────────────────────────
+// Update this list whenever a new wallet-gated or non-public route is added
+// under app/[locale]/. The tests below assert every entry is present in the
+// sitemap exclude array.
+//
+// ROUTES_WITH_LOCALE_VARIANTS: routes that must appear as both bare paths AND
+// with each locale prefix (e.g. /en/admin, /fr/settings …) and a /*/wildcard.
+// ROUTES_BARE_ONLY: routes excluded only at root level (no locale variants
+// currently needed — /player and /validator are template routes whose content
+// is driven by [id]; /api is a structural exclusion).
+const ROUTES_WITH_LOCALE_VARIANTS = [
+  '/admin',
+  '/scout/subscribe',
+  '/scout/watchlist',
+  '/scout/compare',
+  '/settings',
+  '/recovery',
+  '/academy/bulk-import',
+];
+
+const ROUTES_BARE_ONLY = ['/player', '/validator', '/api', '/api/*'];
+
+const PRIVATE_ROUTES = [...ROUTES_WITH_LOCALE_VARIANTS, ...ROUTES_BARE_ONLY];
+
+const LOCALES = ['en', 'fr', 'sw'];
 
 describe('next-sitemap.config.js', () => {
   it('exports a valid config object', () => {
@@ -29,40 +56,42 @@ describe('next-sitemap.config.js', () => {
       expect(Array.isArray(config.exclude)).toBe(true);
     });
 
-    it('excludes /admin route', () => {
-      const adminExclusions = config.exclude.filter((pattern) =>
-        pattern.includes('admin'),
-      );
-      expect(adminExclusions.length).toBeGreaterThan(0);
+    it('excludes every known private route at root level', () => {
+      PRIVATE_ROUTES.forEach((route) => {
+        expect(config.exclude).toContain(route);
+      });
     });
 
-    it('excludes /api routes', () => {
-      const apiExclusions = config.exclude.filter((pattern) =>
-        pattern.includes('api'),
-      );
-      expect(apiExclusions.length).toBeGreaterThan(0);
+    it('excludes every known private route for each locale prefix', () => {
+      LOCALES.forEach((locale) => {
+        ROUTES_WITH_LOCALE_VARIANTS.forEach((route) => {
+          const localised = `/${locale}${route}`;
+          expect(config.exclude).toContain(localised);
+        });
+      });
+    });
+
+    it('includes wildcard catch-all patterns for every private route that has locale variants', () => {
+      ROUTES_WITH_LOCALE_VARIANTS.forEach((route) => {
+        const wildcard = `/*${route}`;
+        expect(config.exclude).toContain(wildcard);
+      });
+    });
+
+    // ── Backward-compatible individual assertions ────────────────────────────
+
+    it('excludes /admin route', () => {
+      expect(config.exclude).toContain('/admin');
     });
 
     it('excludes admin route for all locales (en, fr, sw)', () => {
-      const locales = ['en', 'fr', 'sw'];
-      locales.forEach((locale) => {
-        const localeAdminPattern = `/${locale}/admin`;
-        const hasLocaleAdmin = config.exclude.some(
-          (pattern) => pattern === localeAdminPattern,
-        );
-        expect(hasLocaleAdmin).toBe(true);
+      LOCALES.forEach((locale) => {
+        expect(config.exclude).toContain(`/${locale}/admin`);
       });
     });
 
     it('includes wildcard pattern for any locale admin route', () => {
-      const wildcardAdminPattern = config.exclude.find(
-        (pattern) => pattern === '/*/admin',
-      );
-      expect(wildcardAdminPattern).toBeDefined();
-    });
-
-    it('excludes bare /admin route', () => {
-      expect(config.exclude).toContain('/admin');
+      expect(config.exclude).toContain('/*/admin');
     });
 
     it('excludes /api base route', () => {
@@ -71,6 +100,41 @@ describe('next-sitemap.config.js', () => {
 
     it('excludes /api/* wildcard routes', () => {
       expect(config.exclude).toContain('/api/*');
+    });
+
+    it('excludes /scout/watchlist and locale variants', () => {
+      expect(config.exclude).toContain('/scout/watchlist');
+      LOCALES.forEach((locale) => {
+        expect(config.exclude).toContain(`/${locale}/scout/watchlist`);
+      });
+    });
+
+    it('excludes /settings and locale variants', () => {
+      expect(config.exclude).toContain('/settings');
+      LOCALES.forEach((locale) => {
+        expect(config.exclude).toContain(`/${locale}/settings`);
+      });
+    });
+
+    it('excludes /recovery and locale variants', () => {
+      expect(config.exclude).toContain('/recovery');
+      LOCALES.forEach((locale) => {
+        expect(config.exclude).toContain(`/${locale}/recovery`);
+      });
+    });
+
+    it('excludes /academy/bulk-import and locale variants', () => {
+      expect(config.exclude).toContain('/academy/bulk-import');
+      LOCALES.forEach((locale) => {
+        expect(config.exclude).toContain(`/${locale}/academy/bulk-import`);
+      });
+    });
+
+    it('excludes /scout/compare and locale variants', () => {
+      expect(config.exclude).toContain('/scout/compare');
+      LOCALES.forEach((locale) => {
+        expect(config.exclude).toContain(`/${locale}/scout/compare`);
+      });
     });
   });
 
@@ -91,35 +155,39 @@ describe('next-sitemap.config.js', () => {
     });
   });
 
-  describe('regression protection', () => {
-    it('fails if admin exclusions are removed', () => {
-      const adminPatterns = [
-        '/admin',
-        '/en/admin',
-        '/fr/admin',
-        '/sw/admin',
-        '/*/admin',
-      ];
+  describe('regression protection — full expected exclude list', () => {
+    it('contains every known private route pattern (root + per-locale + wildcard)', () => {
+      // Root-level patterns
+      PRIVATE_ROUTES.forEach((route) => {
+        expect(config.exclude).toContain(route);
+      });
 
+      // Per-locale patterns (only routes that have locale variants)
+      LOCALES.forEach((locale) => {
+        ROUTES_WITH_LOCALE_VARIANTS.forEach((route) => {
+          const localised = `/${locale}${route}`;
+          expect(config.exclude).toContain(localised);
+        });
+      });
+
+      // Wildcard patterns
+      ROUTES_WITH_LOCALE_VARIANTS.forEach((route) => {
+        const wildcard = `/*${route}`;
+        expect(config.exclude).toContain(wildcard);
+      });
+    });
+
+    it('fails if admin exclusions are removed', () => {
+      const adminPatterns = ['/admin', '/en/admin', '/fr/admin', '/sw/admin', '/*/admin'];
       adminPatterns.forEach((pattern) => {
-        const exists = config.exclude.includes(pattern);
-        expect(exists).toBe(true);
+        expect(config.exclude).toContain(pattern);
       });
     });
 
     it('fails if API exclusions are removed', () => {
-      const apiPatterns = ['/api', '/api/*'];
-
-      apiPatterns.forEach((pattern) => {
-        const exists = config.exclude.includes(pattern);
-        expect(exists).toBe(true);
+      ['/api', '/api/*'].forEach((pattern) => {
+        expect(config.exclude).toContain(pattern);
       });
-    });
-
-    it('has minimum expected exclusion count', () => {
-      // At minimum: /admin, /en/admin, /fr/admin, /sw/admin, /*/admin, /api, /api/*
-      // Plus any additional exclusions like /player, /validator, /scout/subscribe
-      expect(config.exclude.length).toBeGreaterThanOrEqual(7);
     });
   });
 });
