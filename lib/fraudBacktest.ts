@@ -1,0 +1,446 @@
+import {
+  analyzeReferralAbuse,
+  analyzePayToContactAbuse,
+  DEFAULT_THRESHOLDS,
+  type FraudThresholds,
+} from './fraudDetection.ts';
+import type { ReferralCode, FraudFlag } from '@/types';
+import type { ActivityEvent } from '@/lib/api';
+import type { ReferralEntry } from './referralStore';
+
+/**
+ * Offline backtesting harness for lib/fraudDetection.ts (issue #1183).
+ *
+ * This module is intentionally side-effect free: it only ever calls the
+ * *pure* analysis functions in lib/fraudDetection.ts. It never imports
+ * lib/fraudFlagsRunner.ts (where admin-gated auto-throttling lives), never
+ * calls any network/indexer/referral backend, and never writes anywhere
+ * except an optional report file you pass explicitly. That's what makes it
+ * safe to run against real historical data without any risk of triggering a
+ * production fraud-detection side effect.
+ *
+ * Data enters either as a direct `BacktestSnapshot` (a JSON export of
+ * already-typed `ReferralCode[]` / `ActivityEvent[]`) or is loaded from a
+ * local file (the on-disk referral store, or an activity export) — no live
+ * fetch is performed in either case.
+ */
+
+export const SNAPSHOT_FILE = 'data/fraud-backtest-snapshot.json';
+const STORE_FILE = 'data/referrals.json';
+
+// ── Snapshot shape ────────────────────────────────────────────────────────────
+
+export interface BacktestSnapshot {
+  /** One referral code per historical redemption/invite. */
+  referralCodes: ReferralCode[];
+  /** Global activity feed events (player_contacted, scout_subscribed, ...). */
+  activityEvents: ActivityEvent[];
+}
+
+export interface HeuristicCount {
+  heuristic: string;
+  category: FraudFlag['category'];
+  count: number;
+  severity: Record<FraudFlag['severity'], number>;
+}
+
+export interface SweepPoint {
+  /** The threshold value tried at this point. */
+  value: number;
+  counts: HeuristicCount[];
+  totalFlags: number;
+}
+
+export interface SweepConfig {
+  /** Which heuristic this threshold governs (label only, for the report). */
+  heuristic: string;
+  /** Which FraudThresholds key to vary. */
+  thresholdKey: keyof FraudThresholds;
+  min: number;
+  max: number;
+  step: number;
+}
+
+export interface BacktestOptions {
+  /** Override any subset of thresholds for this run. */
+  thresholds?: Partial<FraudThresholds>;
+  /** Optionally sweep one threshold across a range and report counts per value. */
+  sweep?: SweepConfig;
+}
+
+export interface BacktestReport {
+  generatedAt: string;
+  /** The exact threshold set used for the main run. */
+  thresholds: FraudThresholds;
+  dataset: { referralCodes: number; activityEvents: number };
+  heuristicCounts: HeuristicCount[];
+  totalFlags: number;
+  /**
+   * Every flag produced by the main run, with full evidence. This is the
+   * per-case detail an admin uses to judge true- vs false-positives on a
+   * sample rather than relying on aggregate counts alone.
+   */
+  flaggedCases: FraudFlag[];
+  sweep?: {
+    heuristic: string;
+    thresholdKey: keyof FraudThresholds;
+    points: SweepPoint[];
+  };
+  warnings: string[];
+}
+
+// ── Threshold helpers ─────────────────────────────────────────────────────────
+
+export function mergeThresholds(
+  overrides?: Partial<FraudThresholds>,
+): FraudThresholds {
+  return { ...DEFAULT_THRESHOLDS, ...(overrides ?? {}) };
+}
+
+// ── Loading / converting historical data (offline) ─────────────────────────────
+
+/**
+ * Convert an on-disk referral-store entry (ISO strings) into the
+ * `ReferralCode` shape the heuristics expect (epoch-ms numbers). Loses no
+ * information; `null` usedBy/usedAt map to `null` as expected.
+ */
+export function referralEntryToCode(entry: ReferralEntry): ReferralCode {
+  return {
+    code: entry.code,
+    scoutWallet: entry.scoutWallet,
+    createdAt: new Date(entry.createdAt).getTime(),
+    usedBy: entry.usedBy,
+    usedAt: entry.usedAt !== null ? new Date(entry.usedAt).getTime() : null,
+  };
+}
+
+async function readJsonFile(path: string): Promise<unknown> {
+  // Dynamic import keeps this module free of a static `fs` import (which would
+  // otherwise get pulled into client bundles) and works under both the tsx
+  // ESM runner and Jest's CJS transform.
+  const { readFileSync } = await import('fs');
+  return JSON.parse(readFileSync(path, 'utf-8'));
+}
+
+/** Load referral codes from the local on-disk store (data/referrals.json). */
+export async function loadReferralSnapshotFromStore(
+  path: string = STORE_FILE,
+): Promise<ReferralCode[]> {
+  const raw = (await readJsonFile(path)) as ReferralEntry[];
+  return raw.map(referralEntryToCode);
+}
+
+/** Load an activity-event export (ActivityEvent[]) from a JSON file. */
+export async function loadActivitySnapshot(
+  path: string,
+): Promise<ActivityEvent[]> {
+  return (await readJsonFile(path)) as ActivityEvent[];
+}
+
+/** Load a combined snapshot written by `writeSnapshot` / `--generate-sample`. */
+export async function loadSnapshot(
+  path: string = SNAPSHOT_FILE,
+): Promise<BacktestSnapshot> {
+  const raw = (await readJsonFile(path)) as Partial<BacktestSnapshot>;
+  if (
+    !Array.isArray(raw.referralCodes) ||
+    !Array.isArray(raw.activityEvents)
+  ) {
+    throw new Error(
+      `Snapshot at ${path} must contain "referralCodes" and "activityEvents" arrays.`,
+    );
+  }
+  return {
+    referralCodes: raw.referralCodes,
+    activityEvents: raw.activityEvents,
+  };
+}
+
+/** Persist a snapshot to disk (used by `--generate-sample`). */
+export async function writeSnapshot(
+  snapshot: BacktestSnapshot,
+  path: string = SNAPSHOT_FILE,
+): Promise<void> {
+  const { writeFileSync } = await import('fs');
+  const { dirname } = await import('path');
+  const dir = dirname(path);
+  if (dir && dir !== '.') {
+    // mkdirSync from fs is synchronous; import lazily to avoid static fs dep.
+    const { mkdirSync } = await import('fs');
+    mkdirSync(dir, { recursive: true });
+  }
+  writeFileSync(path, JSON.stringify(snapshot, null, 2), 'utf-8');
+}
+
+// ── Sample data (synthetic, for offline demos / tests) ─────────────────────────
+
+const SAMPLE_BASE_MS = Date.UTC(2024, 0, 1, 12, 0, 0);
+
+/**
+ * Build a synthetic but realistic historical window that exercises every
+ * heuristic in both directions (clear hits + clean noise) so the harness can
+ * be run with zero external data. Clearly synthetic — never write this over a
+ * real production export.
+ */
+export function generateSampleSnapshot(): BacktestSnapshot {
+  const referralCodes: ReferralCode[] = [];
+  const activityEvents: ActivityEvent[] = [];
+
+  // 1) self_redemption: code generated and redeemed by the same wallet.
+  referralCodes.push({
+    code: 'S-SELF',
+    scoutWallet: 'GSAME',
+    createdAt: SAMPLE_BASE_MS,
+    usedBy: 'GSAME',
+    usedAt: SAMPLE_BASE_MS + 5_000,
+  });
+
+  // 2) fast_redemption_pattern: 4 redemptions, all within 1 minute.
+  for (let i = 0; i < 4; i++) {
+    referralCodes.push({
+      code: `S-FAST-${i}`,
+      scoutWallet: 'GFAST',
+      createdAt: SAMPLE_BASE_MS + i * 60_000,
+      usedBy: `GRED${i}`,
+      usedAt: SAMPLE_BASE_MS + i * 60_000 + 30_000,
+    });
+  }
+
+  // 3) concentrated_redeemer: 6 redemptions, 5 from one wallet. Deliberately
+  //    NOT "fast" (redeemed ~1 day later) so this only trips concentrated_redeemer,
+  //    keeping the sample dataset to exactly one flag per heuristic.
+  for (let i = 0; i < 6; i++) {
+    const created = SAMPLE_BASE_MS + i * 3_600_000;
+    referralCodes.push({
+      code: `S-CONC-${i}`,
+      scoutWallet: 'GCONC',
+      createdAt: created,
+      usedBy: i < 5 ? 'GBULK' : `GOTHER${i}`,
+      usedAt: created + 86_400_000,
+    });
+  }
+
+  // 4) cross_scout_redeemer_ring: one redeemer across 5 distinct scouts.
+  for (let i = 0; i < 5; i++) {
+    referralCodes.push({
+      code: `S-RING-${i}`,
+      scoutWallet: `GRING-SCOUT${i}`,
+      createdAt: SAMPLE_BASE_MS + i * 86_400_000,
+      usedBy: 'GRING',
+      usedAt: SAMPLE_BASE_MS + i * 86_400_000 + 60_000,
+    });
+  }
+
+  // 5) rapid_contact_burst: 10 contacts within 10 minutes.
+  for (let i = 0; i < 10; i++) {
+    activityEvents.push({
+      id: `c-${i}`,
+      type: 'player_contacted',
+      timestamp: Math.floor((SAMPLE_BASE_MS + i * 30_000) / 1000),
+      actor: 'GBURST',
+    });
+  }
+
+  // 6) subscription_cycling: 4 subscriptions, only 2 contacts total.
+  for (let i = 0; i < 4; i++) {
+    activityEvents.push({
+      id: `s-${i}`,
+      type: 'scout_subscribed',
+      timestamp: Math.floor((SAMPLE_BASE_MS + i * 14 * 86_400_000) / 1000),
+      actor: 'GCYCLE',
+    });
+  }
+  activityEvents.push(
+    { id: 'cc-1', type: 'player_contacted', timestamp: Math.floor((SAMPLE_BASE_MS + 1) / 1000), actor: 'GCYCLE' },
+    { id: 'cc-2', type: 'player_contacted', timestamp: Math.floor((SAMPLE_BASE_MS + 2) / 1000), actor: 'GCYCLE' },
+  );
+
+  // Clean noise so "no flag" cases are also represented.
+  for (let i = 0; i < 10; i++) {
+    referralCodes.push({
+      code: `S-CLEAN-${i}`,
+      scoutWallet: `GCLEAN${i}`,
+      createdAt: SAMPLE_BASE_MS + i * 86_400_000,
+      usedBy: `GUSER${i}`,
+      usedAt: SAMPLE_BASE_MS + i * 86_400_000 + 7 * 86_400_000,
+    });
+    activityEvents.push({
+      id: `clean-c-${i}`,
+      type: 'player_contacted',
+      timestamp: Math.floor((SAMPLE_BASE_MS + i * 86_400_000) / 1000),
+      actor: `GCLEAN${i}`,
+    });
+  }
+
+  return { referralCodes, activityEvents };
+}
+
+// ── Analysis / reporting ───────────────────────────────────────────────────────
+
+function summarizeFlags(flags: FraudFlag[]): {
+  heuristicCounts: HeuristicCount[];
+  totalFlags: number;
+} {
+  const byHeuristic = new Map<string, HeuristicCount>();
+  for (const f of flags) {
+    let entry = byHeuristic.get(f.heuristic);
+    if (!entry) {
+      entry = {
+        heuristic: f.heuristic,
+        category: f.category,
+        count: 0,
+        severity: { low: 0, medium: 0, high: 0 },
+      };
+      byHeuristic.set(f.heuristic, entry);
+    }
+    entry.count += 1;
+    entry.severity[f.severity] += 1;
+  }
+  const heuristicCounts = Array.from(byHeuristic.values()).sort((a, b) =>
+    a.heuristic.localeCompare(b.heuristic),
+  );
+  return { heuristicCounts, totalFlags: flags.length };
+}
+
+/**
+ * Replay a historical snapshot through the heuristics at the given (or default)
+ * thresholds and produce a full report: per-heuristic counts, severity
+ * distribution, every individual flagged case (for manual review), and an
+ * optional threshold sweep.
+ */
+export function runBacktest(
+  snapshot: BacktestSnapshot,
+  options: BacktestOptions = {},
+): BacktestReport {
+  const warnings: string[] = [];
+  const thresholds = mergeThresholds(options.thresholds);
+
+  const referralFlags = analyzeReferralAbuse(snapshot.referralCodes, thresholds);
+  const payToContactFlags = analyzePayToContactAbuse(
+    snapshot.activityEvents,
+    thresholds,
+  );
+  const flags = [...referralFlags, ...payToContactFlags].sort((a, b) => {
+    const rank = { high: 0, medium: 1, low: 2 } as const;
+    return rank[a.severity] - rank[b.severity];
+  });
+
+  const { heuristicCounts, totalFlags } = summarizeFlags(flags);
+
+  const report: BacktestReport = {
+    generatedAt: new Date().toISOString(),
+    thresholds,
+    dataset: {
+      referralCodes: snapshot.referralCodes.length,
+      activityEvents: snapshot.activityEvents.length,
+    },
+    heuristicCounts,
+    totalFlags,
+    flaggedCases: flags,
+    warnings,
+  };
+
+  if (options.sweep) {
+    const { heuristic, thresholdKey, min, max, step } = options.sweep;
+    const points: SweepPoint[] = [];
+
+    // Index-based loop to avoid floating-point drift in the stop condition.
+    const steps = Math.max(1, Math.round((max - min) / step) + 1);
+    for (let i = 0; i < steps; i++) {
+      const value = Number((min + i * step).toFixed(6));
+      const t = { ...thresholds, [thresholdKey]: value };
+      const sweepFlags = [
+        ...analyzeReferralAbuse(snapshot.referralCodes, t),
+        ...analyzePayToContactAbuse(snapshot.activityEvents, t),
+      ];
+      const summary = summarizeFlags(sweepFlags);
+      points.push({
+        value,
+        counts: summary.heuristicCounts,
+        totalFlags: summary.totalFlags,
+      });
+      if (value >= max) break;
+    }
+
+    report.sweep = { heuristic, thresholdKey, points };
+  }
+
+  return report;
+}
+
+// ── Formatting ─────────────────────────────────────────────────────────────────
+
+export type ReportFormat = 'text' | 'json';
+
+function formatText(report: BacktestReport): string {
+  const lines: string[] = [];
+  lines.push('Fraud-detection backtest report');
+  lines.push(`Generated: ${report.generatedAt}`);
+  lines.push(
+    `Dataset: ${report.dataset.referralCodes} referral codes, ${report.dataset.activityEvents} activity events`,
+  );
+  lines.push('');
+  lines.push('Thresholds used:');
+  for (const [k, v] of Object.entries(report.thresholds)) {
+    lines.push(`  ${k} = ${v}`);
+  }
+  lines.push('');
+  lines.push(`Total flags: ${report.totalFlags}`);
+  lines.push('');
+  lines.push('Flags per heuristic (high/medium/low):');
+  if (report.heuristicCounts.length === 0) {
+    lines.push('  (none)');
+  }
+  for (const h of report.heuristicCounts) {
+    lines.push(
+      `  ${h.heuristic.padEnd(28)} ${String(h.count).padStart(3)}  (${h.severity.high}/${h.severity.medium}/${h.severity.low})`,
+    );
+  }
+
+  if (report.sweep) {
+    const s = report.sweep;
+    lines.push('');
+    lines.push(
+      `Threshold sweep: ${s.heuristic} / ${String(s.thresholdKey)} (total flags per value)`,
+    );
+    for (const p of s.points) {
+      lines.push(`  ${String(s.thresholdKey)} = ${p.value}  ->  ${p.totalFlags} flags`);
+    }
+  }
+
+  lines.push('');
+  lines.push(`Flagged cases for manual review (${report.flaggedCases.length}):`);
+  for (const f of report.flaggedCases) {
+    lines.push('');
+    lines.push(`  [${f.severity}] ${f.heuristic} (${f.category})`);
+    lines.push(`    id: ${f.id}`);
+    lines.push(`    wallets: ${f.wallets.join(', ')}`);
+    lines.push(`    ${f.reason}`);
+    lines.push(`    evidence: ${JSON.stringify(f.evidence)}`);
+  }
+
+  if (report.warnings.length) {
+    lines.push('');
+    lines.push('Warnings:');
+    for (const w of report.warnings) lines.push(`  - ${w}`);
+  }
+
+  return lines.join('\n');
+}
+
+export function formatReport(
+  report: BacktestReport,
+  format: ReportFormat = 'text',
+): string {
+  if (format === 'json') return JSON.stringify(report, null, 2);
+  return formatText(report);
+}
+
+/** Write a report to disk (only when explicitly asked via --out). */
+export async function saveReport(content: string, path: string): Promise<void> {
+  const { writeFileSync, mkdirSync } = await import('fs');
+  const { dirname } = await import('path');
+  const dir = dirname(path);
+  if (dir && dir !== '.') mkdirSync(dir, { recursive: true });
+  writeFileSync(path, content, 'utf-8');
+}
