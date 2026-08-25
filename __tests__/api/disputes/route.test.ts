@@ -3,6 +3,18 @@ import { GET, POST } from '@/app/api/disputes/route';
 import { NextRequest } from 'next/server';
 import { MilestoneDisputeStore } from '@/lib/milestoneDisputeStore';
 import { createSessionToken } from '@/lib/session';
+import { getPlayer, getMilestoneHistory } from '@/lib/contract';
+import type { Milestone, Player } from '@/types';
+
+jest.mock('@/lib/contract', () => ({
+  getPlayer: jest.fn(),
+  getMilestoneHistory: jest.fn(),
+}));
+
+const mockGetPlayer = getPlayer as jest.MockedFunction<typeof getPlayer>;
+const mockGetMilestoneHistory = getMilestoneHistory as jest.MockedFunction<
+  typeof getMilestoneHistory
+>;
 
 const ADMIN = 'GADMIN0000000000000000000000000000000000000000000000000';
 const SCOUT = 'GSCOUT0000000000000000000000000000000000000000000000000';
@@ -24,9 +36,39 @@ function makeRequest(
   });
 }
 
+const mockPlayer: Player = {
+  id: 'p1',
+  wallet: SCOUT,
+  vitals: {
+    name: 'Player One',
+    age: 20,
+    position: 'Midfielder',
+    region: 'Europe',
+    nationality: 'DE',
+  },
+  ipfsHash: 'ipfs_test',
+  progressLevel: 2,
+  milestones: [],
+  createdAt: 1700000000,
+};
+
+const mockMilestones: Milestone[] = [
+  {
+    id: 'm1',
+    description: 'Real on-chain description',
+    evidenceHash: 'evidence_1',
+    validator: ADMIN,
+    timestamp: 1700000100,
+  },
+];
+
 beforeEach(() => {
   process.env.NEXT_PUBLIC_ADMIN_ADDRESS = ADMIN;
   MilestoneDisputeStore.resetInstance();
+  jest.clearAllMocks();
+
+  mockGetPlayer.mockResolvedValue(mockPlayer);
+  mockGetMilestoneHistory.mockResolvedValue(mockMilestones);
 });
 
 afterEach(() => {
@@ -205,7 +247,50 @@ describe('POST /api/disputes', () => {
     expect(res.status).toBe(400);
   });
 
-  it('creates a dispute and returns it with 201', async () => {
+  it('returns 404 when player does not exist', async () => {
+    mockGetPlayer.mockResolvedValue(null as unknown as Player);
+
+    const res = await POST(
+      makeRequest('http://localhost/api/disputes', {
+        method: 'POST',
+        cookie: SCOUT,
+        body: {
+          playerId: 'unknown_player',
+          milestoneId: 'm1',
+          reason: 'this is a valid reason',
+        },
+      }),
+    );
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toMatch(/player not found/i);
+  });
+
+  it('returns 404 when getPlayer throws player not found', async () => {
+    mockGetPlayer.mockRejectedValue(new Error('Player not found'));
+
+    const res = await POST(
+      makeRequest('http://localhost/api/disputes', {
+        method: 'POST',
+        cookie: SCOUT,
+        body: {
+          playerId: 'unknown_player',
+          milestoneId: 'm1',
+          reason: 'this is a valid reason',
+        },
+      }),
+    );
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toMatch(/player not found/i);
+  });
+
+  it('returns 403 when session wallet does not match the player record wallet', async () => {
+    mockGetPlayer.mockResolvedValue({
+      ...mockPlayer,
+      wallet: OTHER,
+    });
+
     const res = await POST(
       makeRequest('http://localhost/api/disputes', {
         method: 'POST',
@@ -213,7 +298,51 @@ describe('POST /api/disputes', () => {
         body: {
           playerId: 'p1',
           milestoneId: 'm1',
-          milestoneDescription: 'desc',
+          reason: 'trying to dispute another player',
+        },
+      }),
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toMatch(/forbidden/i);
+  });
+
+  it('returns 404 when milestoneId is not in player milestone history', async () => {
+    mockGetMilestoneHistory.mockResolvedValue([
+      {
+        id: 'different_milestone',
+        description: 'Other description',
+        evidenceHash: 'ev_other',
+        validator: ADMIN,
+        timestamp: 1700000200,
+      },
+    ]);
+
+    const res = await POST(
+      makeRequest('http://localhost/api/disputes', {
+        method: 'POST',
+        cookie: SCOUT,
+        body: {
+          playerId: 'p1',
+          milestoneId: 'non_existent_milestone',
+          reason: 'this is a valid reason',
+        },
+      }),
+    );
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toMatch(/milestone non_existent_milestone not found/i);
+  });
+
+  it('creates a dispute with the authentic on-chain description even if client supplies forged description', async () => {
+    const res = await POST(
+      makeRequest('http://localhost/api/disputes', {
+        method: 'POST',
+        cookie: SCOUT,
+        body: {
+          playerId: 'p1',
+          milestoneId: 'm1',
+          milestoneDescription: 'Client supplied forged description',
           reason: 'this is a valid reason',
         },
       }),
@@ -224,6 +353,30 @@ describe('POST /api/disputes', () => {
       playerId: 'p1',
       playerWallet: SCOUT,
       milestoneId: 'm1',
+      milestoneDescription: 'Real on-chain description',
+      status: 'pending',
+    });
+  });
+
+  it('creates a dispute and returns it with 201 for valid player and milestone', async () => {
+    const res = await POST(
+      makeRequest('http://localhost/api/disputes', {
+        method: 'POST',
+        cookie: SCOUT,
+        body: {
+          playerId: 'p1',
+          milestoneId: 'm1',
+          reason: 'this is a valid reason for my milestone',
+        },
+      }),
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      playerId: 'p1',
+      playerWallet: SCOUT,
+      milestoneId: 'm1',
+      milestoneDescription: 'Real on-chain description',
       status: 'pending',
     });
   });
@@ -233,7 +386,7 @@ describe('POST /api/disputes', () => {
       playerId: 'p1',
       playerWallet: SCOUT,
       milestoneId: 'm1',
-      milestoneDescription: 'desc',
+      milestoneDescription: 'Real on-chain description',
       reason: 'this is a valid reason',
     });
 
@@ -244,7 +397,6 @@ describe('POST /api/disputes', () => {
         body: {
           playerId: 'p1',
           milestoneId: 'm1',
-          milestoneDescription: 'desc',
           reason: 'another valid reason here',
         },
       }),
@@ -264,7 +416,6 @@ describe('POST /api/disputes', () => {
         body: {
           playerId: 'p1',
           milestoneId: 'm1',
-          milestoneDescription: 'desc',
           reason: 'this is a valid reason',
         },
       }),

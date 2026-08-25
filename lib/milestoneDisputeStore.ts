@@ -93,6 +93,18 @@ export class DuplicateDisputeError extends Error {
   }
 }
 
+/** Thrown when a disputed milestone is not found in the player's on-chain history. */
+export class MilestoneNotFoundError extends Error {
+  constructor(milestoneId: string, playerId?: string) {
+    super(
+      playerId
+        ? `Milestone ${milestoneId} not found for player ${playerId}`
+        : `Milestone ${milestoneId} not found`,
+    );
+    this.name = 'MilestoneNotFoundError';
+  }
+}
+
 export class MilestoneDisputeStore {
   private static _instance: MilestoneDisputeStore | null = null;
 
