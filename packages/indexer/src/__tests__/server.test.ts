@@ -14,12 +14,19 @@ import type { DecodedEvent } from '../eventPoller';
 // Import server after mocking so it uses our module state
 import { server } from '../server';
 
+// Distinct default eventId per call (see eventStore.test.ts for why) so
+// unrelated tests inserting several events don't collide on the unique
+// event_id index.
+let eventIdSeq = 0;
+
 function makeDecoded(overrides: Partial<DecodedEvent> = {}): DecodedEvent {
+  eventIdSeq += 1;
   return {
     type: 'milestone_approved',
     ledger: 100,
     timestamp: 1_700_000_000,
     data: { player_id: 'player-1', milestone_id: 'm1', validator: 'GVAL' },
+    eventId: `test-event-${eventIdSeq}`,
     ...overrides,
   };
 }
