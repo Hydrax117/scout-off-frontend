@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { SorobanRpc, Networks, xdr, scValToNative } from '@stellar/stellar-sdk';
 import { IndexerMetrics, type EventType } from './metrics/IndexerMetrics';
 import { updateLastLedger, updateNetworkLedger } from './ledgerTracker';
@@ -77,6 +78,16 @@ export interface RawEvent {
   ledgerClosedAt: string;
   topic: xdr.ScVal[];
   value: xdr.ScVal;
+  /**
+   * Soroban RPC's own globally-unique id for this event (conventionally
+   * `<ledgerSeq>-<eventIndexInLedger>`), when the node/SDK response
+   * includes one. Preferred over the content hash fallback in
+   * `decodeEvent` when present, since it's authoritative rather than
+   * derived. Optional because it isn't part of the minimal `RpcClient`
+   * contract this module was written against (see the ASSUMPTION note on
+   * `decodeEvent`) and test mocks may omit it.
+   */
+  id?: string;
 }
 
 export interface DecodedEvent {
@@ -84,6 +95,15 @@ export interface DecodedEvent {
   ledger: number;
   timestamp: number;
   data: Record<string, unknown>;
+  /**
+   * Stable, content-derived identifier for the underlying on-chain event —
+   * NOT a timestamp-of-observation. Two `decodeEvent` calls over the same
+   * raw event (e.g. because a poll cycle re-fetched an already-processed
+   * ledger range) always produce the same `eventId`, which
+   * `EventStore.insertEvent` uses to make ingestion idempotent (issue
+   * #1180: exactly-once notification delivery). See `computeEventId`.
+   */
+  eventId: string;
 }
 
 export function createRpcClient(config: PollerConfig): RpcClient {
@@ -132,7 +152,44 @@ export function decodeEvent(raw: RawEvent): DecodedEvent {
     ledger: raw.ledger,
     timestamp,
     data: { ...payload, ledger: raw.ledger, timestamp },
+    eventId: computeEventId(name, raw),
   };
+}
+
+/**
+ * Derives a stable, content-based identifier for a raw event — the fix for
+ * issue #1180 (no exactly-once guarantee across overlapping poll cycles).
+ *
+ * The poller's cursor (`ledgerTracker`/`startEventPolling`'s local `cursor`
+ * variable) lives only in process memory, so a restart, a misconfigured
+ * `START_LEDGER`, or two poller instances running concurrently can all
+ * cause the same ledger range to be fetched from Soroban RPC more than
+ * once. Without a stable id, each re-fetch of the same on-chain event would
+ * turn into a brand-new `events` row (a fresh AUTOINCREMENT id), which is
+ * exactly the duplicate-notification bug the issue describes.
+ *
+ * Preference order:
+ *  1. `raw.id` — Soroban RPC's own globally-unique per-event id, when the
+ *     node/SDK response includes one. Authoritative: two fetches of the
+ *     same on-chain event always report the same id.
+ *  2. A SHA-256 digest of the event's ledger + topic + value (all
+ *     deterministic, content-derived fields — never a fetch/observation
+ *     timestamp). Re-fetching the same raw event yields byte-identical
+ *     XDR for `topic`/`value`, so the digest — and therefore `eventId` —
+ *     is identical across polls. This is the fallback used by every
+ *     existing test mock, which doesn't set `raw.id`.
+ */
+function computeEventId(name: EventType, raw: RawEvent): string {
+  if (raw.id) {
+    return `${name}:${raw.id}`;
+  }
+  const topicKey = raw.topic.map((t) => t.toXDR('base64')).join('|');
+  const valueKey = raw.value ? raw.value.toXDR('base64') : '';
+  const digest = createHash('sha256')
+    .update(`${raw.ledger}:${topicKey}:${valueKey}`)
+    .digest('hex')
+    .slice(0, 24);
+  return `${name}:${raw.ledger}:${digest}`;
 }
 
 /**

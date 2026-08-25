@@ -39,12 +39,27 @@ CREATE TABLE IF NOT EXISTS events (
   ledger INTEGER NOT NULL,
   timestamp INTEGER NOT NULL,
   data TEXT NOT NULL,
+  event_id TEXT,
   inserted_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_events_player_ledger ON events(player_id, ledger DESC);
 CREATE INDEX IF NOT EXISTS idx_events_type_ledger ON events(event_type, ledger DESC);
 CREATE INDEX IF NOT EXISTS idx_events_validator ON events(validator, ledger DESC);
 CREATE INDEX IF NOT EXISTS idx_events_ledger ON events(ledger DESC);
+`;
+
+/**
+ * Unique index enforcing exactly-once ingestion (issue #1180): `event_id`
+ * is the content-derived id `eventPoller.decodeEvent` computes per raw
+ * on-chain event (see `computeEventId`), so the same event observed across
+ * two overlapping poll cycles collides on this index instead of becoming a
+ * second row. A plain `UNIQUE` index still allows any number of `NULL`
+ * `event_id` values (SQLite never treats `NULL = NULL`), which keeps this
+ * safe to add against a pre-existing `events` table via the migration
+ * below, whose already-ingested rows predate the column.
+ */
+const UNIQUE_EVENT_ID_INDEX = `
+CREATE UNIQUE INDEX IF NOT EXISTS idx_events_event_id ON events(event_id);
 `;
 
 export interface EventRecord {
@@ -56,6 +71,8 @@ export interface EventRecord {
   ledger: number;
   timestamp: number;
   data: Record<string, unknown>;
+  /** The content-derived id `insertEvent` deduplicates on; null for rows written before this column existed. */
+  eventId: string | null;
 }
 
 export interface QueryFilter {
@@ -86,6 +103,7 @@ interface EventRow {
   ledger: number;
   timestamp: number;
   data: string;
+  event_id: string | null;
 }
 
 function rowToRecord(row: EventRow): EventRecord {
@@ -98,6 +116,7 @@ function rowToRecord(row: EventRow): EventRecord {
     ledger: row.ledger,
     timestamp: row.timestamp,
     data: JSON.parse(row.data),
+    eventId: row.event_id,
   };
 }
 
@@ -124,6 +143,24 @@ export class EventStore {
       this.db.pragma('journal_mode = WAL');
     }
     this.db.exec(SCHEMA);
+    this.migrateEventIdColumn();
+    this.db.exec(UNIQUE_EVENT_ID_INDEX);
+  }
+
+  /**
+   * Adds `event_id` to a pre-existing `events` table that predates it.
+   * `CREATE TABLE IF NOT EXISTS` in SCHEMA is a no-op against an existing
+   * table, so a DB file created before this migration would otherwise be
+   * missing the column the unique index below depends on.
+   */
+  private migrateEventIdColumn(): void {
+    const columns = this.db.prepare('PRAGMA table_info(events)').all() as {
+      name: string;
+    }[];
+    const hasEventId = columns.some((c) => c.name === 'event_id');
+    if (!hasEventId) {
+      this.db.exec('ALTER TABLE events ADD COLUMN event_id TEXT');
+    }
   }
 
   /**
@@ -150,12 +187,28 @@ export class EventStore {
     EventStore._instance = null;
   }
 
-  /** Persists one decoded event. Called from the poll loop after a successful decode. */
-  insertEvent(decoded: DecodedEvent): void {
-    this.db
+  /**
+   * Persists one decoded event. Called from the poll loop after a
+   * successful decode.
+   *
+   * Idempotent on `decoded.eventId` (issue #1180): `INSERT OR IGNORE`
+   * against the unique index on `event_id` means re-inserting an event
+   * already seen in an earlier poll cycle — the "overlapping polling
+   * windows" scenario from the issue — is a silent no-op rather than a
+   * second row with a new AUTOINCREMENT id. That's what gives every
+   * consumer of this table (deriveNotifications in the frontend, in
+   * particular) an exactly-once guarantee for free: the same on-chain
+   * event can never end up with two different row ids to be notified
+   * about.
+   *
+   * Returns whether a new row was actually written, so callers can tell a
+   * genuinely new event apart from a duplicate re-poll.
+   */
+  insertEvent(decoded: DecodedEvent): boolean {
+    const result = this.db
       .prepare(
-        `INSERT INTO events (event_type, player_id, scout, validator, ledger, timestamp, data, inserted_at)
-         VALUES (@event_type, @player_id, @scout, @validator, @ledger, @timestamp, @data, @inserted_at)`,
+        `INSERT OR IGNORE INTO events (event_type, player_id, scout, validator, ledger, timestamp, data, event_id, inserted_at)
+         VALUES (@event_type, @player_id, @scout, @validator, @ledger, @timestamp, @data, @event_id, @inserted_at)`,
       )
       .run({
         event_type: decoded.type,
@@ -165,8 +218,10 @@ export class EventStore {
         ledger: decoded.ledger,
         timestamp: decoded.timestamp,
         data: JSON.stringify(decoded.data),
+        event_id: decoded.eventId,
         inserted_at: Date.now(),
       });
+    return result.changes > 0;
   }
 
   /** General event query, optionally filtered by type and/or player. */

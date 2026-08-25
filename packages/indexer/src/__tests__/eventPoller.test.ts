@@ -110,6 +110,52 @@ describe('decodeEvent', () => {
     const raw = makeRawEvent('some_future_event', { x: 1 });
     expect(() => decodeEvent(raw)).toThrow(/unrecognized event type/i);
   });
+
+  // ── eventId (issue #1180: exactly-once notification delivery) ──────────
+
+  it('derives the same eventId when the same raw event is decoded twice', () => {
+    const raw = makeRawEvent(
+      'milestone_approved',
+      { player_id: 'p1', milestone_id: 'm1' },
+      { ledger: 555 },
+    );
+
+    const first = decodeEvent(raw);
+    const second = decodeEvent(raw);
+
+    expect(second.eventId).toBe(first.eventId);
+    // Not derived from wall-clock observation time.
+    expect(first.eventId).not.toMatch(/^\d{13}$/);
+  });
+
+  it('derives different eventIds for events with different content', () => {
+    const a = decodeEvent(
+      makeRawEvent(
+        'milestone_approved',
+        { player_id: 'p1', milestone_id: 'm1' },
+        { ledger: 555 },
+      ),
+    );
+    const b = decodeEvent(
+      makeRawEvent(
+        'milestone_approved',
+        { player_id: 'p2', milestone_id: 'm2' },
+        { ledger: 555 },
+      ),
+    );
+
+    expect(a.eventId).not.toBe(b.eventId);
+  });
+
+  it('prefers the RPC-reported id over the content hash when present', () => {
+    const raw = makeRawEvent(
+      'milestone_approved',
+      { player_id: 'p1', milestone_id: 'm1' },
+      { ledger: 555, id: '555-2' },
+    );
+
+    expect(decodeEvent(raw).eventId).toBe('milestone_approved:555-2');
+  });
 });
 
 // ── pollOnce ──────────────────────────────────────────────────────────────────
@@ -241,6 +287,37 @@ describe('pollOnce', () => {
     expect(recordFailureSpy).toHaveBeenCalled();
     expect(nextCursor).toBe(42);
     expect(rpc.getEvents).not.toHaveBeenCalled();
+  });
+
+  // ── Exactly-once ingestion across overlapping poll cycles (issue #1180) ──
+
+  it('persists exactly one event when the same source event is fetched across two overlapping poll cycles', async () => {
+    // Same raw event returned by both cycles — simulating the scenario
+    // from the issue where the same on-chain event is visible across two
+    // overlapping polling windows (e.g. the in-memory cursor resetting on
+    // a process restart, or two poller instances briefly covering the
+    // same ledger range).
+    const raw = makeRawEvent(
+      'milestone_approved',
+      { player_id: 'p1', milestone_id: 'm1', validator: 'GVAL' },
+      { ledger: 4200 },
+    );
+    const rpc: jest.Mocked<RpcClient> = {
+      getLatestLedger: jest.fn().mockResolvedValue({ sequence: 4200 }),
+      getEvents: jest
+        .fn()
+        .mockResolvedValue({ latestLedger: 4200, events: [raw] }),
+    };
+    const metrics = IndexerMetrics.getInstance();
+
+    // Two independent poll cycles, both starting from the same cursor —
+    // the overlapping-window scenario.
+    await pollOnce(baseConfig(), rpc, metrics, 4100, store);
+    await pollOnce(baseConfig(), rpc, metrics, 4100, store);
+
+    const { events } = store.getEvents({ type: 'milestone_approved' });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ playerId: 'p1', ledger: 4200 });
   });
 
   it('records an RPC-level failure when getEvents itself rejects', async () => {

@@ -4,14 +4,22 @@
 import { EventStore } from '../eventStore';
 import type { DecodedEvent } from '../../eventPoller';
 
+// Each call defaults to a distinct eventId (a real decodeEvent output would
+// vary by content) so that unrelated tests inserting several events don't
+// collide on the new unique event_id index by accident. Tests that
+// specifically exercise dedup pass a matching eventId explicitly.
+let eventIdSeq = 0;
+
 function makeDecoded(
   overrides: Partial<DecodedEvent> & { data?: Record<string, unknown> } = {},
 ): DecodedEvent {
+  eventIdSeq += 1;
   return {
     type: 'milestone_approved',
     ledger: 100,
     timestamp: 1_700_000_000,
     data: { player_id: 'player-1', milestone_id: 'm1', validator: 'GVAL' },
+    eventId: `test-event-${eventIdSeq}`,
     ...overrides,
   };
 }
@@ -114,5 +122,33 @@ describe('EventStore', () => {
     // must never touch the filesystem, so tests (and any ephemeral deployment) stay isolated.
     expect(() => store.insertEvent(makeDecoded())).not.toThrow();
     expect(store.getEvents().events).toHaveLength(1);
+  });
+
+  // ── Exactly-once ingestion (issue #1180) ───────────────────────────────
+
+  it('ignores a second insertEvent call carrying the same eventId, instead of creating a duplicate row', () => {
+    const first = makeDecoded({
+      eventId: 'milestone_approved:4200:abc123',
+      ledger: 4200,
+    });
+    // Same eventId as `first` — simulates the same on-chain event being
+    // re-decoded after an overlapping poll cycle (e.g. a poller restart or
+    // two poller instances covering the same ledger range). Only the
+    // ledger differs, which would normally look like a distinct row if
+    // insertion weren't keyed on eventId.
+    const duplicate = makeDecoded({
+      eventId: 'milestone_approved:4200:abc123',
+      ledger: 4201,
+    });
+
+    const insertedFirst = store.insertEvent(first);
+    const insertedDuplicate = store.insertEvent(duplicate);
+
+    expect(insertedFirst).toBe(true);
+    expect(insertedDuplicate).toBe(false);
+
+    const { events } = store.getEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0].ledger).toBe(4200);
   });
 });
