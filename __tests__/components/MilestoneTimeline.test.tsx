@@ -172,6 +172,49 @@ describe('MilestoneTimeline — milestone information accuracy', () => {
   });
 });
 
+describe('MilestoneTimeline — badge tooltip (issue #1129)', () => {
+  it('shows a tooltip with the full validator address on hover over a completed badge', () => {
+    render(<MilestoneTimeline milestones={MS} currentLevel={2} />);
+    // The badge for level 1 (Verified Identity) should have a tooltip trigger.
+    // We hover the badge text inside the aria-hidden visual block.
+    const badge = screen.getByText('Verified Identity');
+    fireEvent.mouseEnter(badge);
+    const tooltip = screen.getByRole('tooltip');
+    // Should contain the full (un-truncated) validator address for m1.
+    expect(tooltip.textContent).toContain(
+      'GABCDEFGHIJKLMNOPQRSTUVWXYZ12345678901234567890123456',
+    );
+  });
+
+  it('includes the formatted approval date in the badge tooltip', () => {
+    render(<MilestoneTimeline milestones={MS} currentLevel={2} />);
+    const badge = screen.getByText('Verified Identity');
+    fireEvent.mouseEnter(badge);
+    const tooltip = screen.getByRole('tooltip');
+    // The date for timestamp 1_700_000_000 should appear somewhere.
+    expect(tooltip.textContent).toMatch(/Approved:/);
+  });
+
+  it('hides the badge tooltip on mouse leave', () => {
+    render(<MilestoneTimeline milestones={MS} currentLevel={2} />);
+    const badge = screen.getByText('Verified Identity');
+    fireEvent.mouseEnter(badge);
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+    fireEvent.mouseLeave(badge);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('does not attach a tooltip to a badge for a level with no milestone data', () => {
+    // With currentLevel=0 and no milestones, level 1-3 badges have no milestone.
+    // Level 0 (Unverified) is completed but has no milestone record by design.
+    render(<MilestoneTimeline milestones={[]} currentLevel={0} />);
+    const verifiedBadge = screen.getByText('Verified Identity');
+    fireEvent.mouseEnter(verifiedBadge);
+    // No tooltip should appear because there is no milestone for this level.
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+});
+
 describe('MilestoneTimeline — dispute flow (issue #562)', () => {
   function makeDispute(overrides: Partial<MilestoneDispute>): MilestoneDispute {
     return {
