@@ -2,6 +2,7 @@
 import { useState, useCallback } from 'react';
 import useSWR, { mutate as globalMutate } from 'swr';
 import { useWallet } from '@/hooks/useWallet';
+import { useSubmissionGuard } from '@/hooks/useSubmissionGuard';
 import {
   getSubscription,
   subscribe as contractSubscribe,
@@ -56,23 +57,33 @@ export function useSubscription() {
     },
   );
 
+  const submitGuarded = useSubmissionGuard<void>();
+
+  // Wraps the entire build/sign/submit attempt in useSubmissionGuard's
+  // in-flight mutex (issue #1177) — a fast double-click or any re-invocation
+  // of subscribe() while one is already pending returns the SAME in-flight
+  // promise instead of building/signing/submitting a second subscribe
+  // transaction. See docs/payment-idempotency.md for what this does and
+  // doesn't guarantee.
   const subscribe = useCallback(
-    async (tier: SubscriptionTier) => {
-      if (!publicKey) throw new Error('Wallet not connected');
-      setWriteLoading(true);
-      setWriteError(null);
-      try {
-        await contractSubscribe(publicKey, tier, signAndSubmit);
-        // Revalidate the cached subscription so callers see the updated state.
-        await mutate();
-      } catch (e: any) {
-        setWriteError(e instanceof Error ? e.message : String(e));
-        throw e;
-      } finally {
-        setWriteLoading(false);
-      }
+    (tier: SubscriptionTier) => {
+      return submitGuarded(async () => {
+        if (!publicKey) throw new Error('Wallet not connected');
+        setWriteLoading(true);
+        setWriteError(null);
+        try {
+          await contractSubscribe(publicKey, tier, signAndSubmit);
+          // Revalidate the cached subscription so callers see the updated state.
+          await mutate();
+        } catch (e: any) {
+          setWriteError(e instanceof Error ? e.message : String(e));
+          throw e;
+        } finally {
+          setWriteLoading(false);
+        }
+      });
     },
-    [publicKey, signAndSubmit, mutate],
+    [submitGuarded, publicKey, signAndSubmit, mutate],
   );
 
   const isExpired = subscription

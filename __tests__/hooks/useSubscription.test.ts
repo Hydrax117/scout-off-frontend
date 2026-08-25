@@ -112,6 +112,46 @@ describe('useSubscription', () => {
     expect(mockGetSubscription).toHaveBeenCalledTimes(2);
   });
 
+  test('a rapid double-click on subscribe() builds/signs/submits only one transaction (issue #1177)', async () => {
+    const mockPublicKey = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890';
+    const mockSignAndSubmit = jest.fn();
+    mockUseWallet.mockReturnValue({
+      publicKey: mockPublicKey,
+      signAndSubmit: mockSignAndSubmit,
+    });
+    mockGetSubscription.mockResolvedValue(null);
+
+    let resolveSubscribe: () => void;
+    mockSubscribe.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveSubscribe = resolve;
+      }),
+    );
+
+    const { result } = renderHook(() => useSubscription(), { wrapper });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    let first: Promise<void>;
+    let second: Promise<void>;
+    act(() => {
+      // Both calls fire before the contract call's promise ever resolves —
+      // simulates a fast double-click before the disabled state visually
+      // registers.
+      first = result.current.subscribe('pro');
+      second = result.current.subscribe('pro');
+    });
+
+    await act(async () => {
+      resolveSubscribe!();
+      await Promise.all([first, second]);
+    });
+
+    expect(mockSubscribe).toHaveBeenCalledTimes(1);
+  });
+
   test('InsufficientFee error is surfaced in the error state', async () => {
     const mockPublicKey = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890';
     mockUseWallet.mockReturnValue({ publicKey: mockPublicKey });
