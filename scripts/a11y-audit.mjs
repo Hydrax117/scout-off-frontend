@@ -7,6 +7,9 @@
  * Usage:  node scripts/a11y-audit.mjs [--url http://localhost:3000]
  *
  * When no --url is given it spawns `next dev` on a random port automatically.
+ *
+ * The result-formatting and exit-code logic is factored into named exports so
+ * it can be unit-tested without launching a real browser (issue #1124).
  */
 
 import { spawn } from 'child_process';
@@ -38,7 +41,93 @@ const ROUTES = [
   '/en/changelog',
 ];
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Exported pure helpers (testable without a browser) ───────────────────────
+
+/**
+ * Impact levels considered blocking for the exit code.
+ * 'critical' and 'serious' cause a non-zero exit; 'moderate' and 'minor'
+ * are reported but do not fail the run.
+ */
+export const BLOCKING_IMPACTS = new Set(['critical', 'serious']);
+
+/**
+ * Returns true if a violation's impact level should cause the audit to fail.
+ * @param {object} violation  An axe-core violation object (must have `.impact`).
+ */
+export function isBlockingViolation(violation) {
+  return BLOCKING_IMPACTS.has(violation.impact);
+}
+
+/**
+ * Deduplicates a flat array of axe-core violation objects by the composite
+ * key `violationId::nodeHtml`.  Returns a Map whose values are
+ * `{ violation, node }` pairs — one entry per unique failing node.
+ *
+ * @param {object[]} violations  Flat list of axe-core violation objects.
+ * @returns {Map<string, {violation: object, node: object}>}
+ */
+export function deduplicateViolations(violations) {
+  const deduped = new Map();
+  for (const v of violations) {
+    for (const n of v.nodes) {
+      const key = `${v.id}::${n.html}`;
+      if (!deduped.has(key)) {
+        deduped.set(key, { violation: v, node: n });
+      }
+    }
+  }
+  return deduped;
+}
+
+/**
+ * Determines the process exit code for the audit run.
+ *
+ * Returns 1 (fail) when at least one collected violation has a blocking
+ * impact level (critical or serious); returns 0 (pass) otherwise.
+ *
+ * @param {object[]} allViolations  All violations collected across every route.
+ * @returns {0 | 1}
+ */
+export function resolveExitCode(allViolations) {
+  return allViolations.some(isBlockingViolation) ? 1 : 0;
+}
+
+/**
+ * Builds the serialisable JSON report object from the per-route results array.
+ *
+ * @param {object[]} results   Array of per-route result objects produced during the scan.
+ * @param {string}   baseUrl   The base URL that was audited.
+ * @param {object[]} allViolations  Flat list of all violations (for the total count).
+ * @returns {object}  Plain object ready for JSON.stringify.
+ */
+export function formatReport(results, baseUrl, allViolations) {
+  return {
+    timestamp: new Date().toISOString(),
+    baseUrl,
+    routes: results.map((r) => ({
+      route: r.route,
+      finalUrl: r.finalUrl,
+      violationCount: r.violations.length,
+      skipped: r.skipped,
+      error: r.error ?? null,
+      violations: r.violations.map((v) => ({
+        id: v.id,
+        impact: v.impact,
+        description: v.description,
+        help: v.help,
+        helpUrl: v.helpUrl,
+        nodes: v.nodes.map((n) => ({
+          target: n.target.join(', '),
+          html: n.html.slice(0, 200),
+          failureSummary: n.failureSummary,
+        })),
+      })),
+    })),
+    totalViolations: allViolations.length,
+  };
+}
+
+// ── Private helpers ───────────────────────────────────────────────────────────
 
 function getFreePort() {
   return new Promise((resolve) => {
@@ -228,45 +317,13 @@ async function main() {
   const reportPath = path.resolve(ROOT, 'artifacts', 'a11y-report.json');
   fs.mkdirSync(path.dirname(reportPath), { recursive: true });
 
-  const report = {
-    timestamp: new Date().toISOString(),
-    baseUrl,
-    routes: results.map((r) => ({
-      route: r.route,
-      finalUrl: r.finalUrl,
-      violationCount: r.violations.length,
-      skipped: r.skipped,
-      error: r.error ?? null,
-      violations: r.violations.map((v) => ({
-        id: v.id,
-        impact: v.impact,
-        description: v.description,
-        help: v.help,
-        helpUrl: v.helpUrl,
-        nodes: v.nodes.map((n) => ({
-          target: n.target.join(', '),
-          html: n.html.slice(0, 200),
-          failureSummary: n.failureSummary,
-        })),
-      })),
-    })),
-    totalViolations: allViolations.length,
-  };
-
+  const report = formatReport(results, baseUrl, allViolations);
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
   console.log(`  Report saved to ${reportPath}\n`);
 
-  const deduped = new Map();
-  for (const v of allViolations) {
-    for (const n of v.nodes) {
-      const key = `${v.id}::${n.html}`;
-      if (!deduped.has(key)) {
-        deduped.set(key, { violation: v, node: n });
-      }
-    }
-  }
+  const deduped = deduplicateViolations(allViolations);
 
-  if (allViolations.length > 0) {
+  if (resolveExitCode(allViolations) !== 0) {
     console.log(`  FAILED — ${allViolations.length} total, ${deduped.size} unique violation(s).\n`);
     for (const { violation: v, node: n } of deduped.values()) {
       console.log(`  [${v.impact}] ${v.help}`);
