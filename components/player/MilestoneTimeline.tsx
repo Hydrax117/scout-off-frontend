@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { Milestone, MilestoneDispute, ProgressLevel } from '@/types';
 import { PROGRESS_LABELS } from '@/types';
 import Badge from '@/components/ui/Badge';
+import Tooltip from '@/components/ui/Tooltip';
 import ValidatorChip from '@/components/player/ValidatorChip';
 
 const DISPUTE_STATUS_LABEL: Record<MilestoneDispute['status'], string> = {
@@ -36,6 +37,15 @@ function formatDate(ts: number): string {
     month: 'short',
     day: 'numeric',
   });
+}
+
+/**
+ * Build the tooltip string shown when hovering / focusing a milestone badge.
+ * Shows the full validator wallet address and the human-readable block
+ * timestamp so the viewer doesn't need to expand the detail panel.
+ */
+function buildBadgeTooltip(milestone: Milestone): string {
+  return `Validator: ${milestone.validator} · Approved: ${formatDate(milestone.timestamp)}`;
 }
 
 /** Return the most-recent milestone for a given level (levels 1-3 map to index). */
@@ -167,16 +177,30 @@ export default function MilestoneTimeline({
 
             {/* Visual label block (Badge + date text).
                 The button above already carries the full accessible name, so
-                this block is aria-hidden to avoid redundant announcements. */}
+                this block is aria-hidden to avoid redundant announcements.
+                When a milestone exists for this level, the Badge is wrapped in
+                a Tooltip showing the full validator address and block timestamp
+                on hover — giving mouse users quick access to the details
+                without having to expand the panel (issue #1129). */}
             <div
               aria-hidden="true"
               className="flex flex-col gap-0.5 sm:items-center sm:text-center mt-0.5 sm:mt-2"
             >
-              <Badge
-                variant={BADGE_VARIANT[level]}
-                label={PROGRESS_LABELS[level]}
-                size="sm"
-              />
+              {isCompleted && milestone ? (
+                <Tooltip content={buildBadgeTooltip(milestone)}>
+                  <Badge
+                    variant={BADGE_VARIANT[level]}
+                    label={PROGRESS_LABELS[level]}
+                    size="sm"
+                  />
+                </Tooltip>
+              ) : (
+                <Badge
+                  variant={BADGE_VARIANT[level]}
+                  label={PROGRESS_LABELS[level]}
+                  size="sm"
+                />
+              )}
               {isCompleted && milestone && (
                 <time
                   dateTime={new Date(milestone.timestamp * 1000).toISOString()}
