@@ -291,19 +291,20 @@ export const fetchFraudThrottles = async (): Promise<{
 /**
  * The only way a throttle changes state — no automatic expiry exists
  * anywhere in this codebase, per docs/fraud-detection.md.
+ *
+ * Deliberately a bare `fetch`, not `fetchWithRetry`: a POST with no
+ * idempotency key, so an automatic retry after a lost response risks a
+ * confusing double-lift attempt.
  */
 export const liftFraudThrottle = async (
   id: number,
   reason?: string,
 ): Promise<FraudThrottle> => {
-  const res = await fetchWithRetry(
-    `/api/admin/fraud-flags/throttles/${id}/lift`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason }),
-    },
-  );
+  const res = await fetch(`/api/admin/fraud-flags/throttles/${id}/lift`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
   if (!res.ok) throw new Error('Failed to lift fraud throttle');
   return res.json();
 };
@@ -334,11 +335,15 @@ export const fetchAcademies = async (): Promise<Academy[]> => {
   return res.json();
 };
 
+// createAcademy/addAcademyMember deliberately use a bare `fetch`, not
+// `fetchWithRetry`: both are POSTs with no idempotency key, so an automatic
+// retry after a lost response risks creating a duplicate academy or
+// membership row.
 export const createAcademy = async (
   name: string,
   ownerWallet: string,
 ): Promise<Academy> => {
-  const res = await fetchWithRetry('/api/admin/academies', {
+  const res = await fetch('/api/admin/academies', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, ownerWallet }),
@@ -352,7 +357,7 @@ export const addAcademyMember = async (
   academyId: string,
   wallet: string,
 ): Promise<Academy> => {
-  const res = await fetchWithRetry(
+  const res = await fetch(
     `/api/admin/academies/${encodeURIComponent(academyId)}/members`,
     {
       method: 'POST',
