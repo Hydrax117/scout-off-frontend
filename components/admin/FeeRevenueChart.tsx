@@ -12,6 +12,7 @@ import {
   Legend,
 } from 'recharts';
 import { useFeeRevenue } from '@/hooks/useFeeRevenue';
+import { useFeeDriftDetection } from '@/hooks/useFeeDriftDetection';
 import { formatXlm } from '@/lib/formatXlm';
 import EmptyState from '@/components/ui/EmptyState';
 
@@ -36,6 +37,7 @@ const TOOLTIP_STYLE = {
 
 export default function FeeRevenueChart() {
   const { data, loading, error } = useFeeRevenue();
+  const { hasDrift, warningMessage } = useFeeDriftDetection();
   const [period, setPeriod] = useState<PeriodKey>('30');
 
   const filtered = useMemo(() => {
@@ -88,6 +90,17 @@ export default function FeeRevenueChart() {
           ))}
         </div>
       </div>
+
+      {hasDrift && warningMessage && (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="rounded-lg border border-yellow-600/50 bg-yellow-950/30 p-3 text-xs text-yellow-300 flex items-start gap-2"
+        >
+          <span className="text-sm leading-none mt-0.5">⚠️</span>
+          <span>{warningMessage}</span>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm text-gray-400">Loading…</p>

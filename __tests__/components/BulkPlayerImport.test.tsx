@@ -25,6 +25,19 @@ jest.mock('@/lib/contract', () => ({
   buildRegisterPlayer: jest.fn(),
 }));
 
+// Stub out IndexedDB-backed session store so the component's file-change
+// handler doesn't hang waiting for IDB callbacks that never fire in jsdom.
+jest.mock('@/lib/bulkImportStore', () => ({
+  hashFileContent: jest.fn().mockResolvedValue('testhash'),
+  getOrCreateSession: jest
+    .fn()
+    .mockResolvedValue({ sessionId: 'sess-1', rows: new Map() }),
+  getSessionRows: jest.fn().mockResolvedValue(new Map()),
+  updateRowStatus: jest.fn().mockResolvedValue(undefined),
+  deleteSession: jest.fn().mockResolvedValue(undefined),
+  cleanupExpiredSessions: jest.fn().mockResolvedValue(undefined),
+}));
+
 const mockedUseWallet = useWallet as jest.MockedFunction<typeof useWallet>;
 const mockedBuildRegisterPlayer = buildRegisterPlayer as jest.MockedFunction<
   typeof buildRegisterPlayer
@@ -53,6 +66,10 @@ function makeFile(content: string, name: string, type = 'text/csv') {
 async function uploadFile(content: string, name: string, type?: string) {
   const input = screen.getByLabelText(/player file/i) as HTMLInputElement;
   const file = makeFile(content, name, type);
+  Object.defineProperty(input, 'files', {
+    value: [file],
+    configurable: true,
+  });
   fireEvent.change(input, { target: { files: [file] } });
   // FileReader resolves via a real macrotask in jsdom, not a microtask, so
   // fireEvent's implicit act() wrapper won't wait for it — poll instead.
@@ -130,9 +147,11 @@ describe('BulkPlayerImport', () => {
     await uploadFile(VALID_CSV, 'players.csv');
     expect(screen.getByRole('table')).toBeInTheDocument();
 
-    fireEvent.click(
-      screen.getByRole('button', { name: /choose another file/i }),
-    );
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: /choose another file/i }),
+      );
+    });
     expect(screen.queryByRole('table')).toBeNull();
   });
 
