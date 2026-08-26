@@ -258,6 +258,7 @@ export interface SavedSearch {
   name: string;
   filter: PlayerFilter;
   createdAt: number; // Unix ms
+  lastViewedAt: number; // Unix ms — when the scout last opened this search's results
 }
 
 // ── Notifications ────────────────────────────────────────────────────────────
