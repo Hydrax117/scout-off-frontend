@@ -83,3 +83,20 @@ export interface ReconciliationResult {
   /** Sections of the reconciliation that couldn't run (e.g. indexer unreachable). */
   skipped: string[];
 }
+
+/**
+ * One persisted reconciliation run (issue #1188). Defined here rather than
+ * in lib/reconciliationHistoryStore.ts (server-only, imports better-sqlite3)
+ * for the same reason the rest of this file is split out of
+ * lib/adminAuditStore.ts — so client components/hooks can import the shape
+ * without pulling a native module into client bundles.
+ */
+export interface ReconciliationRun {
+  id: number;
+  /** Unix seconds — matches ReconciliationResult.checkedAt for this run. */
+  checkedAt: number;
+  mismatches: ReconciliationMismatch[];
+  /** Count of `mismatches` that were NOT present in the immediately preceding run. */
+  newMismatchCount: number;
+  skipped: string[];
+}
