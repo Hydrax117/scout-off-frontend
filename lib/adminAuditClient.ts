@@ -3,6 +3,7 @@ import type {
   AdminAuditQueryResult,
   ReconciliationResult,
 } from '@/lib/adminAudit';
+import { fetchWithRetry } from '@/lib/fetchWithRetry';
 
 /** Client for app/api/admin/audit-log/* — same-origin, cookie-authenticated. */
 
@@ -27,7 +28,7 @@ export async function fetchAuditLog(
   if (query.limit !== undefined) params.set('limit', String(query.limit));
 
   const qs = params.toString();
-  const res = await fetch(`/api/admin/audit-log${qs ? `?${qs}` : ''}`);
+  const res = await fetchWithRetry(`/api/admin/audit-log${qs ? `?${qs}` : ''}`);
   if (!res.ok) throw new Error('Failed to fetch audit log');
   return res.json();
 }
@@ -46,6 +47,10 @@ export interface RecordAuditEntryInput {
  * are deliberately swallowed by callers (see app/[locale]/admin/page.tsx) —
  * a failure to *log* an action must never block or roll back the action
  * itself, which has already gone on-chain by the time this is called.
+ *
+ * Deliberately a bare `fetch`, not `fetchWithRetry`: this is a POST with no
+ * idempotency key, so an automatic retry after a lost response risks writing
+ * a duplicate audit entry.
  */
 export async function recordAuditEntry(
   input: RecordAuditEntryInput,
@@ -59,7 +64,7 @@ export async function recordAuditEntry(
 }
 
 export async function fetchReconciliation(): Promise<ReconciliationResult> {
-  const res = await fetch('/api/admin/audit-log/reconcile');
+  const res = await fetchWithRetry('/api/admin/audit-log/reconcile');
   if (!res.ok) throw new Error('Failed to run reconciliation');
   return res.json();
 }
