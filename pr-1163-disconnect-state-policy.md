@@ -52,6 +52,7 @@ The `scoutoff:remembered_addresses` key is a special case - it's technically sto
 ## Related Issue
 
 - Issue #1163: Audit disconnect() scope for per-wallet client-side state
+closes #1163
 
 ## Acceptance Criteria Met
 
