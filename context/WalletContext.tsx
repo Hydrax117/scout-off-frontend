@@ -250,8 +250,14 @@ export function removeRememberedAddress(publicKey: string) {
   localStorage.setItem(REMEMBERED_ADDRESSES_KEY, JSON.stringify(filtered));
 }
 
-export function clearAllRememberedAddresses() {
-  localStorage.removeItem(REMEMBERED_ADDRESSES_KEY);
+export function clearAllRememberedAddresses(): void {
+  // Clear the remembered addresses list on disconnect to prevent the
+  // account switcher from leaking wallet addresses between sessions
+  // on shared computers. Per docs/disconnect-state-policy.md, this
+  // per-wallet state should not persist after logout.
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(REMEMBERED_ADDRESSES_KEY);
+  }
 }
 
 // ── Context value ─────────────────────────────────────────────────────────────
@@ -699,6 +705,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     // remaining valid until its natural expiry. Fire-and-forget: the
     // client-side cleanup below must not wait on (or be blocked by) the
     // network round trip.
+    //
+    // Per docs/disconnect-state-policy.md: on shared computers (common for
+    // scouts working from academy or club machines), we must clear all
+    // per-wallet state that shouldn't leak to the next wallet that connects.
     Promise.resolve(fetch('/api/auth/sep10', { method: 'DELETE' })).catch(
       () => {},
     );
@@ -710,6 +720,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setSessionExpiresAt(null);
     removeStoredSession();
     removeSessionExpiry();
+    clearAllRememberedAddresses();
     // Unlocked contact details (and any other cached data) must not survive
     // logout — see lib/contactDetailsCache.ts. The explicit purge below is
     // belt-and-suspenders on top of this blanket wipe: it also cancels any
